@@ -1,6 +1,11 @@
 import os
 import sys
 
+# Ensure project root is on sys.path so imports like `from config import config` work
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from config import config
 from db import connection
 
@@ -64,6 +69,16 @@ def create_sqlite_tables():
         file_path TEXT,
         metadata TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS audio_tone (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        audio_id INTEGER NOT NULL,
+        tone TEXT,
+        score REAL,
+        metadata TEXT
+    );
+
     """
 
     conn = connection.get_connection()
@@ -82,15 +97,11 @@ def create_sqlite_tables():
 
 
 def main():
-    use_postgres = False
     url = getattr(config, "DATABASE_URL", "")
-    if url and url.startswith(("postgres://", "postgresql://")):
-        use_postgres = True
+    if not (url and url.startswith(("postgres://", "postgresql://"))):
+        raise RuntimeError("DATABASE_URL must be set to a Postgres URL to create tables. SQLite support has been removed.")
 
-    if use_postgres:
-        create_postgres_tables()
-    else:
-        create_sqlite_tables()
+    create_postgres_tables()
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ CONFIG_DIR = os.path.join(BASE_DIR, "config")
 MEMORY_DIR = os.path.join(BASE_DIR, "memory")
 AUDIO_DIR = os.path.join(MEMORY_DIR, "audio")
 REPORT_DIR = os.path.join(MEMORY_DIR, "report")
-DB_PATH = os.path.join(BASE_DIR, "db", "xiaoxing_memory.db")
 
 # Database connection URL (PostgreSQL). Can be overridden by the environment variable.
 # Example: postgresql://admin:admin123@localhost:5432/xiaoXing_Db

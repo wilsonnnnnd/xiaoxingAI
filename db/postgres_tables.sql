@@ -42,3 +42,16 @@ CREATE TABLE IF NOT EXISTS audio_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audio_usage_created_at ON audio_usage(created_at);
+
+-- audio_tone: records tone classification associated with an audio_usage row
+CREATE TABLE IF NOT EXISTS audio_tone (
+  id SERIAL PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  audio_id INTEGER NOT NULL,
+  tone VARCHAR(128),
+  score REAL,
+  metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_audio_tone_audio_id ON audio_tone(audio_id);
+

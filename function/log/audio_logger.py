@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 
 from config.config import DATABASE_URL
 from db.connection import get_connection
+from datetime import datetime
 
 
 def _is_postgres() -> bool:
@@ -41,6 +42,69 @@ def log_audio_usage(
 
         conn.commit()
         return new_id
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _fetch_metadata(cur, audio_id: int):
+    try:
+        cur.execute("SELECT metadata FROM audio_usage WHERE id = %s" if _is_postgres() else "SELECT metadata FROM audio_usage WHERE id = ?", (audio_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        val = row[0]
+        if val is None:
+            return None
+        try:
+            return json.loads(val) if isinstance(val, str) else val
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def update_audio_metadata(audio_id: int, updates: Dict[str, Any]) -> None:
+    """Merge `updates` into the existing metadata JSON for `audio_id`.
+
+    This performs a read-modify-write that works for both SQLite and Postgres.
+    """
+    if audio_id is None:
+        return
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        existing = _fetch_metadata(cur, audio_id) or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        # shallow merge
+        existing.update(updates or {})
+        meta_val = json.dumps(existing, ensure_ascii=False)
+        if _is_postgres():
+            sql = "UPDATE audio_usage SET metadata = %s WHERE id = %s"
+            cur.execute(sql, (meta_val, audio_id))
+        else:
+            sql = "UPDATE audio_usage SET metadata = ? WHERE id = ?"
+            cur.execute(sql, (meta_val, audio_id))
+        conn.commit()
+        # If this update includes playback info, also append a play event to audio_tone
+        try:
+            if updates and ("played" in updates or "played_at" in updates or "ended_at" in updates):
+                try:
+                    from function.log.tone_logger import append_play_event
+                    status = "played" if updates.get("played", True) else "failed"
+                    event = {
+                        "status": status,
+                        "started_at": updates.get("started_at"),
+                        "ended_at": updates.get("played_at") or updates.get("ended_at") or datetime.utcnow().isoformat(),
+                        "source": updates.get("source", "player")
+                    }
+                    append_play_event(audio_id, event)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     finally:
         cur.close()
         conn.close()

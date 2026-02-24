@@ -118,7 +118,6 @@ xiaoxing/                               # 项目根目录
 │   └── xiaoxing_memory.db             # 💾 SQLite数据库文件（运行时生成）
 ├── 📁 function/                       # 功能模块目录（模块化架构）
 │   ├── 📁 audio/                      # 🎵 语音功能模块
-│   │   ├── speech_config_db.py        # 语音配置数据库操作
 │   │   ├── speech_logger.py           # 语音播放日志记录
 │   │   ├── speech_reporter.py         # 语音使用统计报告
 │   │   ├── speech_utils.py            # 🔊 语音合成和播放工具
@@ -684,7 +683,6 @@ python main_chat.py
 #### 5. 其他表
 - `daily_summary`: 每日对话总结
 - `speech_log`: 语音播放记录
-- `speech_config`: 语音配置
 - `emotion_dictionary`: 情绪词典
 
 ### 数据存储位置
@@ -755,10 +753,9 @@ AUDIO_DIR = os.path.join(MEMORY_DIR, "audio")
   - `emotion_dict_db.py`: 情绪词典管理
 
 ### 3. 语音系统 (`function/audio/`)
-- **功能**：基于情绪的语音合成和播放
-- **主要文件**：
+**功能**：语音合成和播放
+**主要文件**：
   - `speech_utils.py`: 语音工具
-  - `speech_config_db.py`: 语音配置
   - `speech_logger.py`: 语音日志
 
 ### 4. 对话总结 (`function/summary/`)
