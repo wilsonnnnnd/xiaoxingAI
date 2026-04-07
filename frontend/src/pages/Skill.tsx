@@ -4,7 +4,6 @@ import { useI18n } from '../i18n/useI18n'
 import {
     getWorkerStatus, getDbStats, getLogs, clearLogs,
     startWorker, stopWorker, pollNow, testTelegram,
-    getBotStatus, startBot, stopBot, clearBotHistory,
     getGmailAuthUrl, getHealth, type LogEntry,
 } from '../api'
 
@@ -76,11 +75,10 @@ function LogRow({ entry }: { entry: LogEntry }) {
 export default function Skill() {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const [logFilter, setLogFilter] = useState<'all' | 'email' | 'chat'>('all')
+    const [logFilter, setLogFilter] = useState<'all' | 'email'>('all')
     const [notice, setNotice] = useState("")
     const [apiOk, setApiOk] = useState<boolean | null>(null)
     const logEndRef  = useRef<HTMLDivElement>(null)
-    const chatEndRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         const check = () => getHealth().then(() => setApiOk(true)).catch(() => setApiOk(false))
@@ -91,36 +89,24 @@ export default function Skill() {
 
     const { data: worker } = useQuery({ queryKey: ['workerStatus'], queryFn: getWorkerStatus, refetchInterval: 2000 })
     const { data: stats }  = useQuery({ queryKey: ['dbStats'],      queryFn: getDbStats,      refetchInterval: 10_000 })
-    const { data: botStatus } = useQuery({ queryKey: ['botStatus'], queryFn: getBotStatus,    refetchInterval: 2000 })
+    
 
     const { data: emailLogs = [] } = useQuery({
         queryKey: ['logs', 'email'],
         queryFn: () => getLogs(200, 'email'),
         refetchInterval: 2000,
     })
-    const { data: chatLogs = [] } = useQuery({
-        queryKey: ['logs', 'chat'],
-        queryFn: () => getLogs(100, 'chat'),
-        refetchInterval: 2000,
-    })
-
-    const allLogs = [...emailLogs, ...chatLogs].sort((a, b) => a.ts.localeCompare(b.ts))
-    const displayLogs = logFilter === 'email' ? emailLogs : logFilter === 'chat' ? chatLogs : allLogs
+    const displayLogs = emailLogs
 
     useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) },  [displayLogs.length])
-    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
 
     const startMut    = useMutation({ mutationFn: startWorker,    onSuccess: () => qc.invalidateQueries({ queryKey: ['workerStatus'] }) })
     const stopMut     = useMutation({ mutationFn: stopWorker,     onSuccess: () => qc.invalidateQueries({ queryKey: ['workerStatus'] }) })
     const pollMut     = useMutation({ mutationFn: pollNow,        onSuccess: () => qc.invalidateQueries({ queryKey: ['workerStatus'] }) })
     const clearMut    = useMutation({ mutationFn: clearLogs,      onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }) })
     const tgMut       = useMutation({ mutationFn: testTelegram,   onSuccess: () => setNotice(t('home.tg.test_ok')) })
-    const botStartMut = useMutation({ mutationFn: startBot,       onSuccess: () => qc.invalidateQueries({ queryKey: ['botStatus'] }) })
-    const botStopMut  = useMutation({ mutationFn: stopBot,        onSuccess: () => qc.invalidateQueries({ queryKey: ['botStatus'] }) })
-    const botClearMut = useMutation({ mutationFn: clearBotHistory, onSuccess: () => { qc.invalidateQueries({ queryKey: ['logs'] }); setNotice(t('home.bot.history_cleared')) } })
 
     const workerRunning = worker?.running ?? false
-    const botRunning    = botStatus?.running ?? false
     const authorized    = stats?.has_token ?? false
 
     const fmt = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : '—'
@@ -161,7 +147,7 @@ export default function Skill() {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
+            <div className="grid grid-cols-1 gap-4 min-w-0">
 
                 <Card title={t('home.card.worker')}>
                     <p className="text-xs text-[#64748b] -mt-1">{t('home.card.worker_desc')}</p>
@@ -204,50 +190,14 @@ export default function Skill() {
                     )}
                 </Card>
 
-                <Card title={t('home.card.bot_worker')}>
-                    <p className="text-xs text-[#64748b] -mt-1">{t('home.card.bot_worker_desc')}</p>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                            botRunning
-                                ? 'bg-[#052e16] border-[#166534] text-[#86efac]'
-                                : 'bg-[#0b0e14] border-[#2d3748] text-[#64748b]'
-                        }`}>
-                            {botRunning ? '' + t('home.worker.running') : '' + t('home.worker.stopped')}
-                        </span>
-                        {!botRunning
-                            ? <Btn variant="green" onClick={() => botStartMut.mutate()} disabled={botStartMut.isPending}>{t('home.btn.bot_start')}</Btn>
-                            : <Btn variant="red"   onClick={() => botStopMut.mutate()}  disabled={botStopMut.isPending}>{t('home.btn.bot_stop')}</Btn>
-                        }
-                        <Btn onClick={() => botClearMut.mutate()} disabled={botClearMut.isPending}>{t('home.btn.bot_clear')}</Btn>
-                    </div>
-
-                    <div className="text-xs text-[#64748b] font-semibold">{t('home.bot.log_title')}</div>
-                    <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3 h-52 overflow-y-auto flex flex-col gap-0.5">
-                        {chatLogs.length === 0
-                            ? <div className="text-xs text-[#475569] text-center pt-8">—</div>
-                            : chatLogs.map((e) => {
-                                const isUser = e.msg.startsWith('💬')
-                                const isBot  = e.msg.startsWith('🤖')
-                                return (
-                                    <div key={e.id} className={`font-mono text-xs py-0.5 flex gap-2 ${isUser ? 'text-[#7dd3fc]' : isBot ? 'text-[#c4b5fd]' : 'text-[#94a3b8]'}`}>
-                                        <span className="text-[#475569] shrink-0">[{getTime(e.ts)}]</span>
-                                        {e.tokens > 0 && <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#1c2a1c] text-[#86efac]">{e.tokens}t</span>}
-                                        <span className="flex-1 break-all">{e.msg}</span>
-                                    </div>
-                                )
-                            })
-                        }
-                        <div ref={chatEndRef} />
-                    </div>
-                </Card>
+                {/* Bot Chat moved to separate page; removed from Skill main view */}
             </div>
 
             <div className="bg-[#1e2330] border border-[#2d3748] rounded-xl p-5 flex flex-col gap-3 flex-1 min-h-0">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[#cbd5e1]">{t('home.worker.log_title')}</span>
                     <div className="flex gap-1 ml-2">
-                        {(['all', 'email', 'chat'] as const).map(f => (
+                        {(['all', 'email'] as const).map(f => (
                             <button key={f} onClick={() => setLogFilter(f)}
                                 className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${
                                     logFilter === f ? 'bg-[#6366f1] text-white' : 'bg-[#0b0e14] border border-[#2d3748] text-[#64748b] hover:text-[#e2e8f0]'

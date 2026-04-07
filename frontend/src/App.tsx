@@ -2,6 +2,7 @@
 import Layout from './components/Layout'
 import Home from './pages/Home'
 import Skill from './pages/Skill'
+import SkillChat from './pages/SkillChat'
 import Settings from './pages/Settings'
 import Prompts from './pages/Prompts'
 import Debug from './pages/Debug'
@@ -13,6 +14,7 @@ export default function App() {
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
         <Route path="skill" element={<Skill />} />
+        <Route path="skill/chat" element={<SkillChat />} />
         <Route path="settings" element={<Settings />} />
         <Route path="prompts" element={<Prompts />} />
         <Route path="debug" element={<Debug />} />
