@@ -1,0 +1,14 @@
+credentials.json
+token.json
+.env
+sent_ids.json
+.oauth_code_verifier
+
+**/__pycache__/
+*.py[cod]
+.venv/
+gmailmanager.db
+gmailmanager.db-shm
+gmailmanager.db-wal
+API.md
+frontend/package-lock.json
