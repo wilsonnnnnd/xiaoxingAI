@@ -76,7 +76,7 @@ export default function Layout() {
                   {skillOpen && (
                     <div id="skill-menu" className="mt-1 ml-2 bg-[#071025] border border-[#213347] rounded-md p-1 z-50 shadow-lg">
                       <NavLink
-                        to="/skill"
+                        to="/skill/gmail"
                         className={({ isActive }) =>
                           `block px-3 py-1 rounded text-sm transition-colors duration-150 ${isActive ? 'bg-[#071023] text-white font-semibold' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`
                         }

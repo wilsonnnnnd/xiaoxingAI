@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Dict, Optional
 
 from dotenv import set_key
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pathlib import Path
@@ -231,9 +231,9 @@ def worker_logs(limit: int = 100, log_type: Optional[str] = None):
 
 
 @app.delete("/worker/logs")
-def worker_logs_clear():
-    """清空 Worker 步骤日志（数据库）"""
-    deleted = db.clear_logs()
+def worker_logs_clear(log_type: Optional[str] = None):
+    """清空 Worker 步骤日志（数据库）。可选 query 参数 `log_type` 指定 'email' 或 'chat'，不传则删除全部。"""
+    deleted = db.clear_logs(log_type)
     return {"ok": True, "deleted": deleted}
 
 
@@ -272,6 +272,44 @@ async def worker_poll():
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"轮询失败: {str(e)}")
+
+
+@app.websocket("/ws/worker/status")
+async def ws_worker_status(websocket: WebSocket):
+    await websocket.accept()
+    from app.core import ws as ws_pub
+    q = ws_pub.subscribe_worker()
+    try:
+        # send current status immediately
+        await websocket.send_json(worker.get_status())
+        while True:
+            status = await q.get()
+            await websocket.send_json(status)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        ws_pub.unsubscribe_worker(q)
+
+
+@app.websocket("/ws/bot/status")
+async def ws_bot_status(websocket: WebSocket):
+    await websocket.accept()
+    from app.core import ws as ws_pub
+    q = ws_pub.subscribe_bot()
+    try:
+        # send current bot status immediately
+        await websocket.send_json({"running": tg_bot_worker.is_running()})
+        while True:
+            status = await q.get()
+            await websocket.send_json(status)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        ws_pub.unsubscribe_bot(q)
 
 
 # ─────────────────────────────────────────
@@ -332,6 +370,19 @@ async def tg_bot_stop():
 @app.get("/telegram/bot/status")
 def tg_bot_status():
     """返回 Bot Worker 运行状态"""
+    return {"running": tg_bot_worker.is_running()}
+
+
+# Backwards-compatible wrappers exposing explicit endpoints for separated statuses
+@app.get("/gmail/workstatus")
+def gmail_work_status():
+    """Wrapper for Gmail worker status (frontend-friendly name)."""
+    return worker.get_status()
+
+
+@app.get("/chat/workstatus")
+def chat_work_status():
+    """Wrapper for Chat (Telegram bot) worker status (frontend-friendly name)."""
     return {"running": tg_bot_worker.is_running()}
 
 

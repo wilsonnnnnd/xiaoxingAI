@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { useI18n } from '../i18n/useI18n'
-import { formatLogMessage } from '../utils/formatLog'
-import { getLogs, getBotStatus, startBot, stopBot, clearBotHistory, type LogEntry } from '../api'
+import { useI18n } from '../../i18n/useI18n'
+import { formatLogMessage } from '../../utils/formatLog'
+import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, type LogEntry } from '../../api'
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
     return (
@@ -17,11 +17,11 @@ function Btn({ onClick, disabled, variant = 'default', children, }: { onClick?: 
     const base = 'px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
     const map = {
         default: 'bg-[#334155] hover:bg-[#475569] text-[#e2e8f0]',
-        green:   'bg-[#15803d] hover:bg-[#166534] text-white',
-        red:     'bg-[#7f1d1d] hover:bg-[#991b1b] text-white',
-        blue:    'bg-[#1d4ed8] hover:bg-[#1e40af] text-white',
-        tg:      'bg-[#0088cc] hover:bg-[#006fa8] text-white',
-        ghost:   'text-[#64748b] hover:text-[#e2e8f0] hover:bg-[#334155]',
+        green: 'bg-[#15803d] hover:bg-[#166534] text-white',
+        red: 'bg-[#7f1d1d] hover:bg-[#991b1b] text-white',
+        blue: 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white',
+        tg: 'bg-[#0088cc] hover:bg-[#006fa8] text-white',
+        ghost: 'text-[#64748b] hover:text-[#e2e8f0] hover:bg-[#334155]',
     }
     return (
         <button className={`${base} ${map[variant]}`} onClick={onClick} disabled={disabled}>
@@ -31,7 +31,7 @@ function Btn({ onClick, disabled, variant = 'default', children, }: { onClick?: 
 }
 
 const LEVEL_CLS: Record<string, string> = {
-    warn:  'text-[#fbbf24]',
+    warn: 'text-[#fbbf24]',
     error: 'text-[#fca5a5]',
 }
 
@@ -56,39 +56,92 @@ function LogRow({ entry }: { entry: LogEntry }) {
     )
 }
 
-export default function SkillChat() {
+export default function Chat() {
     const { t } = useI18n()
     const qc = useQueryClient()
     const endRef = useRef<HTMLDivElement>(null)
 
-    const { data: botStatus } = useQuery({ queryKey: ['botStatus'], queryFn: getBotStatus, refetchInterval: 2000 })
+    // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
+    const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
     const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 2000 })
 
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
+    type BotStatus = {
+        running?: boolean
+    }
+    const botStartMut = useMutation({
+        mutationFn: async () => {
+            try {
+                await qc.fetchQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus })
+            } catch {
+                /* ignore */
+            }
+            return startBot()
+        },
+        onSuccess: (data: BotStatus | undefined) => {
+            try {
+                qc.setQueryData<BotStatus>(['chatworkstatus'], (old) => ({
+                    ...(old ?? {}),
+                    running: data?.running ?? true,
+                }))
+            } catch {
+                /* ignore */
+            }
+        },
+    })
 
-    const botStartMut = useMutation({ mutationFn: startBot, onSuccess: () => qc.invalidateQueries({ queryKey: ['botStatus'] }) })
-    const botStopMut  = useMutation({ mutationFn: stopBot,  onSuccess: () => qc.invalidateQueries({ queryKey: ['botStatus'] }) })
-    const botClearMut = useMutation({ mutationFn: clearBotHistory, onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }) })
+    const botStopMut = useMutation({
+        mutationFn: async () => {
+            try {
+                await qc.fetchQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus })
+            } catch {
+                /* ignore */
+            }
+            return stopBot()
+        },
+        onSuccess: (data: BotStatus | undefined) => {
+            try {
+                qc.setQueryData<BotStatus>(['chatworkstatus'], (old) => ({
+                    ...(old ?? {}),
+                    running: data?.running ?? false,
+                }))
+            } catch {
+                /* ignore */
+            }
+        },
+    })
+    const botClearMut = useMutation({ mutationFn: clearBotHistory, onSuccess: () => qc.invalidateQueries({ queryKey: ['logs', 'chat'] }) })
 
-    const botRunning = botStatus?.running ?? false
+    const botRunning = botQuery.data?.running ?? false
+
+    
 
     return (
         <div className="flex flex-col h-full p-5 gap-4 min-w-0">
             <div className="grid grid-cols-1 xl:grid-cols-1 gap-4 min-w-0">
                 <Card title={t('home.card.bot_worker')}>
-                    <p className="text-xs text-[#64748b] -mt-1">{t('home.card.bot_worker_desc')}</p>
+                    <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-[#64748b]">
+                            {t('home.card.bot_worker_desc')}
+                        </p>
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                            botRunning
+                        <span
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${botRunning
                                 ? 'bg-[#052e16] border-[#166534] text-[#86efac]'
                                 : 'bg-[#0b0e14] border-[#2d3748] text-[#64748b]'
-                        }`}>
-                            {botRunning ? '' + t('home.worker.running') : '' + t('home.worker.stopped')}
+                                }`}
+                        >
+                            {botRunning
+                                ? t('home.worker.running')
+                                : t('home.worker.stopped')}
                         </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+
                         {!botRunning
                             ? <Btn variant="green" onClick={() => botStartMut.mutate()} disabled={botStartMut.isPending}>{t('home.btn.bot_start')}</Btn>
-                            : <Btn variant="red"   onClick={() => botStopMut.mutate()}  disabled={botStopMut.isPending}>{t('home.btn.bot_stop')}</Btn>
+                            : <Btn variant="red" onClick={() => botStopMut.mutate()} disabled={botStopMut.isPending}>{t('home.btn.bot_stop')}</Btn>
                         }
                         <Btn onClick={() => botClearMut.mutate()} disabled={botClearMut.isPending}>{t('home.btn.bot_clear')}</Btn>
                     </div>

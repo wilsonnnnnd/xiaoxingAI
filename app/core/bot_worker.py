@@ -17,6 +17,7 @@ import requests
 from app import config, db
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
 from app.core.telegram import TELEGRAM_API
+from app.core import ws as ws_pub
 
 logger = logging.getLogger("tg_bot")
 
@@ -222,11 +223,16 @@ async def start() -> bool:
     global _task, _schedule_task, _running
     if _running:
         return False
-    if not config.TELEGRAM_BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN 未配置")
+    missing = config.validate_telegram()
+    if missing:
+        raise RuntimeError(f"缺少 Telegram 配置项：{', '.join(missing)}，请检查 .env 文件")
     _running = True
     _task          = asyncio.create_task(_loop())
     _schedule_task = asyncio.create_task(_schedule_loop())
+    try:
+        ws_pub.publish_bot_status({"running": True})
+    except Exception:
+        pass
     return True
 
 
@@ -242,6 +248,10 @@ async def stop() -> None:
                 pass
     _task          = None
     _schedule_task = None
+    try:
+        ws_pub.publish_bot_status({"running": False})
+    except Exception:
+        pass
 
 
 def clear_history(chat_id: str | None = None) -> None:

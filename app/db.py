@@ -217,10 +217,15 @@ def get_recent_logs(limit: int = 100, log_type: Optional[LogType] = None) -> Lis
     return [{"id": r[0], "ts": r[1], "level": r[2], "log_type": r[3], "tokens": r[4], "msg": r[5]} for r in reversed(rows)]
 
 
-def clear_logs() -> int:
+def clear_logs(log_type: Optional[str] = None) -> int:
+    """清空步骤日志。可选按 log_type 过滤（'email' 或 'chat'），不传则删除全部。返回被删除的条目数量。"""
     with _lock:
-        count = get_conn().execute("SELECT COUNT(*) FROM worker_logs").fetchone()[0]
-        get_conn().execute("DELETE FROM worker_logs")
+        if log_type:
+            count = get_conn().execute("SELECT COUNT(*) FROM worker_logs WHERE log_type = ?", (log_type,)).fetchone()[0]
+            get_conn().execute("DELETE FROM worker_logs WHERE log_type = ?", (log_type,))
+        else:
+            count = get_conn().execute("SELECT COUNT(*) FROM worker_logs").fetchone()[0]
+            get_conn().execute("DELETE FROM worker_logs")
         get_conn().commit()
     return count
 

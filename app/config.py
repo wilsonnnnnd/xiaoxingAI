@@ -50,12 +50,30 @@ FRONTEND_URL:     str = _get("FRONTEND_URL", "http://localhost:5173").rstrip("/"
 
 
 def validate() -> list[str]:
-    """返回缺失的必填配置项列表"""
+    """返回缺失的必填配置项列表（兼容旧调用，检查所有必需项）"""
     missing = []
+    # Keep previous behavior for callers that expect a global validation
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_bot_token_here":
         missing.append("TELEGRAM_BOT_TOKEN")
     if not TELEGRAM_CHAT_ID or TELEGRAM_CHAT_ID == "your_chat_id_here":
         missing.append("TELEGRAM_CHAT_ID")
     if LLM_BACKEND == "openai" and not OPENAI_API_KEY:
         missing.append("OPENAI_API_KEY")
+    return missing
+
+def validate_gmail() -> list[str]:
+    """返回启动 Gmail worker 所需但缺失的配置项（不包含 Telegram）"""
+    missing: list[str] = []
+    if LLM_BACKEND == "openai" and not OPENAI_API_KEY:
+        missing.append("OPENAI_API_KEY")
+    return missing
+
+
+def validate_telegram() -> list[str]:
+    """返回启动 Telegram bot 所需但缺失的配置项"""
+    missing: list[str] = []
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_bot_token_here":
+        missing.append("TELEGRAM_BOT_TOKEN")
+    if not TELEGRAM_CHAT_ID or TELEGRAM_CHAT_ID == "your_chat_id_here":
+        missing.append("TELEGRAM_CHAT_ID")
     return missing

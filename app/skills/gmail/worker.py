@@ -7,6 +7,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from app.core import ws as ws_pub
 
 from app import config, db
 from app.skills.gmail.client import fetch_emails, mark_as_read
@@ -186,6 +187,11 @@ async def _poll_once() -> None:
                 db.add_sent_id(email["id"])
 
         db.cleanup_old_logs()
+        # notify websocket subscribers about updated status
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
 
 
 # ── 轮询循环 ────────────────────────────────
@@ -213,9 +219,9 @@ async def start() -> bool:
     if _running:
         return False
 
-    missing = config.validate()
+    missing = config.validate_gmail()
     if missing:
-        raise RuntimeError(f"缺少配置项：{', '.join(missing)}，请检查 .env 文件")
+        raise RuntimeError(f"缺少 Gmail 所需配置项：{', '.join(missing)}，请检查 .env 文件")
 
     _running = True
     _session_start = datetime.now()
@@ -229,6 +235,10 @@ async def start() -> bool:
         "last_error":    None,
     })
     _task = asyncio.create_task(_loop())
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
     return True
 
 
@@ -254,6 +264,10 @@ def stop() -> bool:
     )
     if _task and not _task.done():
         _task.cancel()
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
     return True
 
 
@@ -303,12 +317,16 @@ def get_status() -> Dict[str, Any]:
 
 async def poll_now() -> Dict[str, Any]:
     """立即触发一次轮询（不受调度间隔限制）"""
-    missing = config.validate()
+    missing = config.validate_gmail()
     if missing:
-        raise RuntimeError(f"缺少配置项：{', '.join(missing)}")
+        raise RuntimeError(f"缺少 Gmail 所需配置项：{', '.join(missing)}")
     before_sent = _stats["total_sent"]
     before_err  = _stats["total_errors"]
     await _poll_once()
+    try:
+        ws_pub.publish_status(get_status())
+    except Exception:
+        pass
     return {
         "sent_this_run":   _stats["total_sent"]   - before_sent,
         "errors_this_run": _stats["total_errors"]  - before_err,

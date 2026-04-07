@@ -90,7 +90,7 @@ export const pollNow = () => api.post('/worker/poll').then(r => r.data)
 export const getLogs = (limit = 100, log_type?: string) =>
   api.get<{ logs: LogEntry[] }>('/worker/logs', { params: { limit, log_type } }).then(r => r.data.logs)
 
-export const clearLogs = () => api.delete('/worker/logs').then(r => r.data)
+export const clearLogs = (log_type?: string) => api.delete('/worker/logs', { params: { log_type } }).then(r => r.data)
 
 // ── Gmail ────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export const getGmailAuthUrl = () => `${window.location.origin}/api/gmail/auth`
 
 // ── Telegram Bot ─────────────────────────────────────────────────
 
-export const getBotStatus = () => api.get<{ running: boolean }>('/telegram/bot/status').then(r => r.data)
+export const getChatWorkStatus = () => api.get<{ running: boolean }>('/chat/workstatus').then(r => r.data)
 export const startBot = () => api.post<{ ok: boolean; running: boolean }>('/telegram/bot/start').then(r => r.data)
 export const stopBot = () => api.post<{ ok: boolean; running: boolean }>('/telegram/bot/stop').then(r => r.data)
 export const clearBotHistory = () => api.post('/telegram/bot/clear_history').then(r => r.data)
@@ -137,3 +137,6 @@ export const pingAi = () => api.get<{ ok: boolean; backend: string; reply: strin
 
 export const processEmail = (subject: string, body: string) =>
   api.post('/ai/process', { subject, body }).then(r => r.data)
+
+// Frontend-friendly Gmail status endpoint (separate name)
+export const getGmailWorkStatus = () => api.get<WorkerStatus>('/gmail/workstatus').then(r => r.data)
