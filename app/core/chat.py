@@ -1,6 +1,6 @@
 """
 聊天核心模块 — 主要功能
-- chat_reply(): 与用户实时对话（Mika 人格）
+- chat_reply(): 与用户实时对话（Xiaoxing 人格）
 - build_user_profile(): 根据聊天历史生成/更新用户画像
 """
 import re
@@ -34,7 +34,7 @@ def chat_reply(
         if turn["role"] == "user":
             history_text += f"用户：{turn['content']}\n"
         else:
-            history_text += f"Mika：{turn['content']}\n"
+            history_text += f"Xiaoxing：{turn['content']}\n"
 
     # 用户画像注入段
     profile_section = ""
@@ -50,8 +50,8 @@ def chat_reply(
 
     raw, tokens = call_llm(prompt, max_tokens=400)
     reply = raw.strip()
-    # 去掉模型可能重复输出的 "Mika：" 前缀
-    reply = re.sub(r"^Mika[：:]\s*", "", reply)
+    # 去掉模型可能重复输出的 "Xiaoxing：" 前缀
+    reply = re.sub(r"^Xiaoxing[：:]\s*", "", reply)
     return reply, tokens
 
 
@@ -74,7 +74,7 @@ def build_user_profile(
         if turn["role"] == "user":
             history_text += f"用户：{turn['content']}\n"
         else:
-            history_text += f"Mika：{turn['content']}\n"
+            history_text += f"Xiaoxing：{turn['content']}\n"
 
     template = load_prompt(config.PROMPT_PROFILE)
     prompt = template.format(

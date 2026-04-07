@@ -1,6 +1,7 @@
-# Gmail AI Manager
+# Xiaoxing AI (小星 AI)
 
 > Automatically fetch unread Gmail → AI analysis & summary → Telegram notification
+
 
 [中文文档](README.zh.md)
 
@@ -11,7 +12,7 @@
 - 📥 **Gmail Fetch** — Polls primary inbox for unread emails via Google OAuth2
 - 🤖 **AI Analysis** — Local llama.cpp or OpenAI model classifies, prioritizes, and summarizes each email
 - 📱 **Telegram Push** — AI-written HTML notifications sent to a specified chat; message style and language fully customizable via prompt
-- 💬 **Telegram Bot Chat** — Built-in "Mika" persona bot replies to Telegram messages in real time using chat history
+- 💬 **Telegram Bot Chat** — Built-in "Xiaoxing" (小星 AI) persona bot replies to Telegram messages in real time using chat history
 - 👤 **User Profile** — AI automatically builds a user profile from chat history; updated every midnight and fed back into chats
 - 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) is persisted in SQLite for later querying
 - 🔄 **Deduplication** — Processed email IDs persisted in SQLite; no duplicate notifications after restart

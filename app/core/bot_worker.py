@@ -80,7 +80,7 @@ def _handle_message(token: str, chat_id: str, text: str) -> None:
 
     # 内置命令
     if text in ("/start", "/hi", "/hello"):
-        _send_reply(token, chat_id, "👋 你好！我是 Mika，有什么可以帮你的吗？")
+        _send_reply(token, chat_id, "👋 你好！我是小星（Xiaoxing），有什么可以帮你的吗？")
         return
     if text == "/clear":
         _histories.pop(chat_id, None)
@@ -125,7 +125,7 @@ def _handle_message(token: str, chat_id: str, text: str) -> None:
     today.append({"role": "assistant", "content": reply})
 
     # 记录 AI 回复（含 token 数）
-    _wlog(f"🤖 Mika: {reply[:80]}", tokens=tokens)
+    _wlog(f"🤖 Xiaoxing: {reply[:80]}", tokens=tokens)
     _send_reply(token, chat_id, reply)
 
 

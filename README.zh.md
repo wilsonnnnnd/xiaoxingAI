@@ -1,6 +1,7 @@
-# Gmail AI Manager
+# Xiaoxing AI (小星 AI)
 
 > 自动拉取 Gmail 未读邮件 → AI 分析摘要 → Telegram 推送通知
+
 
 [English](README.md)
 
@@ -11,7 +12,7 @@
 - 📥 **Gmail 拉取** — 通过 Google OAuth2 授权，自动轮询主收件箱未读邮件
 - 🤖 **AI 分析** — 调用本地 llama.cpp 或 OpenAI 模型对邮件进行分类、优先级判断和摘要
 - 📱 **Telegram 推送** — AI 自动撰写 HTML 格式通知消息，发送到指定 Telegram 对话；消息风格可通过 Prompt 完全自定义
-- 💬 **Telegram Bot 对话** — 内置"Mika"人格 Bot，基于对话历史实时回复 Telegram 消息
+- 💬 **Telegram Bot 对话** — 内置'小星 AI'人格 Bot，基于对话历史实时回复 Telegram 消息
 - 👤 **用户画像** — AI 自动从聊天记录中构建用户画像，每日凌晨更新并回输入后续对话
 - 🗃️ **邮件记录持久化** — 每封处理过的邮件（原始正文、AI 分析、摘要、Telegram 消息、token 数量）均会永久写入 SQLite
 - 🔄 **去重保障** — 已处理邮件 ID 持久化到 SQLite，重启后不重复推送

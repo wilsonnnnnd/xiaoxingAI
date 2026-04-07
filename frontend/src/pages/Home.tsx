@@ -149,6 +149,10 @@ export default function Home() {
                     {apiOk === true ? t('home.status.ok') : apiOk === false ? t('home.status.err') : t('home.status.checking')}
                 </div>
 
+                <div className="ml-2 px-2 py-1 rounded text-xs text-[#94a3b8] bg-[#0b0e14] border border-[#2d3748]">
+                    {t('app.brand')}
+                </div>
+
                 {/* Auth status */}
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border ${
                     authorized
