@@ -283,6 +283,29 @@ Prompt 文件位于 `app/prompts/*.txt`，项目自带三个内置文件：
 
 ---
 
+## 实时状态与前端缓存键
+
+- 后端提供两个独立、前端友好的状态接口：
+   - `GET /gmail/workstatus` — 返回 Gmail worker 状态（与 `/worker/status` 结构一致）。
+   - `GET /chat/workstatus` — 返回 Chat（Telegram bot）运行状态，格式为 `{ "running": boolean }`。
+
+- 前端使用的 WebSocket 推送接口（通过前端代理为 `/api` 路径）：
+   - `/api/ws/worker/status` — 推送 Gmail worker 状态更新。
+   - `/api/ws/bot/status` — 推送 Chat（bot）状态更新。
+
+- 前端 API helper（见 `frontend/src/api/index.ts`）：
+   - `getGmailWorkStatus()` → 调用 `/gmail/workstatus`
+   - `getChatWorkStatus()` → 调用 `/chat/workstatus`
+
+- React Query 缓存键：
+   - `['gmailworkstatus']` — Gmail worker 状态缓存
+   - `['chatworkstatus']` — Chat（bot）状态缓存
+
+- 说明：状态更新由主页集中管理；前端不再使用旧的 `getBotStatus()` helper。
+
+
+---
+
 ## LLM 配置
 
 | | 本地 llama-server | OpenAI API |

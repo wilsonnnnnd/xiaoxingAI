@@ -283,6 +283,29 @@ Interactive docs: `http://127.0.0.1:8000/docs`
 
 ---
 
+## Realtime status & frontend cache keys
+
+- Backend exposes two separate, frontend-friendly status endpoints:
+   - `GET /gmail/workstatus` — returns the Gmail worker status (same shape as `/worker/status`).
+   - `GET /chat/workstatus` — returns the Chat (Telegram bot) running status as `{ "running": boolean }`.
+
+- WebSocket push endpoints (proxied by the frontend under `/api`):
+   - `/api/ws/worker/status` — pushes Gmail worker status updates.
+   - `/api/ws/bot/status` — pushes Chat (bot) status updates.
+
+- Frontend helper functions (see `frontend/src/api/index.ts`):
+   - `getGmailWorkStatus()` → calls `/gmail/workstatus`
+   - `getChatWorkStatus()` → calls `/chat/workstatus`
+
+- React Query cache keys used by the frontend:
+   - `['gmailworkstatus']` — cached Gmail worker status
+   - `['chatworkstatus']` — cached Chat (bot) status
+
+- Notes: status updates are centralized on the Home page; the frontend no longer relies on a legacy `getBotStatus()` helper.
+
+
+---
+
 ## LLM Configuration
 
 | | Local llama-server | OpenAI API |
