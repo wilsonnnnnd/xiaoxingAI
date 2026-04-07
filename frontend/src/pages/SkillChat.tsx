@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n/useI18n'
+import { formatLogMessage } from '../utils/formatLog'
 import { getLogs, getBotStatus, startBot, stopBot, clearBotHistory, type LogEntry } from '../api'
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
@@ -37,6 +38,8 @@ const LEVEL_CLS: Record<string, string> = {
 const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
 function LogRow({ entry }: { entry: LogEntry }) {
+    const { t } = useI18n()
+    const display = formatLogMessage(entry.msg, t)
     const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('✅') ? 'text-[#86efac]' : 'text-[#e2e8f0]')
     const typeCls = entry.log_type === 'chat'
         ? 'bg-[#2d1b69] text-[#c4b5fd]'
@@ -48,7 +51,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
             {entry.tokens > 0 && (
                 <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#1c2a1c] text-[#86efac]">{entry.tokens}t</span>
             )}
-            <span className="flex-1 break-all">{entry.msg}</span>
+            <span className="flex-1 break-all">{display}</span>
         </div>
     )
 }
