@@ -110,7 +110,7 @@ export default function Gmail() {
 
     const { data: allUsers = [] } = useQuery({
         queryKey: ['users'],
-        queryFn: async () => { try { return (await listUsers()).users } catch { return [] } },
+        queryFn: async () => { try { return await listUsers() } catch { return [] } },
         staleTime: 60_000,
         enabled: me?.role === 'admin',
     })
