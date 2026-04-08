@@ -1,6 +1,6 @@
-# Xiaoxing AI (小星 AI)
+﻿# Xiaoxing AI (小星 AI)
 
-> Automatically fetch unread Gmail → AI analysis & summary → Telegram notification
+> Multi-user Gmail automation + Telegram AI chatbot platform
 
 
 [中文文档](README.zh.md)
@@ -9,29 +9,23 @@
 
 ## Features
 
-- 📥 **Gmail Fetch** — Polls primary inbox for unread emails via Google OAuth2
-- 🤖 **AI Analysis** — Local llama.cpp or OpenAI model classifies, prioritizes, and summarizes each email
-- 📱 **Telegram Push** — AI-written HTML notifications sent to a specified chat; message style and language fully customizable via prompt
-- 💬 **Telegram Bot Chat** — Built-in "Xiaoxing" (小星 AI) persona bot replies to Telegram messages in real time using chat history
-- 👤 **User Profile** — AI automatically builds a user profile from chat history; updated every midnight and fed back into chats
-- 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) is persisted in PostgreSQL for later querying
-- 🔄 **Deduplication** — Processed email IDs persisted in PostgreSQL; Redis SET NX prevents duplicate processing even across restarts
-- ⚙️ **Priority Filter** — Configurable to only notify high/medium priority emails
-- 🗄️ **PostgreSQL Database** — All state (sent IDs, OAuth token, worker logs, email records, user profiles) stored in a PostgreSQL database via Docker
-- ⚡ **Redis Cache & Queue** — LLM result caching (1 h TTL), chat session persistence (7 d TTL), Telegram update deduplication, and async task queue; all features gracefully degrade when Redis is unavailable
-- 📋 **Typed Logs with Token Tracking** — Worker logs are categorised (`email` / `chat`), token usage recorded per entry, displayed with colour-coded badges on the dashboard
-- 🔌 **Connection Tests** — One-click AI / Database / Telegram / Gmail OAuth health-check on the Settings page
-- 🖥️ **React Web UI** — 4-page dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Settings, Prompt Editor, Debug Tools
-- ✏️ **Prompt Editor** — Edit, create, and assign prompt files per processing stage directly from the UI
+- 📥 **Gmail Polling (Multi-account)** — Each registered user has an independent polling worker; fetches unread emails via Google OAuth2 with per-user configurable interval, max emails, and priority filter
+- 🤖 **AI Analysis** — Local llama.cpp or OpenAI model classifies, prioritizes, and summarizes each email; results cached in Redis (1 h TTL)
+- 📱 **Telegram Push (Multi-bot)** — Each user binds their own Telegram Bot; AI-written HTML notifications sent to each user's designated chat
+- 💬 **Telegram Bot Chat (Multi-bot)** — Multiple Telegram Bots run simultaneously; each maintains its own conversation history, user profile, and (optionally) a custom system prompt
+- 👤 **Per-bot User Profile** — AI builds a profile from each bot's chat history; auto-updated at midnight and fed back into subsequent conversations
+- 🔐 **JWT Authentication** — Admin login with bcrypt-hashed passwords; JWT (HS256) with Redis-based token versioning for instant revocation
+- 👥 **User Management** — Admin can create and manage regular users; each user controls their own Gmail worker, bots, and prompts
+- 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) persisted in PostgreSQL, isolated per user
+- 🔄 **Deduplication** — Processed email IDs stored per (user_id, email_id) pair; Redis SET NX prevents duplicate processing across restarts
+- ⚙️ **Priority Filter** — Per-user configurable minimum priority; only emails above threshold trigger notifications
+- 🗄️ **PostgreSQL Database** — 8-table schema: user, bot, prompts, oauth_tokens, email_records, worker_stats, user_profile, log
+- ⚡ **Redis Cache & Queue** — LLM result caching, chat session persistence (7 d TTL), update deduplication, async task queue; degrades gracefully if unavailable
+- 📋 **Typed Logs with Token Tracking** — Logs categorised (email / chat), token usage recorded per entry, displayed with colour-coded badges on the dashboard
+- 🖥️ **React Web UI** — Dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Settings, Prompt Editor, Debug Tools, User Management
+- ✏️ **Prompt Editor** — System-wide built-in prompts + per-user custom prompts, editable from the UI; each bot can be assigned a custom chat prompt
 - 🔧 **Hot Reload Config** — All settings update live via the web UI without restarting the server
 - 🌐 **i18n** — English / Chinese UI, language preference persisted via Zustand
-
----
-
-## Screenshots
-
-### Dashboard
-![Dashboard](app/image/Home-en.png)
 
 ---
 
@@ -39,10 +33,11 @@
 
 - Python 3.11+
 - Node.js 18+ (for the React frontend)
-- Telegram Bot Token + Chat ID
-- Google Cloud OAuth2 credentials (`credentials.json`)
+- Google Cloud OAuth2 credentials (credentials.json)
+- PostgreSQL 16+ (Docker recommended)
+- Redis 7+ (Docker recommended, optional — app degrades gracefully)
 - **LLM backend** — either:
-  - Local: llama.cpp `llama-server` (listening on `127.0.0.2:8001`)
+  - Local: llama.cpp llama-server (listening on 127.0.0.2:8001)
   - Cloud: OpenAI API key
 
 ---
@@ -53,10 +48,23 @@
 
 ```bash
 git clone <repository-url>
-cd gmailManager
+cd xiaoxing
 ```
 
-### 2. Install Python Dependencies
+### 2. Start PostgreSQL & Redis (Docker)
+
+```bash
+docker run -d --name pg16 \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:16
+
+docker run -d --name redis7 \
+  -p 6380:6379 \
+  redis:7
+```
+
+### 3. Install Python Dependencies
 
 ```bash
 python -m venv .venv
@@ -65,7 +73,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3. Install Frontend Dependencies
+### 4. Install Frontend Dependencies
 
 ```bash
 cd frontend
@@ -73,75 +81,71 @@ npm install
 cd ..
 ```
 
-### 4. Configure Environment
+### 5. Configure Environment
 
 ```bash
 copy .env.example .env        # Windows
 # cp .env.example .env        # macOS/Linux
 ```
 
-Edit `.env` and fill in the values (see [How to Get Tokens](#how-to-get-tokens) below):
+Edit `.env`:
 
 | Variable | Description |
 |----------|-------------|
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot token from @BotFather |
-| `TELEGRAM_CHAT_ID` | Target chat ID for notifications |
-| `GMAIL_POLL_INTERVAL` | Poll interval in seconds (default: 300) |
-| `GMAIL_POLL_QUERY` | Gmail search query (default: primary inbox unread) |
-| `GMAIL_POLL_MAX` | Max emails to process per poll (default: 20) |
+| `ADMIN_USER` | Admin login email (e.g. admin@local.com) |
+| `ADMIN_PASSWORD` | Admin password |
+| `JWT_SECRET` | Secret key for signing JWTs — **change this in production** |
+| `JWT_EXPIRE_MINUTES` | JWT lifetime in minutes (default: 60) |
+| `GMAIL_POLL_INTERVAL` | Default poll interval in seconds (default: 300) |
+| `GMAIL_POLL_QUERY` | Gmail search query (default: is:unread in:inbox) |
+| `GMAIL_POLL_MAX` | Max emails per poll (default: 20) |
 | `GMAIL_MARK_READ` | Mark as read after processing (true/false) |
 | `NOTIFY_MIN_PRIORITY` | Comma-separated priorities to notify; leave empty for all |
-| `LLM_BACKEND` | `local` or `openai` (default: `local`) |
+| `LLM_BACKEND` | local or openai (default: local) |
 | `LLM_API_URL` | LLM endpoint URL |
 | `LLM_MODEL` | Model name |
-| `OPENAI_API_KEY` | OpenAI API key (required when `LLM_BACKEND=openai`) |
-| `PROMPT_ANALYZE` | Prompt file for email analysis (default: `email_analysis.txt`) |
-| `PROMPT_SUMMARY` | Prompt file for email summary (default: `email_summary.txt`) |
-| `PROMPT_TELEGRAM` | Prompt file for Telegram message writing (default: `telegram_notify.txt`) |
-| `PROMPT_CHAT` | Prompt file for Telegram Bot chat replies (default: `chat.txt`) |
-| `PROMPT_PROFILE` | Prompt file for user profile generation (default: `user_profile.txt`) |
-| `POSTGRES_DSN` | PostgreSQL connection string (default: `postgresql://postgres:postgres@localhost:5432/xiaoxing`) |
-| `REDIS_URL` | Redis connection URL (default: `redis://localhost:6380`) |
+| `OPENAI_API_KEY` | OpenAI API key (required when LLM_BACKEND=openai) |
+| `POSTGRES_DSN` | PostgreSQL DSN (default: postgresql://postgres:postgres@localhost:5432/xiaoxing) |
+| `REDIS_URL` | Redis URL (default: redis://localhost:6380) |
 
-### 5. Place Google Credentials
+### 6. Place Google Credentials
 
-Download `credentials.json` from Google Cloud Console and place it in the project root.
+Download credentials.json from Google Cloud Console and place it in the project root.
 
-### 6. Start the Backend
+### 7. Start the Backend
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Or via the BAT script (Windows):
-```bash
-启动.bat
-```
+On first startup the server automatically:
+- Creates the PostgreSQL schema (8 tables)
+- Imports built-in prompts from app/prompts/
+- Creates the admin account from ADMIN_USER / ADMIN_PASSWORD
 
-### 7. Start the Frontend
+### 8. Start the Frontend
 
 **Development mode** (hot reload):
 ```bash
 cd frontend
 npm run dev
 ```
-Open: `http://localhost:5173`
+Open: http://localhost:5173
 
-**Production mode** (build once, served by backend):
+**Production mode:**
 ```bash
 cd frontend
 npm run build
 ```
-Then open: `http://127.0.0.1:8000`
+Then open: http://127.0.0.1:8000
 
-### 8. Authorize Gmail
+### 9. Log In
 
-Click **🔑 Authorize via Google** on the Dashboard, or open:
-```
-http://127.0.0.1:8000/gmail/auth
-```
+Navigate to /login and sign in with your admin credentials. The sidebar shows **Users** for user management.
 
-Complete the Google OAuth flow. `token.json` will be generated automatically.
+### 10. Authorize Gmail per User
+
+On the Settings page, click **Authorize via Google** while logged in — the OAuth token is stored scoped to your account.
 
 ---
 
@@ -150,9 +154,9 @@ Complete the Google OAuth flow. `token.json` will be generated automatically.
 ### Telegram Bot Token
 
 1. Search **@BotFather** on Telegram
-2. Send `/newbot`
-3. Enter a display name and a username ending in `bot`
-4. BotFather replies with the token — this is your `TELEGRAM_BOT_TOKEN`
+2. Send /newbot
+3. Enter a display name and username ending in bot
+4. BotFather replies with the token
 
 ```
 Example: 1234567890:ABCdefGhIJKlmNoPQRstuVWXyz
@@ -166,146 +170,160 @@ Example: 1234567890:ABCdefGhIJKlmNoPQRstuVWXyz
 ```
 https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
 ```
-Find `message.chat.id` in the returned JSON. The Settings page also has a **🔍 Get Chat ID** button that polls automatically.
+Find message.chat.id in the returned JSON. The Settings page also has a **Get Chat ID** button.
 
 ### Google OAuth2 credentials.json
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create or select a project
-3. Enable **Gmail API**: APIs & Services → Library → search `Gmail API` → Enable
+3. Enable **Gmail API**: APIs & Services → Library → search Gmail API → Enable
 4. Create credentials: APIs & Services → Credentials → Create Credentials → OAuth client ID
    - Application type: **Desktop app**
-5. Download the JSON file, rename it to `credentials.json`, place in project root
-6. Click **Authorize via Google** on the Dashboard to complete authorization
+5. Download the JSON file, rename it to credentials.json, place in project root
 
-> ⚠️ `credentials.json` and `token.json` contain sensitive data and are excluded from git via `.gitignore`. Never commit them.
+> credentials.json contains sensitive OAuth client secrets and is excluded from git via .gitignore. Never commit it.
 
 ---
 
 ## Project Structure
 
 ```
-gmailManager/
+xiaoxing/
 ├── app/
 │   ├── main.py                 # FastAPI entry point, all API routes
 │   ├── config.py               # Environment variable loader (hot-reloadable)
-│   ├── db.py                   # PostgreSQL layer — threaded connection pool (psycopg2)
-│   ├── mail/
-│   │   ├── auth.py             # Google OAuth2 flow (token stored in DB)
-│   │   └── client.py           # Gmail fetch / parse / mark-as-read
-│   ├── service/
-│   │   ├── ai_service.py       # LLM calls: email analysis, summary, Telegram message, bot chat, user profile
-│   │   ├── telegram_sender.py  # Telegram message sender
-│   │   ├── worker.py           # Background poll worker (step logs, email record persistence)
-│   │   └── tg_bot_worker.py    # Telegram Bot long-poll worker (chat, profile generation)
+│   ├── db.py                   # PostgreSQL layer — 8-table multi-user schema
+│   ├── core/
+│   │   ├── auth.py             # JWT auth, bcrypt hashing, FastAPI deps
+│   │   ├── bot_worker.py       # Multi-bot Telegram long-poll workers
+│   │   ├── chat.py             # LLM chat reply logic
+│   │   ├── llm.py              # LLM client (local / OpenAI)
+│   │   ├── redis_client.py     # Redis helpers (history, queue, dedup)
+│   │   ├── telegram.py         # Telegram sender + HTML sanitiser
+│   │   └── ws.py               # WebSocket publisher (status push)
+│   ├── skills/
+│   │   └── gmail/
+│   │       ├── auth.py         # Google OAuth2 flow (per-user token storage)
+│   │       ├── client.py       # Gmail fetch / parse / mark-as-read (per-user)
+│   │       ├── pipeline.py     # Email analysis → summary → Telegram message
+│   │       ├── schemas.py      # Pydantic request models
+│   │       └── worker.py       # Multi-user Gmail poll worker
 │   ├── utils/
 │   │   ├── json_parser.py      # Extract JSON from LLM output
-│   │   ├── prompt_loader.py    # Load prompt files from app/prompts/
-│   │   └── telegram.py         # HTML sanitiser for Telegram messages
-│   ├── prompts/
-│   │   ├── email_analysis.txt  # Analysis prompt
-│   │   ├── email_summary.txt   # Summary prompt
-│   │   └── telegram_notify.txt # Telegram format prompt
-│   └── schemas/
-│       └── email.py            # Pydantic request models
-├── frontend/                   # React + TypeScript + Vite SPA
-│   ├── src/
-│   │   ├── api/                # Axios API client + typed interfaces
-│   │   ├── components/         # Shared components (Layout, Sidebar)
-│   │   ├── i18n/               # EN/ZH translations, Zustand language store
-│   │   ├── pages/
-│   │   │   ├── Home.tsx        # Dashboard: worker controls, bot chat, step log
-│   │   │   ├── Settings.tsx    # Config editor + connection tests
-│   │   │   ├── Prompts.tsx     # Prompt file editor & stage assignment
-│   │   │   └── Debug.tsx       # Manual AI/Gmail debug tools
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── vite.config.ts          # Proxy /api/* → FastAPI :8000
-│   └── package.json
+│   │   └── prompt_loader.py    # Load prompt files from app/prompts/
+│   └── prompts/
+│       ├── chat.txt
+│       ├── user_profile.txt
+│       └── gmail/
+│           ├── email_analysis.txt
+│           ├── email_summary.txt
+│           └── telegram_notify.txt
+├── frontend/
+│   └── src/
+│       ├── api/                # Axios client + typed interfaces
+│       ├── components/         # Layout, Sidebar
+│       ├── i18n/               # EN/ZH translations, Zustand language store
+│       └── pages/
+│           ├── Home.tsx        # Dashboard: worker controls, step log
+│           ├── Settings.tsx    # Config editor + connection tests
+│           ├── Prompts.tsx     # Prompt file editor
+│           ├── Debug.tsx       # Manual AI/Gmail debug tools
+│           ├── Users.tsx       # User & bot management (admin)
+│           ├── Login.tsx       # JWT login page
+│           └── skills/
+│               ├── Chat.tsx
+│               └── Gmail.tsx
 ├── credentials.json            # Google OAuth2 credentials (not in git)
 ├── .env                        # Runtime config (not in git)
 ├── .env.example
-├── requirements.txt
-├── 启动.bat                     # Windows: start uvicorn
-├── README.md
-└── README.zh.md
+└── requirements.txt
 ```
 
 ---
 
-## Prompts (customization)
+## Database Schema
 
-Prompt files live in `app/prompts/*.txt`. The project ships three built-in prompts:
-
-- `email_analysis.txt` — classifies, prioritizes, and extracts action from the raw email
-- `email_summary.txt` — receives the analysis result as input, produces structured JSON (category, key points, time/location/person, etc.)
-- `telegram_notify.txt` — defines a fixed HTML template with placeholders; AI fills in subject, sender, summary, key points, etc.
-
-Use the **Prompt Editor** page in the UI to edit/create/assign prompt files without restarting. Changes take effect immediately.
+| Table | Description |
+|-------|-------------|
+| `user` | Registered users; stores per-user worker settings and role |
+| `bot` | Telegram Bots; each belongs to one user, optional custom chat prompt |
+| `prompts` | Prompt templates; user_id IS NULL = system built-in, otherwise per-user |
+| `oauth_tokens` | Google OAuth tokens, one row per user |
+| `email_records` | Processed emails, isolated per user_id |
+| `worker_stats` | Gmail worker session stats, per user |
+| `user_profile` | AI-generated chat profile, one row per bot_id |
+| `log` | Worker and chat logs, per user |
 
 ---
 
-## API Endpoints
+## API Reference
 
+### Auth
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/ai/ping` | Test AI/LLM connectivity |
-| POST | `/ai/analyze` | Analyze a single email |
-| POST | `/ai/summary` | Summarize a single email |
-| POST | `/ai/process` | Full pipeline: analyze → summarize → Telegram message |
-| GET | `/gmail/auth` | Redirect to Google OAuth page |
+| POST | `/auth/login` | Admin login → JWT |
+| GET | `/auth/me` | Current user info |
+
+### Users
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/users` | List all users (admin only) |
+| POST | `/users` | Create regular user (admin only) |
+| GET | `/users/{id}` | Get user (self or admin) |
+| PUT | `/users/{id}` | Update user settings (self or admin) |
+
+### Bots
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/users/{id}/bots` | List user's bots |
+| POST | `/users/{id}/bots` | Create bot |
+| PUT | `/users/{id}/bots/{bot_id}` | Update bot |
+| DELETE | `/users/{id}/bots/{bot_id}` | Delete bot |
+| POST | `/users/{id}/bots/{bot_id}/set-default` | Set as default bot |
+
+### DB Prompts
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/db/prompts` | List prompts (system + own) |
+| POST | `/db/prompts` | Create custom prompt |
+| PUT | `/db/prompts/{id}` | Update prompt |
+| DELETE | `/db/prompts/{id}` | Delete prompt |
+
+### Gmail Worker
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/worker/start` | Start all enabled workers |
+| POST | `/worker/stop` | Stop all workers |
+| GET | `/worker/status` | Aggregated worker status |
+| POST | `/worker/poll` | Trigger immediate poll |
+| GET | `/worker/logs` | Recent logs |
+| DELETE | `/worker/logs` | Clear logs |
+| GET | `/gmail/auth` | Redirect to Google OAuth |
 | GET | `/gmail/callback` | OAuth callback, save token |
-| POST | `/gmail/fetch` | Manually fetch emails |
-| POST | `/gmail/process` | Fetch, process, and persist emails to DB |
-| POST | `/worker/start` | Start background poll worker |
-| POST | `/worker/stop` | Stop worker |
-| GET | `/worker/status` | Worker status |
-| POST | `/worker/poll` | Trigger an immediate poll |
-| GET | `/worker/logs` | Recent step logs (`?limit&log_type=email\|chat`) |
-| DELETE | `/worker/logs` | Clear worker step logs |
-| GET | `/email/records` | List persisted email records (`?limit&priority`) |
-| GET | `/email/records/{email_id}` | Get a single email record |
-| POST | `/telegram/test` | Send a Telegram test message |
-| GET | `/telegram/chat_id` | Retrieve latest chat ID via getUpdates |
-| POST | `/telegram/bot/start` | Start Telegram Bot chat worker |
-| POST | `/telegram/bot/stop` | Stop Telegram Bot chat worker |
-| GET | `/telegram/bot/status` | Bot worker running status |
-| POST | `/telegram/bot/clear_history` | Clear all in-memory chat history |
-| GET | `/telegram/bot/profile` | Get AI-generated user profile |
+
+### Telegram Bot
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/telegram/bot/start` | Start all registered bots |
+| POST | `/telegram/bot/stop` | Stop all bots |
+| GET | `/telegram/bot/status` | Bot worker status |
+| POST | `/telegram/bot/clear_history` | Clear all chat history |
+| GET | `/telegram/bot/profile` | Get user profile |
 | DELETE | `/telegram/bot/profile` | Delete user profile |
-| GET | `/prompts` | List all prompt files |
-| GET | `/prompts/{filename}` | Read a prompt file |
-| POST | `/prompts/{filename}` | Create or overwrite a prompt file |
-| DELETE | `/prompts/{filename}` | Delete a custom prompt file (built-ins protected) |
+| POST | `/telegram/bot/generate_profile` | Manually trigger profile generation |
+
+### Email Records & Config
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/email/records` | List email records |
+| GET | `/email/records/{email_id}` | Get single record |
 | GET | `/config` | Read current runtime config |
-| POST | `/config` | Update `.env` and hot-reload config |
-| GET | `/db/stats` | PostgreSQL database statistics (record counts, token counts) |
+| POST | `/config` | Update .env and hot-reload |
+| GET | `/db/stats` | Database statistics |
+| GET | `/health` | Health check |
+| GET | `/ai/ping` | Test LLM connectivity |
 
-Interactive docs: `http://127.0.0.1:8000/docs`
-
----
-
-## Realtime status & frontend cache keys
-
-- Backend exposes two separate, frontend-friendly status endpoints:
-   - `GET /gmail/workstatus` — returns the Gmail worker status (same shape as `/worker/status`).
-   - `GET /chat/workstatus` — returns the Chat (Telegram bot) running status as `{ "running": boolean }`.
-
-- WebSocket push endpoints (proxied by the frontend under `/api`):
-   - `/api/ws/worker/status` — pushes Gmail worker status updates.
-   - `/api/ws/bot/status` — pushes Chat (bot) status updates.
-
-- Frontend helper functions (see `frontend/src/api/index.ts`):
-   - `getGmailWorkStatus()` → calls `/gmail/workstatus`
-   - `getChatWorkStatus()` → calls `/chat/workstatus`
-
-- React Query cache keys used by the frontend:
-   - `['gmailworkstatus']` — cached Gmail worker status
-   - `['chatworkstatus']` — cached Chat (bot) status
-
-- Notes: status updates are centralized on the Home page; the frontend no longer relies on a legacy `getBotStatus()` helper.
-
+Interactive docs: http://127.0.0.1:8000/docs
 
 ---
 
@@ -313,18 +331,18 @@ Interactive docs: `http://127.0.0.1:8000/docs`
 
 | | Local llama-server | OpenAI API |
 |---|---|---|
-| `LLM_BACKEND` | `local` | `openai` |
-| `LLM_API_URL` | `http://127.0.0.2:8001/v1/chat/completions` | `https://api.openai.com/v1/chat/completions` |
-| `LLM_MODEL` | `local-model` | `gpt-4o-mini`, `gpt-4o`, etc. |
-| `OPENAI_API_KEY` | *(not needed)* | `sk-...` |
+| `LLM_BACKEND` | local | openai |
+| `LLM_API_URL` | http://127.0.0.2:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
+| `LLM_MODEL` | local-model | gpt-4o-mini, gpt-4o, etc. |
+| `OPENAI_API_KEY` | not needed | sk-... |
 | Requires GPU | Yes | No |
 | Cost | Free | Per-token billing |
 
 ### Option A — Local llama-server (default)
 
-1. Install [llama.cpp](https://github.com/ggerganov/llama.cpp) and download a GGUF model  
-   (recommended: `Qwen2.5-14B-Instruct-Q4_K_M.gguf`)
-2. Start llama-server on `127.0.0.2:8001`
+1. Install [llama.cpp](https://github.com/ggerganov/llama.cpp) and download a GGUF model
+   (recommended: Qwen2.5-14B-Instruct-Q4_K_M.gguf)
+2. Start llama-server on 127.0.0.2:8001
 
 ```ini
 LLM_BACKEND=local
@@ -341,25 +359,15 @@ LLM_MODEL=gpt-4o-mini
 OPENAI_API_KEY=sk-...
 ```
 
-> Any OpenAI-compatible API (e.g. Azure OpenAI, Ollama with openai shim) works by adjusting `LLM_API_URL` and `OPENAI_API_KEY`.
+> Any OpenAI-compatible API (e.g. Azure OpenAI, Ollama with openai shim) works by adjusting LLM_API_URL and OPENAI_API_KEY.
 
 ---
 
 ## Notes
 
-- `credentials.json` contains sensitive OAuth client secrets — keep it out of version control (already in `.gitignore`).
-- All persistent state (OAuth token, processed email IDs, email records, chat profiles) is stored in **PostgreSQL**. Start the database with Docker: `docker run -d --name xiaoxin-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=xiaoxing -p 5432:5432 --restart unless-stopped postgres:16-alpine`.
-- **Redis** (port 6380) is used for LLM result caching, chat session persistence, Telegram update deduplication, and an async task queue. Start with: `docker run -d --name xiaoxin-redis -p 6380:6379 --restart unless-stopped redis:7`. All Redis features degrade gracefully when Redis is unavailable.
-- Each email triggers **3 LLM calls**: analysis → structured summary → template-based Telegram message. All three prompts are independently configurable from the UI.
-- LLM calls retry up to 3 times with exponential backoff on transient errors. Email bodies longer than 4000 characters are automatically truncated. Identical LLM prompts are cached in Redis for 1 hour to avoid redundant calls.
-- The PostgreSQL layer uses a **threaded connection pool** (`psycopg2.pool.ThreadedConnectionPool`, min=1, max=10) — safe for concurrent access from the FastAPI threadpool, email worker, and bot worker.
-- Worker logs include ISO timestamps (`YYYY-MM-DDTHH:MM:SS`), are typed (`email` / `chat`), and include per-entry token counts displayed as colour-coded badges on the dashboard.
-- The Telegram Bot chat worker runs independently from the email worker. The bot maintains per-chat conversation history in Redis (7-day TTL, survives restarts) and generates an AI user profile each midnight.
-- Telegram messages are sent in **HTML format**. LLM output is automatically sanitised: Markdown bold (`**text**`) is converted to `<b>`, unsupported tags are normalised, and unknown tags (e.g. `<user@domain>`) are safely escaped.
-- See [doc/database.md](doc/database.md) for detailed documentation on the database schema, Redis key design, and infrastructure setup.
-
----
-
-## License
-
-MIT
+- credentials.json contains sensitive OAuth client secrets — already in .gitignore, never commit it.
+- Per-user OAuth tokens are stored in the oauth_tokens database table, not on disk.
+- On first startup, if no admin user exists, one is created automatically from ADMIN_USER / ADMIN_PASSWORD.
+- JWT_SECRET defaults to change-me-in-production — **always set a strong secret before deploying**.
+- Redis is optional; all features degrade gracefully if unavailable (no caching, no async queue).
+- Each email triggers 3 LLM calls: analysis → summary → Telegram message. All three prompts are independently configurable from the UI.
