@@ -33,6 +33,7 @@ function Badge({ label, ok }: { label: string; ok: boolean }) {
 export default function Prompts() {
   const { t } = useI18n()
   const [files, setFiles] = useState<string[]>([])
+  const [custom, setCustom] = useState<Set<string>>(new Set())
   const [current, setCurrent] = useState<string | null>(null)
   const [content, setContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
@@ -50,6 +51,7 @@ export default function Prompts() {
     try {
       const d = await listPrompts()
       setFiles(d.files)
+      setCustom(new Set(d.custom ?? []))
       const sel = (target && d.files.includes(target)) ? target : d.files[0]
       if (sel) switchTo(sel, d.files)
     } catch {
@@ -96,6 +98,7 @@ export default function Prompts() {
     try {
       await savePrompt(current, content)
       setSavedContent(content)
+      setCustom(prev => new Set([...prev, current]))
       setSaveResult({ ok: true, msg: t('prompts.saved') })
     } catch (e: unknown) {
       setSaveResult({ ok: false, msg: `❌ ${e instanceof Error ? e.message : String(e)}` })
@@ -111,7 +114,21 @@ export default function Prompts() {
       await deletePrompt(current)
       setSavedContent('')
       setCurrent(null)
+      setCustom(prev => { const n = new Set(prev); n.delete(current); return n })
       await loadFiles(files.find(f => DEFAULT_FILES.has(f)))
+    } catch (e: unknown) {
+      setSaveResult({ ok: false, msg: `❌ ${e instanceof Error ? e.message : String(e)}` })
+    }
+  }
+
+  async function handleRevert() {
+    if (!current) return
+    if (!confirm(t('prompts.confirm.revert'))) return
+    try {
+      await deletePrompt(current)
+      setCustom(prev => { const n = new Set(prev); n.delete(current); return n })
+      await loadFile(current)
+      setSaveResult({ ok: true, msg: t('prompts.reverted') })
     } catch (e: unknown) {
       setSaveResult({ ok: false, msg: `❌ ${e instanceof Error ? e.message : String(e)}` })
     }
@@ -202,8 +219,7 @@ export default function Prompts() {
                   : 'bg-[#131720] text-[#64748b] border-[#2d3748] hover:bg-[#1e2330] hover:text-[#cbd5e1]'
                   }`}
               >
-                {FILE_LABELS[f] ?? ('📄 ' + f.replace(/\.txt$/, ''))}
-              </button>
+                {FILE_LABELS[f] ?? ('📄 ' + f.replace(/\.txt$/, ''))}                {custom.has(f) && <span className="ml-1 text-[10px] opacity-60">✎</span>}              </button>
             ))}
           </div>
           <button
@@ -257,6 +273,11 @@ export default function Prompts() {
             >
               {t('prompts.btn.reset')}
             </button>
+            {current && DEFAULT_FILES.has(current) && custom.has(current) && (
+              <button onClick={handleRevert} className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#78350f] hover:bg-[#92400e] text-white transition-colors">
+                {t('prompts.btn.revert')}
+              </button>
+            )}
             {current && !DEFAULT_FILES.has(current) && (
               <button onClick={handleDelete} className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#7f1d1d] hover:bg-[#991b1b] text-white transition-colors">
                 {t('prompts.btn.delete')}

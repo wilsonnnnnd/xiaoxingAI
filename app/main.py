@@ -554,48 +554,56 @@ def _check_prompt_filename(filename: str) -> None:
 
 
 @app.get("/prompts")
-def prompts_list():
-    """列出 prompts 目录下所有 .txt 文件（含子目录）"""
-    files = sorted(
+def prompts_list(user: dict = Depends(auth_mod.current_user)):
+    """列出所有可用 Prompt 文件：磁盘内置 + 用户在 DB 中创建的自定义文件。"""
+    disk_files = sorted(
         str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/")
         for p in _PROMPTS_DIR.rglob("*.txt")
         if p.is_file()
     )
-    return {"files": files, "defaults": sorted(_DEFAULT_PROMPTS)}
+    user_names = db.list_user_prompt_names(user["id"])
+    disk_set = set(disk_files)
+    extra = [n for n in user_names if n not in disk_set]
+    all_files = sorted(disk_set | set(extra))
+    return {
+        "files": all_files,
+        "defaults": sorted(_DEFAULT_PROMPTS),
+        "custom": sorted(user_names),
+    }
 
 
-@app.get("/prompts/{filename}")
-def prompt_get(filename: str):
-    """读取指定 prompt 文件内容"""
+@app.get("/prompts/{filename:path}")
+def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
+    """读取 Prompt：优先返回用户专属（DB），无则回退到磁盘默认文件。"""
     _check_prompt_filename(filename)
+    override = db.get_user_prompt(user["id"], filename)
+    if override is not None:
+        return {"filename": filename, "content": override, "is_custom": True}
     path = _PROMPTS_DIR / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{filename} 不存在")
-    return {"filename": filename, "content": path.read_text(encoding="utf-8")}
+    return {"filename": filename, "content": path.read_text(encoding="utf-8"), "is_custom": False}
 
 
-@app.post("/prompts/{filename}")
-def prompt_save(filename: str, payload: Dict[str, str]):
-    """新建或覆盖保存 prompt 文件内容"""
+@app.post("/prompts/{filename:path}")
+def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(auth_mod.current_user)):
+    """保存用户专属 Prompt 到 DB（不修改磁盘文件）。"""
     _check_prompt_filename(filename)
     content = payload.get("content")
     if content is None:
         raise HTTPException(status_code=422, detail="缺少 content 字段")
-    path = _PROMPTS_DIR / filename
-    path.write_text(content, encoding="utf-8")
+    db.save_user_prompt(user["id"], filename, content)
     return {"ok": True, "filename": filename}
 
 
-@app.delete("/prompts/{filename}")
-def prompt_delete(filename: str):
-    """删除自定义 prompt 文件（内置文件不可删除）"""
+@app.delete("/prompts/{filename:path}")
+def prompt_delete(filename: str, user: dict = Depends(auth_mod.current_user)):
+    """删除用户专属 Prompt：默认文件则清除覆盖（恢复默认），自定义文件则彻底删除。"""
     _check_prompt_filename(filename)
-    if filename in _DEFAULT_PROMPTS:
-        raise HTTPException(status_code=403, detail="内置文件不可删除")
-    path = _PROMPTS_DIR / filename
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"{filename} 不存在")
-    path.unlink()
+    deleted = db.delete_user_prompt(user["id"], filename)
+    if not deleted:
+        detail = "该文件没有个人修改记录" if filename in _DEFAULT_PROMPTS else f"{filename} 不存在"
+        raise HTTPException(status_code=404, detail=detail)
     return {"ok": True, "filename": filename}
 
 

@@ -241,6 +241,55 @@ def _init_system_prompts() -> None:
             )
 
 
+# ── per-user prompts ───────────────────────────────────────────────
+
+def get_user_prompt(user_id: int, filename: str) -> Optional[str]:
+    """用户专属 Prompt 内容；不存在时返回 None（前端回退到磁盘默认）。"""
+    with _cur() as cur:
+        cur.execute(
+            "SELECT content FROM prompts WHERE user_id = %s AND name = %s",
+            (user_id, filename),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def save_user_prompt(user_id: int, filename: str, content: str) -> None:
+    """Upsert 用户专属 Prompt（UPDATE 优先，行不存在时 INSERT）。"""
+    with _cur() as cur:
+        cur.execute(
+            "UPDATE prompts SET content = %s, updated_at = NOW()"
+            " WHERE user_id = %s AND name = %s",
+            (content, user_id, filename),
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO prompts (user_id, name, type, content, is_default)"
+                " VALUES (%s, %s, %s, %s, FALSE)",
+                (user_id, filename, filename, content),
+            )
+
+
+def delete_user_prompt(user_id: int, filename: str) -> bool:
+    """删除用户专属 Prompt；成功返回 True，不存在返回 False。"""
+    with _cur() as cur:
+        cur.execute(
+            "DELETE FROM prompts WHERE user_id = %s AND name = %s RETURNING id",
+            (user_id, filename),
+        )
+        return cur.fetchone() is not None
+
+
+def list_user_prompt_names(user_id: int) -> List[str]:
+    """返回用户在 DB 中保存过的所有 Prompt 文件名（覆盖 + 自定义）。"""
+    with _cur() as cur:
+        cur.execute(
+            "SELECT name FROM prompts WHERE user_id = %s ORDER BY name",
+            (user_id,),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
 # ── oauth_tokens ───────────────────────────────────────────────────
 
 def load_token_json(user_id: Optional[int] = None) -> Optional[str]:

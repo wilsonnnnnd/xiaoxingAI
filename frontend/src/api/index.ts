@@ -71,6 +71,7 @@ export interface Config {
 export interface PromptFile {
   filename: string
   content: string
+  is_custom: boolean
 }
 
 // ── System ───────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ export const saveConfig = (patch: Partial<Config>) => api.post<{ ok: boolean }>(
 // ── Prompts ──────────────────────────────────────────────────────
 
 export const listPrompts = () =>
-  api.get<{ files: string[]; defaults: Record<string, string> }>('/prompts').then(r => r.data)
+  api.get<{ files: string[]; defaults: string[]; custom: string[] }>('/prompts').then(r => r.data)
 
 export const getPrompt = (filename: string) =>
   api.get<PromptFile>(`/prompts/${filename}`).then(r => r.data)
