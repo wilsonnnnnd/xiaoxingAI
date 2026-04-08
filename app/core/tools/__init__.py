@@ -79,9 +79,11 @@ from app.core.tools import fetch_email_tool  # noqa: E402, F401
 def _load_router_prompt() -> str:
     try:
         from app.utils.prompt_loader import load_prompt
-        return load_prompt("router.txt")
-    except Exception:
-        # 内联备用（文件丢失时）
+        text = load_prompt("router.txt")
+        logger.debug("[tools] router.txt 加载成功（%d 字符）", len(text))
+        return text
+    except Exception as e:
+        logger.warning("[tools] router.txt 加载失败，使用内联备用: %s", e)
         return (
             "你是工具调度器。根据用户消息，从可用工具中选出需要调用的工具。\n"
             "工具：{tools}\n用户消息：{message}\n"

@@ -3,12 +3,14 @@ LLM 传输层 — 核心模块
 支持本地 llama-server（OpenAI 兼容接口）和 OpenAI API。
 相同 prompt + max_tokens 的结果会缓存到 Redis（TTL 1h），命中时直接返回。
 """
+import logging
 import time
 
 import requests
 
 from app import config
 
+logger = logging.getLogger("llm")
 MAX_LLM_RETRIES = 3
 
 
@@ -45,6 +47,7 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
             from app.core.redis_client import get_llm_cache, set_llm_cache
             cached = get_llm_cache(prompt, max_tokens)
             if cached is not None:
+                logger.debug("[llm] cache hit | model=%s tokens=%d", model, cached[1])
                 return cached
         except Exception:
             pass  # redis_client 未就绪时不阻断
@@ -53,6 +56,7 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
 
     for attempt in range(MAX_LLM_RETRIES):
         try:
+            t0 = time.perf_counter()
             resp = requests.post(
                 url,
                 headers=_build_headers(),
@@ -77,6 +81,8 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
 
             content = data["choices"][0]["message"]["content"]
             tokens  = data.get("usage", {}).get("total_tokens", 0)
+            ms = (time.perf_counter() - t0) * 1000
+            logger.info("[llm] %s | %.0fms | %dt", model, ms, tokens)
 
             # ── 写入 Redis 缓存 ───────────────────────────
             if use_cache:
@@ -90,16 +96,21 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response is not None else 0
             if 400 <= status < 500:
+                logger.error("[llm] 4xx 错误，不重试: %s", e)
                 raise RuntimeError(f"LLM 调用失败: {e}") from None
             if attempt < MAX_LLM_RETRIES - 1:
+                logger.warning("[llm] 第%d次重试 (HTTP %d): %s", attempt + 1, status, url)
                 time.sleep(2 ** attempt)
                 continue
+            logger.error("[llm] 已重试%d次仍失败: %s", MAX_LLM_RETRIES, e)
             raise RuntimeError(f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
 
         except requests.exceptions.RequestException as e:
             if attempt < MAX_LLM_RETRIES - 1:
+                logger.warning("[llm] 第%d次重试 (网络错误): %s", attempt + 1, e)
                 time.sleep(2 ** attempt)
                 continue
+            logger.error("[llm] 已重试%d次仍失败: %s", MAX_LLM_RETRIES, e)
             raise RuntimeError(f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
 
 

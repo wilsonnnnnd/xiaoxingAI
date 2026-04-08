@@ -1,5 +1,7 @@
 import importlib
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
@@ -24,11 +26,27 @@ from app.skills.gmail.client import fetch_emails, fetch_unread_emails, mark_as_r
 from app.core.auth import get_current_user_or_none
 
 
+# ── Logging ──────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("main")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 初始化数据库（建表 + 自动迁移旧 JSON 文件）
     db.init_db()
     auth_mod.ensure_admin_exists()
+    logger.info(
+        "服务已启动 | FRONTEND=%s | LLM=%s | ROUTER=%s",
+        app_config.FRONTEND_URL,
+        app_config.LLM_API_URL,
+        app_config.ROUTER_API_URL or "(fallback to LLM)",
+    )
     yield
     # 关闭时优雅停止 worker 和 tg bot
     await worker.shutdown()
@@ -48,6 +66,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    logger.info("%s %s %d %.0fms", request.method, request.url.path, response.status_code, ms)
+    return response
 
 
 @app.get("/")
@@ -676,10 +703,13 @@ def admin_login(payload: AdminLoginRequest):
     """管理员账号密码登录，返回 JWT"""
     user = db.get_user_by_email(payload.email)
     if not user or user["role"] != "admin" or not user.get("password_hash"):
+        logger.warning("[auth] 登录失败 (user not found / not admin): %s", payload.email)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     if not auth_mod.verify_password(payload.password, user["password_hash"]):
+        logger.warning("[auth] 登录失败 (wrong password): %s", payload.email)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     token = auth_mod.create_access_token(user)
+    logger.info("[auth] 登录成功: %s", payload.email)
     return {"access_token": token, "token_type": "bearer"}
 
 
