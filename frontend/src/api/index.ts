@@ -19,6 +19,7 @@ export interface WorkerStatus {
 
 export interface LogEntry {
   id: number
+  user_id: number | null
   ts: string
   level: string
   log_type: string

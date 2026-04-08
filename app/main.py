@@ -254,15 +254,20 @@ def worker_status():
 
 
 @app.get("/worker/logs")
-def worker_logs(limit: int = 100, log_type: Optional[str] = None):
-    """返回 Worker 最近步骤日志（最多 200 条），可按 log_type 过滤（email/chat）"""
-    return {"logs": worker.get_logs(min(limit, 200), log_type)}
+def worker_logs(limit: int = 100, log_type: Optional[str] = None,
+                user: dict = Depends(auth_mod.current_user)):
+    """返回 Worker 最近步骤日志。admin 可见全部，普通用户只见自己的。"""
+    uid = None if user.get("role") == "admin" else user["id"]
+    lt = db.LogType(log_type) if log_type else None
+    return {"logs": db.get_recent_logs(min(limit, 200), lt, user_id=uid)}
 
 
 @app.delete("/worker/logs")
-def worker_logs_clear(log_type: Optional[str] = None):
-    """清空 Worker 步骤日志（数据库）。可选 query 参数 `log_type` 指定 'email' 或 'chat'，不传则删除全部。"""
-    deleted = db.clear_logs(log_type)
+def worker_logs_clear(log_type: Optional[str] = None,
+                      user: dict = Depends(auth_mod.current_user)):
+    """清空日志。admin 删全部（或按 log_type），普通用户只删自己的。"""
+    uid = None if user.get("role") == "admin" else user["id"]
+    deleted = db.clear_logs(log_type, user_id=uid)
     return {"ok": True, "deleted": deleted}
 
 

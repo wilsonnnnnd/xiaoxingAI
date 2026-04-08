@@ -6,7 +6,7 @@ import { formatLogMessage } from '../../utils/formatLog'
 import {
     getGmailWorkStatus, getChatWorkStatus, getDbStats, getLogs, clearLogs,
     startWorker, stopWorker, pollNow, testTelegram,
-    getGmailAuthUrl, getMe, type LogEntry, type WorkerStatus,
+    getGmailAuthUrl, getMe, listUsers, type LogEntry, type WorkerStatus,
 } from '../../api'
 
 export type BotStatus = {
@@ -62,17 +62,17 @@ const LEVEL_CLS: Record<string, string> = {
 
 const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
-function LogRow({ entry }: { entry: LogEntry }) {
+function LogRow({ entry, usersMap }: { entry: LogEntry; usersMap: Map<number, string> }) {
     const { t } = useI18n()
     const display = formatLogMessage(entry.msg, t)
     const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('✅') ? 'text-[#86efac]' : 'text-[#e2e8f0]')
-    const typeCls = entry.log_type === 'chat'
-        ? 'bg-[#2d1b69] text-[#c4b5fd]'
-        : 'bg-[#1e3a5f] text-[#7dd3fc]'
+    const userName = entry.user_id != null ? (usersMap.get(entry.user_id) ?? `#${entry.user_id}`) : null
     return (
         <div className={`flex gap-2 py-0.5 font-mono text-xs leading-5 ${cls}`}>
             <span className="text-[#475569] shrink-0">[{getTime(entry.ts)}]</span>
-            <span className={`shrink-0 px-1 rounded text-[10px] self-center ${typeCls}`}>{entry.log_type ?? 'email'}</span>
+            {userName && (
+                <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#1e3a5f] text-[#7dd3fc]">{userName}</span>
+            )}
             {entry.tokens > 0 && (
                 <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#1c2a1c] text-[#86efac]">{entry.tokens}t</span>
             )}
@@ -88,7 +88,6 @@ export default function Gmail() {
 
     // Avoid continuous polling / cache-subscribe invalidation loops.
     // Fetch bot status only on demand (before user-triggered send actions).
-    const [logFilter, setLogFilter] = useState<'all' | 'email'>('all')
     const [notice, setNotice] = useState("")
     const [errMsg, setErrMsg] = useState("")
     const logEndRef = useRef<HTMLDivElement>(null)
@@ -103,11 +102,19 @@ export default function Gmail() {
 
 
     const { data: displayLogs = [] } = useQuery({
-        queryKey: ['logs', logFilter],
-        queryFn: () => getLogs(200, logFilter === 'all' ? undefined : 'email'),
+        queryKey: ['logs', 'email'],
+        queryFn: () => getLogs(200, 'email'),
         refetchInterval: false,
         refetchOnWindowFocus: false,
     })
+
+    const { data: allUsers = [] } = useQuery({
+        queryKey: ['users'],
+        queryFn: async () => { try { return (await listUsers()).users } catch { return [] } },
+        staleTime: 60_000,
+        enabled: me?.role === 'admin',
+    })
+    const usersMap = new Map<number, string>(allUsers.map((u: { id: number; email: string }) => [u.id, u.email.split('@')[0]]))
 
 
     useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [displayLogs.length])
@@ -189,7 +196,7 @@ export default function Gmail() {
         onError: (e) => setErrMsg(_apiErr(e)),
     })
 
-    const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }) })
+    const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs', 'email'] }) })
     const tgMut = useMutation({ mutationFn: testTelegram, onSuccess: () => setNotice(t('home.tg.test_ok')), onError: (e) => setErrMsg(_apiErr(e)) })
 
     const workerRunning = worker?.running ?? false
@@ -307,15 +314,6 @@ export default function Gmail() {
             <div className="bg-[#1e2330] border border-[#2d3748] rounded-xl p-5 flex flex-col gap-3 flex-1 min-h-0">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[#cbd5e1]">{t('home.worker.log_title')}</span>
-                    <div className="flex gap-1 ml-2">
-                        {(['all', 'email'] as const).map(f => (
-                            <button key={f} onClick={() => setLogFilter(f)}
-                                className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${logFilter === f ? 'bg-[#6366f1] text-white' : 'bg-[#0b0e14] border border-[#2d3748] text-[#64748b] hover:text-[#e2e8f0]'
-                                    }`}>
-                                {t(`home.worker.log_filter.${f}`)}
-                            </button>
-                        ))}
-                    </div>
                     <div className="ml-auto">
                         <Btn variant="ghost" onClick={() => clearMut.mutate()}>{t('home.worker.log_clear')}</Btn>
                     </div>
@@ -324,7 +322,7 @@ export default function Gmail() {
                 <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3 flex-1 overflow-y-auto min-h-45">
                     {displayLogs.length === 0
                         ? <div className="text-xs text-[#475569] text-center pt-8">—</div>
-                        : displayLogs.map((e) => <LogRow key={e.id} entry={e} />)
+                        : displayLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
                     }
                     <div ref={logEndRef} />
                 </div>
