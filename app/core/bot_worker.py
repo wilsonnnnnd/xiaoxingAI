@@ -31,6 +31,7 @@ class _BotState:
     bot_id: int
     token: str
     chat_id: str           # 安全过滤白名单（Telegram chat_id 字符串）
+    user_id: Optional[int] = None    # 所属用户 ID（用于 Gmail OAuth 等）
     chat_prompt_id: Optional[int] = None
     poll_task: Optional[asyncio.Task] = None
     running: bool = False
@@ -128,7 +129,8 @@ def _append_today(bot_id: int, user_msg: str, ai_msg: str) -> None:
 
 def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
                     chat_prompt_id: Optional[int] = None,
-                    from_user: Optional[dict] = None) -> None:
+                    from_user: Optional[dict] = None,
+                    user_id: Optional[int] = None) -> None:
     """处理单条消息，调用 AI 并回复"""
     text = text.strip()
 
@@ -150,7 +152,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
 
     history = _get_history(bot_id)
     profile = db.get_profile(bot_id) if bot_id else ""
-    tool_context, tool_tokens = route_and_execute(text)
+    tool_context, tool_tokens = route_and_execute(text, user_id=user_id)
     db_context = tool_context
 
     # 如果 bot 绑定了特定 prompt，注入 system 覆盖
@@ -220,6 +222,7 @@ async def _bot_loop(state: _BotState) -> None:
                 await asyncio.to_thread(
                     _handle_message,
                     state.token, state.bot_id, chat_id, text, state.chat_prompt_id, from_user,
+                    state.user_id,
                 )
 
         await asyncio.sleep(0)
@@ -247,7 +250,8 @@ async def _consumer_loop() -> None:
             state = _bots.get(bot_id)
             token = state.token if state else config.TELEGRAM_BOT_TOKEN
             prompt_id = state.chat_prompt_id if state else None
-            await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, prompt_id, from_user)
+            uid = state.user_id if state else None
+            await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, prompt_id, from_user, uid)
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -330,6 +334,7 @@ async def start() -> bool:
             bot_id=bot_id,
             token=token,
             chat_id=chat_id,
+            user_id=row.get("user_id"),
             chat_prompt_id=row.get("chat_prompt_id"),
         )
         state.running = True
@@ -431,6 +436,7 @@ _running:        bool = False
 
 # 当前运行的 Bot DB ID（单 bot 模式，Task 7 改为多 bot）
 _bot_id: int = 0
+_user_id: Optional[int] = None   # 当前 Bot 所属用户 ID（用于 Gmail OAuth 等）
 
 # bot_id → 对话历史列表（窗口，内存缓存 + Redis 持久化）
 _histories: Dict[int, List[Dict[str, str]]] = {}
@@ -498,7 +504,8 @@ def _append_today(bot_id: int, user_msg: str, ai_msg: str) -> None:
 
 
 def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
-                    from_user: Optional[dict] = None) -> None:
+                    from_user: Optional[dict] = None,
+                    user_id: Optional[int] = None) -> None:
     """处理单条消息，调用 AI 并回复"""
     text = text.strip()
 
@@ -528,7 +535,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
     profile = db.get_profile(bot_id) if bot_id else ""
 
     # 工具路由：LLM 决定调用哪些工具，注入上下文
-    db_context, tool_tokens = route_and_execute(text)
+    db_context, tool_tokens = route_and_execute(text, user_id=user_id)
 
     # 记录用户消息
     _wlog(f"💬 {_sender_label(from_user)}: {text[:80]}")
@@ -557,7 +564,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
 
 
 async def _loop() -> None:
-    global _running, _bot_id
+    global _running, _bot_id, _user_id
     token       = config.TELEGRAM_BOT_TOKEN
     allowed_id  = str(config.TELEGRAM_CHAT_ID).strip()
     offset      = 0
@@ -566,7 +573,8 @@ async def _loop() -> None:
     try:
         bots = db.get_all_bots()
         if bots:
-            _bot_id = bots[0]["id"]
+            _bot_id  = bots[0]["id"]
+            _user_id = bots[0].get("user_id")
     except Exception:
         pass
 
@@ -605,7 +613,7 @@ async def _loop() -> None:
 
             # 入队（Redis 可用时）；失败则降级为直接处理
             if not rc.enqueue(update_id, _bot_id, chat_id, text, from_user):
-                await asyncio.to_thread(_handle_message, token, _bot_id, chat_id, text, from_user)
+                await asyncio.to_thread(_handle_message, token, _bot_id, chat_id, text, from_user, _user_id)
 
         # 如果没有 updates，短暂 yield 控制权（getUpdates 本身已经长轮询 30s）
         await asyncio.sleep(0)
@@ -631,7 +639,7 @@ async def _consumer_loop() -> None:
             text      = item.get("text", "")
             from_user = item.get("from_user", {})
             if chat_id and text:
-                await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, from_user)
+                await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, from_user, _user_id)
         except asyncio.CancelledError:
             break
         except Exception as e:
