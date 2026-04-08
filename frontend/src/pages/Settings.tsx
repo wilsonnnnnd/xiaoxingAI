@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n/useI18n'
 import { getConfig, saveConfig } from '../api'
 import type { Config } from '../api'
@@ -91,9 +91,6 @@ export default function Settings() {
     const [priorities, setPriorities] = useState<Set<string>>(new Set())
     const [saving, setSaving] = useState(false)
     const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
-    const [chatIdStatus, setChatIdStatus] = useState('')
-    const chatIdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
     useEffect(() => {
         getConfig().then(cfg => {
             setForm(cfg)
@@ -126,32 +123,6 @@ export default function Settings() {
         })
     }
 
-    async function startGetChatId() {
-        if (chatIdTimerRef.current) return
-        const token = form.TELEGRAM_BOT_TOKEN?.trim()
-        if (!token) { setChatIdStatus('⚠ Enter Bot Token first'); return }
-        setChatIdStatus('⏳ Send any message to your Bot…')
-        let elapsed = 0
-        chatIdTimerRef.current = setInterval(async () => {
-            elapsed += 3
-            if (elapsed > 120) {
-                clearInterval(chatIdTimerRef.current!)
-                chatIdTimerRef.current = null
-                setChatIdStatus('❌ Timed out — please retry')
-                return
-            }
-            try {
-                const r = await api.get(`/telegram/chat_id?token=${encodeURIComponent(token)}`)
-                if (r.data.chat_id) {
-                    clearInterval(chatIdTimerRef.current!)
-                    chatIdTimerRef.current = null
-                    setForm(f => ({ ...f, TELEGRAM_CHAT_ID: String(r.data.chat_id) }))
-                    setChatIdStatus(`✅ Got Chat ID: ${r.data.chat_id}`)
-                }
-            } catch { /* keep polling */ }
-        }, 3000)
-    }
-
     return (
         <div className="flex flex-col h-full p-5 gap-4 min-w-0">
             {/* Header */}
@@ -175,7 +146,7 @@ export default function Settings() {
 
             {/* Connection tests */}
             <Card title={t('card.connections')}>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <ConnItem label="🤖 AI / LLM" onTest={async () => {
                         const d = await api.get('/ai/ping').then(r => r.data)
                         return `✅ ${d.backend} — ${d.reply}`
@@ -183,10 +154,6 @@ export default function Settings() {
                     <ConnItem label="🗄️ Database" onTest={async () => {
                         const d = await api.get('/db/stats').then(r => r.data)
                         return `✅ sender:${d.sender_count} logs:${d.log_count}`
-                    }} />
-                    <ConnItem label="✈️ Telegram" onTest={async () => {
-                        await api.post('/telegram/test')
-                        return '✅ Message sent'
                     }} />
                     <ConnItem label="🔑 Gmail OAuth" onTest={async () => {
                         const d = await api.post('/gmail/fetch', { query: 'in:inbox', max_results: 1 }).then(r => r.data)
@@ -245,28 +212,6 @@ export default function Settings() {
                                 </label>
                             ))}
                         </div>
-                    </Field>
-                </FormGrid>
-            </Card>
-
-            {/* Telegram */}
-            <Card title={t('card.telegram')}>
-                <FormGrid>
-                    <Field label={t('label.TELEGRAM_BOT_TOKEN')} id="TELEGRAM_BOT_TOKEN" full>
-                        <input id="TELEGRAM_BOT_TOKEN" type="password" autoComplete="off" className={inputCls} value={form.TELEGRAM_BOT_TOKEN ?? ''} onChange={e => set('TELEGRAM_BOT_TOKEN', e.target.value)} />
-                    </Field>
-                    <Field label={t('label.TELEGRAM_CHAT_ID')} id="TELEGRAM_CHAT_ID" full>
-                        <div className="flex gap-2 items-center">
-                            <input id="TELEGRAM_CHAT_ID" className={`${inputCls} flex-1 min-w-0`} value={form.TELEGRAM_CHAT_ID ?? ''} onChange={e => set('TELEGRAM_CHAT_ID', e.target.value)} />
-                            <button
-                                onClick={startGetChatId}
-                                disabled={!!chatIdTimerRef.current}
-                                className="px-3 py-2 text-xs font-semibold rounded bg-[#334155] hover:bg-[#475569] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                            >
-                                {t('btn.get_chat_id')}
-                            </button>
-                        </div>
-                        {chatIdStatus && <span className="text-xs text-[#94a3b8] mt-0.5">{chatIdStatus}</span>}
                     </Field>
                 </FormGrid>
             </Card>

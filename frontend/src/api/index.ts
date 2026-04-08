@@ -60,8 +60,6 @@ export interface Config {
   GMAIL_POLL_MAX: string
   GMAIL_MARK_READ: string
   NOTIFY_MIN_PRIORITY: string
-  TELEGRAM_BOT_TOKEN: string
-  TELEGRAM_CHAT_ID: string
   PROMPT_ANALYZE: string
   PROMPT_SUMMARY: string
   PROMPT_TELEGRAM: string
@@ -204,7 +202,7 @@ export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled
 // ── Bots ──────────────────────────────────────────────────────────
 
 export const listBots = (userId: number) =>
-  api.get<Bot[]>(`/users/${userId}/bots`).then(r => r.data)
+  api.get<{ bots: Bot[] }>(`/users/${userId}/bots`).then(r => r.data.bots)
 
 export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; chat_prompt_id?: number | null }) =>
   api.post<Bot>(`/users/${userId}/bots`, data).then(r => r.data)
