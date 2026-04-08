@@ -17,7 +17,7 @@ TELEGRAM_CHAT_ID:   str = _get("TELEGRAM_CHAT_ID")
 # Gmail 轮询
 GMAIL_POLL_INTERVAL: int  = int(_get("GMAIL_POLL_INTERVAL", "300"))
 GMAIL_POLL_QUERY:    str  = _get("GMAIL_POLL_QUERY", "is:unread in:inbox")
-GMAIL_POLL_MAX:      int  = int(_get("GMAIL_POLL_MAX", "20"))
+GMAIL_POLL_MAX:      int  = int(_get("GMAIL_POLL_MAX", "5"))
 GMAIL_MARK_READ:     bool = _get("GMAIL_MARK_READ", "true").lower() == "true"
 
 # 优先级过滤（空列表 = 全部通知）

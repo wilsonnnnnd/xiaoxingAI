@@ -111,8 +111,8 @@ def init_db() -> None:
                 password_hash      TEXT,
                 worker_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
                 min_priority       VARCHAR NOT NULL DEFAULT 'medium',
-                max_emails_per_run INTEGER NOT NULL DEFAULT 10,
-                poll_interval      INTEGER NOT NULL DEFAULT 60,
+                max_emails_per_run INTEGER NOT NULL DEFAULT 5,
+                poll_interval      INTEGER NOT NULL DEFAULT 300,
                 created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
             )
