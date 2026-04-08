@@ -28,9 +28,14 @@ NOTIFY_PRIORITIES: list[str] = [p.strip() for p in _priority_raw.split(",") if p
 # LLM_BACKEND=local  → 使用本地 llama-server（OpenAI 兼容接口）
 # LLM_BACKEND=openai → 使用 OpenAI API
 LLM_BACKEND:      str = _get("LLM_BACKEND", "local").lower()
-LLM_API_URL:      str = _get("LLM_API_URL", "http://127.0.0.2:8001/v1/chat/completions")
+LLM_API_URL:      str = _get("LLM_API_URL", "http://127.0.0.1:8001/v1/chat/completions")
 LLM_MODEL:        str = _get("LLM_MODEL", "local-model")
 OPENAI_API_KEY:   str = _get("OPENAI_API_KEY", "")
+
+# Router 模型（小模型，用于工具路由意图识别）
+# 留空则路由直接复用主模型
+ROUTER_API_URL:   str = _get("ROUTER_API_URL", "http://127.0.0.1:8002/v1/chat/completions")
+ROUTER_MODEL:     str = _get("ROUTER_MODEL", "local-router")
 
 # Prompt 文件分配（各处理阶段使用哪个 prompt 文件）
 # Gmail skill prompts 默认放在 prompts/gmail/ 子目录

@@ -16,6 +16,7 @@ import requests
 
 from app import config, db
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
+from app.core.tools import route_and_execute
 from app.core.telegram import TELEGRAM_API
 from app.core import ws as ws_pub
 from app.core import redis_client as rc
@@ -96,42 +97,6 @@ def _send_reply(token: str, chat_id: str, text: str) -> None:
         logger.warning(f"[tg_bot] 发送回复失败: {e}")
 
 
-# ── 邮件上下文注入 ────────────────────────────────────────────────
-
-_EMAIL_KEYWORDS = [
-    "邮件", "邮箱", "email", "mail", "收件", "发件", "信件",
-    "最新", "最近", "今天", "今日", "昨天", "昨日",
-    "统计", "记录", "历史", "数据",
-    "高优先级", "重要", "紧急", "优先",
-    "已发送", "未读", "已处理",
-    "摘要", "总结", "汇总",
-]
-
-
-def _fetch_db_context(text: str) -> str:
-    lower = text.lower()
-    if not any(kw in lower for kw in _EMAIL_KEYWORDS):
-        return ""
-    try:
-        records = db.get_email_records(limit=5)
-        stats = db.get_stats()
-        if not records:
-            return f"邮件记录总数：{stats.get('email_records_count', 0)} 封，暂无详细记录。"
-        lines = [f"邮件记录总数：{stats.get('email_records_count', 0)} 封，最近 {len(records)} 封如下：\n"]
-        for i, r in enumerate(records, 1):
-            summary = r.get("summary", {})
-            brief = summary.get("brief", "") or r.get("telegram_msg", "")[:100]
-            lines.append(
-                f"{i}. [{r.get('priority','')}] {r.get('subject','（无主题）')}\n"
-                f"   发件人：{r.get('sender','未知')}  时间：{r.get('date','')}\n"
-                f"   摘要：{brief}"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        logger.warning(f"[tg_bot] 数据库上下文查询失败: {e}")
-        return ""
-
-
 # ── 会话历史（内存 + Redis） ─────────────────────────────────────
 
 def _get_history(bot_id: int) -> list:
@@ -185,10 +150,10 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
 
     history = _get_history(bot_id)
     profile = db.get_profile(bot_id) if bot_id else ""
-    db_context = _fetch_db_context(text)
+    tool_context, tool_tokens = route_and_execute(text)
+    db_context = tool_context
 
-    # 如果 bot 绑定了特定 prompt，注入 system 覆盖（在 chat_reply 层暂未支持 prompt_id，
-    # 先通过 db_context 携带 system hint，Task 8 视需求扩展）
+    # 如果 bot 绑定了特定 prompt，注入 system 覆盖
     if chat_prompt_id:
         try:
             prompt_row = db.get_prompt(chat_prompt_id)
@@ -504,52 +469,6 @@ def _send_reply(token: str, chat_id: str, text: str) -> None:
         logger.warning(f"[tg_bot] 发送回复失败: {e}")
 
 
-# 邮件相关关键词（中英文）
-_EMAIL_KEYWORDS = [
-    "邮件", "邮箱", "email", "mail", "收件", "发件", "信件",
-    "最新", "最近", "今天", "今日", "昨天", "昨日",
-    "统计", "记录", "历史", "数据",
-    "高优先级", "重要", "紧急", "优先",
-    "已发送", "未读", "已处理",
-    "摘要", "总结", "汇总",
-]
-
-
-def _fetch_db_context(text: str) -> str:
-    """
-    检测消息是否涉及邮件/数据库查询，如果是则查询数据库并返回格式化的上下文字符串。
-    不涉及则返回空字符串。
-    """
-    lower = text.lower()
-    if not any(kw in lower for kw in _EMAIL_KEYWORDS):
-        return ""
-
-    try:
-        records = db.get_email_records(limit=5)
-        stats = db.get_stats()
-
-        if not records:
-            return f"邮件记录总数：{stats.get('email_records_count', 0)} 封，暂无详细记录。"
-
-        lines = [f"邮件记录总数：{stats.get('email_records_count', 0)} 封，最近 {len(records)} 封如下：\n"]
-        for i, r in enumerate(records, 1):
-            summary = r.get("summary", {})
-            subject = r.get("subject", "（无主题）")
-            sender = r.get("sender", "未知")
-            date = r.get("date", "")
-            priority = r.get("priority", "")
-            brief = summary.get("brief", "") or r.get("telegram_msg", "")[:100]
-            lines.append(
-                f"{i}. [{priority}] {subject}\n"
-                f"   发件人：{sender}  时间：{date}\n"
-                f"   摘要：{brief}"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        logger.warning(f"[tg_bot] 数据库上下文查询失败: {e}")
-        return ""
-
-
 # ── 会话历史辅助函数（内存缓存 + Redis 持久化） ──────────────────
 
 def _get_history(bot_id: int) -> list:
@@ -608,8 +527,8 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
     # 读取用户画像
     profile = db.get_profile(bot_id) if bot_id else ""
 
-    # 检测是否需要查询数据库并注入上下文
-    db_context = _fetch_db_context(text)
+    # 工具路由：LLM 决定调用哪些工具，注入上下文
+    db_context, tool_tokens = route_and_execute(text)
 
     # 记录用户消息
     _wlog(f"💬 {_sender_label(from_user)}: {text[:80]}")

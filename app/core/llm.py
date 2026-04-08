@@ -20,24 +20,35 @@ def _build_headers() -> dict:
 
 
 def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
+    """调用主 LLM（chat/email 等场景）。"""
+    return _call(config.LLM_API_URL, config.LLM_MODEL, prompt, max_tokens)
+
+
+def call_router(prompt: str, max_tokens: int = 64) -> tuple:
+    """调用 Router 小模型（工具意图识别）。若未配置则回退到主模型。"""
+    url = config.ROUTER_API_URL or config.LLM_API_URL
+    model = config.ROUTER_MODEL or config.LLM_MODEL
+    return _call(url, model, prompt, max_tokens, use_cache=False)
+
+
+def _call(url: str, model: str, prompt: str, max_tokens: int,
+          use_cache: bool = True) -> tuple:
     """
-    调用 LLM（本地 llama-server 或 OpenAI API，由 config.LLM_BACKEND 决定）。
-    - 优先命中 Redis 缓存（相同 prompt+max_tokens，TTL 1h）
-    - 4xx 错误（如上下文过长）直接抛出，不重试
-    - 5xx 或网络错误最多重试 MAX_LLM_RETRIES 次（指数退避）
+    调用指定端点的 LLM。
+    - use_cache=True 时优先命中 Redis 缓存（TTL 1h）
+    - 4xx 直接抛出，5xx/网络错误最多重试 MAX_LLM_RETRIES 次（指数退避）
     返回 (content_str, token_count)。
     """
     # ── Redis 缓存命中 ────────────────────────────────────
-    try:
-        from app.core.redis_client import get_llm_cache, set_llm_cache
-        cached = get_llm_cache(prompt, max_tokens)
-        if cached is not None:
-            return cached
-    except Exception:
-        pass  # redis_client 未就绪时不阻断
+    if use_cache:
+        try:
+            from app.core.redis_client import get_llm_cache, set_llm_cache
+            cached = get_llm_cache(prompt, max_tokens)
+            if cached is not None:
+                return cached
+        except Exception:
+            pass  # redis_client 未就绪时不阻断
 
-    url     = config.LLM_API_URL
-    model   = config.LLM_MODEL
     timeout = 120
 
     for attempt in range(MAX_LLM_RETRIES):
@@ -68,10 +79,11 @@ def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
             tokens  = data.get("usage", {}).get("total_tokens", 0)
 
             # ── 写入 Redis 缓存 ───────────────────────────
-            try:
-                set_llm_cache(prompt, max_tokens, content, tokens)
-            except Exception:
-                pass
+            if use_cache:
+                try:
+                    set_llm_cache(prompt, max_tokens, content, tokens)
+                except Exception:
+                    pass
 
             return content, tokens
 
