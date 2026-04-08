@@ -46,6 +46,12 @@ REDIS_URL:        str = _get("REDIS_URL", "redis://localhost:6380")
 # PostgreSQL
 POSTGRES_DSN:     str = _get("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/xiaoxing")
 
+# Auth (JWT)
+JWT_SECRET:          str = _get("JWT_SECRET", "change-me-in-production")
+JWT_EXPIRE_MINUTES:  int = int(_get("JWT_EXPIRE_MINUTES", "60"))
+ADMIN_USER:          str = _get("ADMIN_USER", "")
+ADMIN_PASSWORD:      str = _get("ADMIN_PASSWORD", "")
+
 # UI language for web pages (en / zh)
 UI_LANG:          str = _get("UI_LANG", "en").lower()
 

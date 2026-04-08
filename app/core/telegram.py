@@ -24,13 +24,15 @@ def escape_markdown(text: str) -> str:
     )
 
 
-def send_message(text: str, chat_id: str = None, parse_mode: str = "MarkdownV2") -> dict:
+def send_message(text: str, chat_id: str = None, parse_mode: str = "MarkdownV2",
+                  token: str = None) -> dict:
     """
     发送消息到 Telegram。
+    token   不传则使用 .env 中的 TELEGRAM_BOT_TOKEN（兼容旧调用）。
     chat_id 不传则使用 .env 中的 TELEGRAM_CHAT_ID。
     parse_mode 默认 MarkdownV2，传 None 则发纯文本。
     """
-    token   = config.TELEGRAM_BOT_TOKEN
+    token   = token or config.TELEGRAM_BOT_TOKEN
     chat_id = chat_id or config.TELEGRAM_CHAT_ID
 
     if not token or not chat_id:

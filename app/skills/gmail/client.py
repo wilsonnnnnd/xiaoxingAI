@@ -7,8 +7,8 @@ from googleapiclient.discovery import build
 from app.skills.gmail.auth import get_credentials
 
 
-def _get_service():
-    creds = get_credentials()
+def _get_service(user_id: Optional[int] = None):
+    creds = get_credentials(user_id)
     return build("gmail", "v1", credentials=creds)
 
 
@@ -48,12 +48,13 @@ def _parse_message(msg: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def fetch_unread_emails(max_results: int = 10) -> List[Dict[str, Any]]:
+def fetch_unread_emails(max_results: int = 10,
+                        user_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
-    拉取收件箱中未读邮件，返回解析后的邮件列表。
+    拉取收件筱中未读邮件，返回解析后的邮件列表。
     max_results: 最多返回条数（默认 10）
     """
-    service = _get_service()
+    service = _get_service(user_id)
 
     response = service.users().messages().list(
         userId="me",
@@ -77,12 +78,13 @@ def fetch_unread_emails(max_results: int = 10) -> List[Dict[str, Any]]:
     return result
 
 
-def fetch_emails(query: str = "in:inbox", max_results: int = 10) -> List[Dict[str, Any]]:
+def fetch_emails(query: str = "in:inbox", max_results: int = 10,
+                 user_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     用自定义 Gmail 搜索语法拉取邮件。
     例：query="is:unread from:noreply@github.com"
     """
-    service = _get_service()
+    service = _get_service(user_id)
 
     response = service.users().messages().list(
         userId="me",
@@ -106,9 +108,9 @@ def fetch_emails(query: str = "in:inbox", max_results: int = 10) -> List[Dict[st
     return result
 
 
-def mark_as_read(message_id: str) -> None:
+def mark_as_read(message_id: str, user_id: Optional[int] = None) -> None:
     """将指定邮件标记为已读"""
-    service = _get_service()
+    service = _get_service(user_id)
     service.users().messages().modify(
         userId="me",
         id=message_id,

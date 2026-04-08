@@ -2,7 +2,8 @@ credentials.json
 token.json
 .env
 sent_ids.json
-.oauth_code_verifier
+# PKCE verifier (old single-user + new per-user suffixed: .oauth_code_verifier_1 etc.)
+.oauth_code_verifier*
 
 **/__pycache__/
 *.py[cod]
@@ -12,6 +13,10 @@ gmailmanager.db-shm
 gmailmanager.db-wal
 API.md
 frontend/package-lock.json
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
 test、
 /doc
 /test

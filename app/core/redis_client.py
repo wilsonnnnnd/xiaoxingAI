@@ -112,25 +112,25 @@ _HISTORY_TTL = 7 * 24 * 3600   # 7 天
 _TODAY_TTL   = 25 * 3600        # 25 小时（跨天安全余量）
 
 
-def load_history(chat_id: str) -> list:
+def load_history(bot_id: int) -> list:
     """从 Redis 加载对话窗口历史，不可达则返回空列表。"""
     r = _sync()
     if r is None:
         return []
     try:
-        raw = r.get(f"chat:history:{chat_id}")
+        raw = r.get(f"chat:history:{bot_id}")
         return json.loads(raw) if raw else []
     except Exception:
         return []
 
 
-def save_history(chat_id: str, history: list) -> None:
+def save_history(bot_id: int, history: list) -> None:
     r = _sync()
     if r is None:
         return
     try:
         r.setex(
-            f"chat:history:{chat_id}",
+            f"chat:history:{bot_id}",
             _HISTORY_TTL,
             json.dumps(history, ensure_ascii=False),
         )
@@ -138,35 +138,35 @@ def save_history(chat_id: str, history: list) -> None:
         logger.debug(f"[redis] save_history 失败: {e}")
 
 
-def delete_history(chat_id: str) -> None:
-    """同时删除该 chat 的窗口历史和今日历史。"""
+def delete_history(bot_id: int) -> None:
+    """同时删除该 bot 的窗口历史和今日历史。"""
     r = _sync()
     if r is None:
         return
     try:
-        r.delete(f"chat:history:{chat_id}", f"chat:history_today:{chat_id}")
+        r.delete(f"chat:history:{bot_id}", f"chat:history_today:{bot_id}")
     except Exception:
         pass
 
 
-def load_history_today(chat_id: str) -> list:
+def load_history_today(bot_id: int) -> list:
     r = _sync()
     if r is None:
         return []
     try:
-        raw = r.get(f"chat:history_today:{chat_id}")
+        raw = r.get(f"chat:history_today:{bot_id}")
         return json.loads(raw) if raw else []
     except Exception:
         return []
 
 
-def save_history_today(chat_id: str, history: list) -> None:
+def save_history_today(bot_id: int, history: list) -> None:
     r = _sync()
     if r is None:
         return
     try:
         r.setex(
-            f"chat:history_today:{chat_id}",
+            f"chat:history_today:{bot_id}",
             _TODAY_TTL,
             json.dumps(history, ensure_ascii=False),
         )
@@ -174,13 +174,20 @@ def save_history_today(chat_id: str, history: list) -> None:
         logger.debug(f"[redis] save_history_today 失败: {e}")
 
 
-def get_today_chat_ids() -> list:
-    """返回 Redis 中所有有今日历史的 chat_id 列表。"""
+def get_today_bot_ids() -> list:
+    """返回 Redis 中所有有今日历史的 bot_id 列表（int）。"""
     r = _sync()
     if r is None:
         return []
     try:
-        return [k.removeprefix("chat:history_today:") for k in r.keys("chat:history_today:*")]
+        ids = []
+        for k in r.keys("chat:history_today:*"):
+            suffix = k.removeprefix("chat:history_today:")
+            try:
+                ids.append(int(suffix))
+            except ValueError:
+                pass
+        return ids
     except Exception:
         return []
 
@@ -222,7 +229,7 @@ def mark_update(update_id: int) -> bool:
 _QUEUE_KEY = "queue:chat"
 
 
-def enqueue(update_id: int, chat_id: str, text: str) -> bool:
+def enqueue(update_id: int, bot_id: int, chat_id: str, text: str) -> bool:
     """
     将消息入队（LPUSH）。
     返回 True 表示成功，False 表示 Redis 不可达（调用方应降级为直接处理）。
@@ -232,7 +239,7 @@ def enqueue(update_id: int, chat_id: str, text: str) -> bool:
         return False
     try:
         payload = json.dumps(
-            {"update_id": update_id, "chat_id": chat_id, "text": text},
+            {"update_id": update_id, "bot_id": bot_id, "chat_id": chat_id, "text": text},
             ensure_ascii=False,
         )
         r.lpush(_QUEUE_KEY, payload)

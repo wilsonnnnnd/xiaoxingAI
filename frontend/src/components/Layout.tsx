@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 const NAV = [
   { to: '/home', key: 'nav.home' },
   { to: '/skill', key: 'nav.skill' },
+  { to: '/users', key: 'nav.users' },
   { to: '/settings', key: 'nav.settings' },
   { to: '/prompts', key: 'nav.prompts' },
   { to: '/debug', key: 'nav.debug' },
@@ -110,8 +111,8 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* Lang toggle */}
-        <div className="px-4 py-3 border-t border-[#334155]">
+        {/* Lang toggle + Logout */}
+        <div className="px-4 py-3 border-t border-[#334155] flex flex-col gap-2">
           <div className="flex gap-1">
             {(['en', 'zh'] as const).map(l => (
               <button
@@ -126,6 +127,15 @@ export default function Layout() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem('auth_token')
+              window.location.href = '/login'
+            }}
+            className="w-full py-1 rounded text-xs text-[#94a3b8] hover:bg-[#334155] hover:text-[#fca5a5] transition-colors"
+          >
+            {t('btn.logout')}
+          </button>
         </div>
       </aside>
 

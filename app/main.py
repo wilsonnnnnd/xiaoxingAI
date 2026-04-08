@@ -1,16 +1,19 @@
 import importlib
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from dotenv import set_key
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from pathlib import Path
+from pydantic import BaseModel
 
 from app import config as app_config
 from app import db
+from app.core import auth as auth_mod
 from app.skills.gmail.schemas import EmailRequest, GmailFetchRequest, GmailProcessRequest
 from app.skills.gmail.pipeline import analyze_email, summarize_email, write_telegram_message, process_email
 from app.core.telegram import send_message, test_connection, get_latest_chat_id
@@ -18,12 +21,14 @@ from app.skills.gmail import worker
 from app.core import bot_worker as tg_bot_worker
 from app.skills.gmail.auth import get_oauth_url, exchange_code_for_token
 from app.skills.gmail.client import fetch_emails, fetch_unread_emails, mark_as_read
+from app.core.auth import get_current_user_or_none
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 初始化数据库（建表 + 自动迁移旧 JSON 文件）
     db.init_db()
+    auth_mod.ensure_admin_exists()
     yield
     # 关闭时优雅停止 worker 和 tg bot
     await worker.shutdown()
@@ -100,22 +105,26 @@ def ai_process(payload: EmailRequest):
 # ─────────────────────────────────────────
 
 @app.get("/gmail/auth")
-def gmail_auth(request: Request):
+def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
     """跳转到 Google OAuth 授权页面"""
+    user_id = user["id"] if user else None
     try:
         redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
-        url = get_oauth_url(redirect_uri)
+        url = get_oauth_url(redirect_uri, user_id=user_id)
         return RedirectResponse(url=url)
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/gmail/callback")
-def gmail_callback(request: Request, code: str):
-    """Google OAuth 回调，保存 token"""
+def gmail_callback(request: Request, code: str,
+                   state: Optional[str] = None,
+                   user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
+    """返回 Google OAuth 回调，保存 token"""
+    user_id = user["id"] if user else None
     try:
         redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
-        exchange_code_for_token(code, redirect_uri)
+        exchange_code_for_token(code, redirect_uri, user_id=user_id)
         return RedirectResponse(url=f"{app_config.FRONTEND_URL}?auth=success")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth 回调失败: {str(e)}")
@@ -395,34 +404,45 @@ def tg_bot_clear_history():
 
 @app.get("/telegram/bot/profile")
 def tg_bot_profile_get():
-    """获取当前 TELEGRAM_CHAT_ID 的用户画像"""
-    chat_id = str(app_config.TELEGRAM_CHAT_ID).strip()
-    if not chat_id:
-        raise HTTPException(status_code=400, detail="TELEGRAM_CHAT_ID 未配置")
-    profile     = db.get_profile(chat_id)
-    updated_at  = db.get_profile_updated_at(chat_id)
-    return {"chat_id": chat_id, "profile": profile, "updated_at": updated_at}
+    """获取当前默认 Bot 的用户画像（多账号迁移中：暂用 bot_id=1 查找）"""
+    try:
+        bots = db.get_all_bots()
+        if not bots:
+            return {"chat_id": None, "profile": "", "updated_at": None}
+        first_bot = bots[0]
+        bot_id = first_bot["id"]
+        profile    = db.get_profile(bot_id)
+        updated_at = db.get_profile_updated_at(bot_id)
+        return {"chat_id": first_bot["chat_id"], "profile": profile, "updated_at": updated_at}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/telegram/bot/profile")
 def tg_bot_profile_delete():
-    """删除当前 TELEGRAM_CHAT_ID 的用户画像"""
-    chat_id = str(app_config.TELEGRAM_CHAT_ID).strip()
-    if not chat_id:
-        raise HTTPException(status_code=400, detail="TELEGRAM_CHAT_ID 未配置")
-    db.delete_profile(chat_id)
-    return {"ok": True}
+    """删除当前默认 Bot 的用户画像"""
+    try:
+        bots = db.get_all_bots()
+        if not bots:
+            raise HTTPException(status_code=404, detail="暂无已注册的 Bot")
+        db.delete_profile(bots[0]["id"])
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/telegram/bot/generate_profile")
 def tg_bot_generate_profile():
     """手动触发用户画像生成（基于今日聊天记录），生成后清空今日记录，供调试使用"""
-    chat_id = str(app_config.TELEGRAM_CHAT_ID).strip()
-    if not chat_id:
-        raise HTTPException(status_code=400, detail="TELEGRAM_CHAT_ID 未配置")
+    bots = db.get_all_bots()
+    if not bots:
+        raise HTTPException(status_code=400, detail="暂无已注册的 Bot")
+    bot_id = bots[0]["id"]
     try:
-        profile, tokens = tg_bot_worker.generate_profile_now(chat_id)
-        return {"ok": True, "chat_id": chat_id, "profile": profile, "tokens": tokens}
+        profile, tokens = tg_bot_worker.generate_profile_now(bot_id)
+        return {"ok": True, "bot_id": bot_id, "profile": profile, "tokens": tokens}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"画像生成失败: {str(e)}")
 
@@ -557,3 +577,244 @@ def prompt_delete(filename: str):
         raise HTTPException(status_code=404, detail=f"{filename} 不存在")
     path.unlink()
     return {"ok": True, "filename": filename}
+
+
+# ─────────────────────────────────────────
+# Pydantic models
+# ─────────────────────────────────────────
+
+class AdminLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    display_name: Optional[str] = None
+
+
+class UserUpdate(BaseModel):
+    worker_enabled: Optional[bool] = None
+    min_priority: Optional[str] = None
+    max_emails_per_run: Optional[int] = None
+    poll_interval: Optional[int] = None
+
+
+class BotCreate(BaseModel):
+    name: str
+    token: str
+    chat_id: str
+    is_default: bool = False
+    chat_prompt_id: Optional[int] = None
+
+
+class BotUpdate(BaseModel):
+    name: Optional[str] = None
+    token: Optional[str] = None
+    chat_id: Optional[str] = None
+    is_default: Optional[bool] = None
+    chat_prompt_id: Optional[int] = None
+
+
+class PromptCreate(BaseModel):
+    name: str
+    type: str
+    content: str
+    is_default: bool = False
+
+
+class PromptUpdate(BaseModel):
+    name: Optional[str] = None
+    content: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+# ─────────────────────────────────────────
+# Auth
+# ─────────────────────────────────────────
+
+@app.post("/auth/login")
+def admin_login(payload: AdminLoginRequest):
+    """管理员账号密码登录，返回 JWT"""
+    user = db.get_user_by_email(payload.email)
+    if not user or user["role"] != "admin" or not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if not auth_mod.verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = auth_mod.create_access_token(user)
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/auth/me")
+def auth_me(user: dict = Depends(auth_mod.current_user)):
+    """返回当前登录用户信息"""
+    safe = {k: v for k, v in user.items() if k != "password_hash"}
+    return safe
+
+
+# ─────────────────────────────────────────
+# User 管理
+# ─────────────────────────────────────────
+
+@app.get("/users")
+def users_list(user: dict = Depends(auth_mod.require_admin)):
+    """列出所有用户（仅限管理员）"""
+    rows = db.list_users()
+    return {"users": [{k: v for k, v in r.items() if k != "password_hash"} for r in rows]}
+
+
+@app.post("/users", status_code=201)
+def user_create(payload: UserCreate, user: dict = Depends(auth_mod.require_admin)):
+    """创建普通用户（仅限管理员）"""
+    if db.get_user_by_email(payload.email):
+        raise HTTPException(status_code=409, detail="该邮箱已被注册")
+    new_user = db.create_user(
+        email=payload.email,
+        display_name=payload.display_name,
+        role="user",
+        password_hash=auth_mod.hash_password(payload.password),
+    )
+    return {k: v for k, v in new_user.items() if k != "password_hash"}
+
+
+@app.get("/users/{user_id}")
+def user_get(user_id: int, user: dict = Depends(auth_mod.current_user)):
+    """获取用户详情（本人或管理员）"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    row = db.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {k: v for k, v in row.items() if k != "password_hash"}
+
+
+@app.put("/users/{user_id}")
+def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod.current_user)):
+    """更新用户设置（本人或管理员）"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if updates:
+        db.update_user(user_id, **updates)
+    row = db.get_user_by_id(user_id)
+    return {k: v for k, v in row.items() if k != "password_hash"}
+
+
+# ─────────────────────────────────────────
+# Bot 管理
+# ─────────────────────────────────────────
+
+@app.get("/users/{user_id}/bots")
+def bots_list(user_id: int, user: dict = Depends(auth_mod.current_user)):
+    """列出某用户的所有 Bot"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    return {"bots": db.get_bots_by_user(user_id)}
+
+
+@app.post("/users/{user_id}/bots", status_code=201)
+def bot_create(user_id: int, payload: BotCreate, user: dict = Depends(auth_mod.current_user)):
+    """为某用户创建 Bot"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    if not db.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    bot = db.create_bot(
+        user_id=user_id,
+        name=payload.name,
+        token=payload.token,
+        chat_id=payload.chat_id,
+        is_default=payload.is_default,
+        chat_prompt_id=payload.chat_prompt_id,
+    )
+    return bot
+
+
+@app.put("/users/{user_id}/bots/{bot_id}")
+def bot_update(user_id: int, bot_id: int, payload: BotUpdate, user: dict = Depends(auth_mod.current_user)):
+    """更新 Bot 配置"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    existing = db.get_bot(bot_id)
+    if not existing or existing["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Bot 不存在")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if updates:
+        db.update_bot(bot_id, **updates)
+    return db.get_bot(bot_id)
+
+
+@app.delete("/users/{user_id}/bots/{bot_id}")
+def bot_delete(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_user)):
+    """删除 Bot"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    existing = db.get_bot(bot_id)
+    if not existing or existing["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Bot 不存在")
+    db.delete_bot(bot_id)
+    return {"ok": True}
+
+
+@app.post("/users/{user_id}/bots/{bot_id}/set-default")
+def bot_set_default(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_user)):
+    """将指定 Bot 设为该用户的默认 Bot"""
+    auth_mod.assert_self_or_admin(user, user_id)
+    existing = db.get_bot(bot_id)
+    if not existing or existing["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Bot 不存在")
+    db.set_default_bot(user_id, bot_id)
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────
+# Prompt 管理（数据库版）
+# ─────────────────────────────────────────
+
+@app.get("/db/prompts")
+def db_prompts_list(user: dict = Depends(auth_mod.current_user)):
+    """列出当前用户可见的所有 Prompt（系统级 + 本人创建）"""
+    rows = db.get_prompts(user_id=user["id"])
+    return {"prompts": rows}
+
+
+@app.post("/db/prompts", status_code=201)
+def db_prompt_create(payload: PromptCreate, user: dict = Depends(auth_mod.current_user)):
+    """为当前用户创建自定义 Prompt"""
+    row = db.create_prompt(
+        user_id=user["id"],
+        name=payload.name,
+        type=payload.type,
+        content=payload.content,
+        is_default=payload.is_default,
+    )
+    return row
+
+
+@app.put("/db/prompts/{prompt_id}")
+def db_prompt_update(prompt_id: int, payload: PromptUpdate, user: dict = Depends(auth_mod.current_user)):
+    """更新 Prompt（本人创建的 or 管理员）"""
+    existing = db.get_prompt(prompt_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Prompt 不存在")
+    owner_id = existing.get("user_id")
+    if owner_id is None and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可修改")
+    if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="无权修改")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if updates:
+        db.update_prompt(prompt_id, **updates)
+    return db.get_prompt(prompt_id)
+
+
+@app.delete("/db/prompts/{prompt_id}")
+def db_prompt_delete(prompt_id: int, user: dict = Depends(auth_mod.current_user)):
+    """删除 Prompt（本人创建的 or 管理员）"""
+    existing = db.get_prompt(prompt_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Prompt 不存在")
+    owner_id = existing.get("user_id")
+    if owner_id is None and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可删除")
+    if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="无权删除")
+    db.delete_prompt(prompt_id)
+    return {"ok": True}

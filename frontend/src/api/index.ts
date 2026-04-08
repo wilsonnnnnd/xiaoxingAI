@@ -140,3 +140,93 @@ export const processEmail = (subject: string, body: string) =>
 
 // Frontend-friendly Gmail status endpoint (separate name)
 export const getGmailWorkStatus = () => api.get<WorkerStatus>('/gmail/workstatus').then(r => r.data)
+
+// ── Auth & User Types ────────────────────────────────────────────
+
+export interface AuthUser {
+  id: number
+  email: string
+  role: string
+}
+
+export interface User {
+  id: number
+  email: string
+  role: string
+  worker_enabled: boolean
+  min_priority: string
+  max_emails_per_run: number
+  poll_interval: number
+  created_at: string
+}
+
+export interface Bot {
+  id: number
+  user_id: number
+  name: string
+  token: string
+  chat_id: string
+  is_default: boolean
+  chat_prompt_id: number | null
+  created_at: string
+}
+
+export interface DbPrompt {
+  id: number
+  user_id: number | null
+  name: string
+  type: string
+  content: string
+  is_default: boolean
+  created_at: string
+}
+
+// ── Auth ─────────────────────────────────────────────────────────
+
+export const login = (email: string, password: string) =>
+  api.post<{ access_token: string; token_type: string }>('/auth/login', { email, password }).then(r => r.data)
+
+export const getMe = () => api.get<AuthUser>('/auth/me').then(r => r.data)
+
+// ── Users ─────────────────────────────────────────────────────────
+
+export const listUsers = () =>
+  api.get<{ users: User[] }>('/users').then(r => r.data.users)
+
+export const createUser = (data: { email: string; password: string; display_name?: string }) =>
+  api.post<User>('/users', data).then(r => r.data)
+
+export const getUser = (id: number) => api.get<User>(`/users/${id}`).then(r => r.data)
+
+export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled' | 'min_priority' | 'max_emails_per_run' | 'poll_interval'>>) =>
+  api.put<User>(`/users/${id}`, patch).then(r => r.data)
+
+// ── Bots ──────────────────────────────────────────────────────────
+
+export const listBots = (userId: number) =>
+  api.get<Bot[]>(`/users/${userId}/bots`).then(r => r.data)
+
+export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; chat_prompt_id?: number | null }) =>
+  api.post<Bot>(`/users/${userId}/bots`, data).then(r => r.data)
+
+export const updateBot = (userId: number, botId: number, data: { name?: string; token?: string; chat_id?: string; chat_prompt_id?: number | null }) =>
+  api.put<Bot>(`/users/${userId}/bots/${botId}`, data).then(r => r.data)
+
+export const deleteBot = (userId: number, botId: number) =>
+  api.delete(`/users/${userId}/bots/${botId}`).then(r => r.data)
+
+export const setDefaultBot = (userId: number, botId: number) =>
+  api.post(`/users/${userId}/bots/${botId}/set-default`).then(r => r.data)
+
+// ── DB Prompts ────────────────────────────────────────────────────
+
+export const listDbPrompts = () => api.get<DbPrompt[]>('/db/prompts').then(r => r.data)
+
+export const createDbPrompt = (data: { name: string; type: string; content: string }) =>
+  api.post<DbPrompt>('/db/prompts', data).then(r => r.data)
+
+export const updateDbPrompt = (id: number, data: { name?: string; content?: string }) =>
+  api.put<DbPrompt>(`/db/prompts/${id}`, data).then(r => r.data)
+
+export const deleteDbPrompt = (id: number) =>
+  api.delete(`/db/prompts/${id}`).then(r => r.data)
