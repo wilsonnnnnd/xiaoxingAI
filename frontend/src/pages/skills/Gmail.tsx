@@ -106,7 +106,7 @@ export default function Gmail() {
     const { data: displayLogs = [] } = useQuery({
         queryKey: ['logs', 'email'],
         queryFn: () => getLogs(200, 'email'),
-        refetchInterval: false,
+        refetchInterval: 8000,
         refetchOnWindowFocus: false,
     })
 
@@ -198,7 +198,13 @@ export default function Gmail() {
         onError: (e) => setErrMsg(_apiErr(e)),
     })
 
-    const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs', 'email'] }) })
+    const clearMut = useMutation({
+        mutationFn: () => clearLogs('email'),
+        onSuccess: () => {
+            qc.setQueryData(['logs', 'email'], [])
+            qc.invalidateQueries({ queryKey: ['logs', 'email'] })
+        },
+    })
     const tgMut = useMutation({ mutationFn: testTelegram, onSuccess: () => setNotice(t('home.tg.test_ok')), onError: (e) => setErrMsg(_apiErr(e)) })
 
     const workerRunning = worker?.running ?? false

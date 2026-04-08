@@ -124,7 +124,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
         state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
 
         _wlog(
-            f"📥 [user#{user_id}] 开始拉取邮件（查询：{poll_query}，最多 {max_emails} 封）",
+            f"📥 开始拉取邮件（查询：{poll_query}，最多 {max_emails} 封）",
             user_id=user_id,
         )
         try:
@@ -132,7 +132,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 fetch_emails, poll_query, max_emails, user_id
             )
         except Exception as e:
-            _wlog(f"❌ [user#{user_id}] 拉取 Gmail 失败: {e}",
+            _wlog(f"❌ 拉取 Gmail 失败: {e}",
                   level="error", user_id=user_id)
             state.stats["last_error"] = str(e)
             return
@@ -141,18 +141,18 @@ async def _poll_once(state: _UserWorkerState) -> None:
         skipped_dup = len(emails) - len(new_emails)
         state.stats["total_fetched"] += len(new_emails)
         _wlog(
-            f"📬 [user#{user_id}] 拉取完成：共 {len(emails)} 封，"
+            f"📬 拉取完成：共 {len(emails)} 封，"
             f"新邮件 {len(new_emails)} 封，已处理(跳过) {skipped_dup} 封",
             user_id=user_id,
         )
 
         if not new_emails:
-            _wlog(f"✅ [user#{user_id}] 无新邮件，本轮结束", user_id=user_id)
+            _wlog(f"✅ 无新邮件，本轮结束", user_id=user_id)
 
         for email in new_emails:
             subj = email.get('subject', '(无主题)')
             try:
-                _wlog(f"📧 [user#{user_id}] 处理邮件：{subj}", user_id=user_id)
+                _wlog(f"📧 处理邮件：{subj}", user_id=user_id)
                 result = await _process_with_retry(
                     email, email_id=email["id"], user_id=user_id
                 )
@@ -169,7 +169,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                         notify_priorities = []  # 强制跳过
 
                 if notify_priorities and priority not in notify_priorities:
-                    _wlog(f"⏭️ [user#{user_id}] 跳过低优先级 [{priority}]：{subj}",
+                    _wlog(f"⏭️ 跳过低优先级 [{priority}]：{subj}",
                           level="warn", user_id=user_id)
                     db.save_email_record(
                         email_id=email["id"], subject=subj,
@@ -184,7 +184,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                     continue
 
                 # 发送 Telegram（使用该用户的默认 Bot）
-                _wlog(f"✈️ [user#{user_id}] 发送 Telegram：{subj}", user_id=user_id)
+                _wlog(f"✈️ 发送 Telegram：{subj}", user_id=user_id)
                 tg_token   = bot["token"]   if bot else None
                 tg_chat_id = bot["chat_id"] if bot else None
                 await asyncio.to_thread(
@@ -195,7 +195,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                     tg_token,
                 )
                 state.stats["total_sent"] += 1
-                _wlog(f"✅ [user#{user_id}] 已发送：{subj}",
+                _wlog(f"✅ 已发送：{subj}",
                       tokens=result.get("tokens", 0), user_id=user_id)
 
                 db.save_email_record(
@@ -212,15 +212,15 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 if mark_read:
                     try:
                         await asyncio.to_thread(mark_as_read, email["id"], user_id)
-                        _wlog(f"📌 [user#{user_id}] 已标记已读：{subj}", user_id=user_id)
+                        _wlog(f"📌 已标记已读：{subj}", user_id=user_id)
                     except Exception as mark_err:
-                        _wlog(f"⚠️ [user#{user_id}] 标记已读失败 [{subj}]: {mark_err}",
+                        _wlog(f"⚠️ 标记已读失败 [{subj}]: {mark_err}",
                               level="warn", user_id=user_id)
 
             except Exception as e:
                 state.stats["total_errors"] += 1
                 state.stats["last_error"] = str(e)
-                _wlog(f"❌ [user#{user_id}] 处理失败 [{subj}]: {e}",
+                _wlog(f"❌ 处理失败 [{subj}]: {e}",
                       level="error", user_id=user_id)
 
         db.cleanup_old_logs()
@@ -237,13 +237,13 @@ async def _user_loop(state: _UserWorkerState) -> None:
     user_row = db.get_user_by_id(user_id)
     poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
 
-    _wlog(f"🚀 [user#{user_id}] Worker 已启动，轮询间隔 {poll_interval}s", user_id=user_id)
+    _wlog(f"🚀 Worker 已启动，轮询间隔 {poll_interval}s", user_id=user_id)
     while state.running:
         try:
             await _poll_once(state)
         except Exception as e:
             state.stats["last_error"] = str(e)
-            _wlog(f"❌ [user#{user_id}] 轮询异常: {e}", level="error", user_id=user_id)
+            _wlog(f"❌ 轮询异常: {e}", level="error", user_id=user_id)
             logger.error(f"[worker] user#{user_id} 轮询异常: {e}", exc_info=True)
         # 重新读取 poll_interval（可能被热更新）
         user_row = db.get_user_by_id(user_id)
@@ -252,7 +252,7 @@ async def _user_loop(state: _UserWorkerState) -> None:
             if not state.running:
                 break
             await asyncio.sleep(1)
-    _wlog(f"⏹️ [user#{user_id}] Worker 已停止", user_id=user_id)
+    _wlog(f"⏹️ Worker 已停止", user_id=user_id)
 
 
 # ── 公开控制接口 ────────────────────────────────────────────────────
