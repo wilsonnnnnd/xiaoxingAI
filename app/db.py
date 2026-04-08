@@ -1,20 +1,23 @@
 """
-SQLite 持久化层 — gmailManager
+PostgreSQL 持久化层 — gmailManager
 
 表结构：
-  sender       — 已处理邮件 ID（防重推送）
-  oauth_tokens — Google OAuth token（单行）
-  worker_logs  — Worker 步骤日志（最多保留 10000 条）
-  user_profile — Bot 聊天用户画像（每个 chat_id 一行，每日更新）
+  sender        — 已处理邮件 ID（防重推送）
+  oauth_tokens  — Google OAuth token（单行）
+  worker_logs   — Worker 步骤日志（最多保留 10000 条）
+  user_profile  — Bot 聊天用户画像（每个 chat_id 一行，每日更新）
+  email_records — 邮件处理记录
+  worker_stats  — Worker 运行统计
 """
-import sqlite3
 import enum
-import threading
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+import json as _json
+from contextlib import contextmanager
+from typing import Any, Dict, Generator, List, Optional
 
-_ROOT   = Path(__file__).resolve().parent.parent
-DB_PATH = _ROOT / "gmailmanager.db"
+import psycopg2
+import psycopg2.pool
+
+from app import config
 
 
 class LogType(str, enum.Enum):
@@ -22,239 +25,237 @@ class LogType(str, enum.Enum):
     EMAIL = "email"
     CHAT  = "chat"
 
-_lock = threading.Lock()
-_local = threading.local()
+
+# ── 连接池（懒初始化） ─────────────────────────────────────────────
+_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 
 
-def get_conn() -> sqlite3.Connection:
-    """每个线程拥有独立连接，避免多线程共享同一 Connection 的并发错误"""
-    conn: sqlite3.Connection | None = getattr(_local, 'conn', None)
-    if conn is None:
-        conn = sqlite3.connect(str(DB_PATH), check_same_thread=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=config.POSTGRES_DSN,
+        )
+    return _pool
+
+
+@contextmanager
+def _cur() -> Generator:
+    """
+    从连接池取一个连接，提供 cursor；成功时 commit，异常时 rollback，最终归还连接。
+    """
+    pool = _get_pool()
+    conn = pool.getconn()
+    cur = None
+    try:
+        cur = conn.cursor()
+        yield cur
         conn.commit()
-        _local.conn = conn
-    return conn
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        if cur is not None:
+            cur.close()
+        pool.putconn(conn)
 
+
+_TS_EXPR = "to_char(NOW(), 'YYYY-MM-DDTHH24:MI:SS')"
+
+
+# ── 建表 ──────────────────────────────────────────────────────────
 
 def init_db() -> None:
     """建表（幂等）"""
-    conn = get_conn()
-    with _lock:
-        conn.executescript("""
+    with _cur() as cur:
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS sender (
                 email_id   TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            );
-
+                created_at TEXT NOT NULL DEFAULT {_TS_EXPR}
+            )
+        """)
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS oauth_tokens (
                 id         INTEGER PRIMARY KEY CHECK (id = 1),
                 token_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            );
-
+                updated_at TEXT NOT NULL DEFAULT {_TS_EXPR}
+            )
+        """)
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS worker_logs (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                id         BIGSERIAL PRIMARY KEY,
                 ts         TEXT NOT NULL,
                 level      TEXT NOT NULL DEFAULT 'info',
                 log_type   TEXT NOT NULL DEFAULT 'email',
                 tokens     INTEGER NOT NULL DEFAULT 0,
                 msg        TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            );
-
+                created_at TEXT NOT NULL DEFAULT {_TS_EXPR}
+            )
+        """)
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS user_profile (
                 chat_id    TEXT PRIMARY KEY,
                 profile    TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            );
-
+                updated_at TEXT NOT NULL DEFAULT {_TS_EXPR}
+            )
+        """)
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS email_records (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                id            BIGSERIAL PRIMARY KEY,
                 email_id      TEXT NOT NULL UNIQUE,
                 subject       TEXT NOT NULL DEFAULT '',
                 sender        TEXT NOT NULL DEFAULT '',
                 date          TEXT NOT NULL DEFAULT '',
                 body          TEXT NOT NULL DEFAULT '',
-                analysis_json TEXT NOT NULL DEFAULT '{}',
-                summary_json  TEXT NOT NULL DEFAULT '{}',
+                analysis_json TEXT NOT NULL DEFAULT '{{}}',
+                summary_json  TEXT NOT NULL DEFAULT '{{}}',
                 telegram_msg  TEXT NOT NULL DEFAULT '',
                 tokens        INTEGER NOT NULL DEFAULT 0,
                 priority      TEXT NOT NULL DEFAULT '',
-                sent_telegram INTEGER NOT NULL DEFAULT 0,
-                created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            );
-
+                sent_telegram BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at    TEXT NOT NULL DEFAULT {_TS_EXPR}
+            )
+        """)
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS worker_stats (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                id            BIGSERIAL PRIMARY KEY,
                 started_at    TEXT NOT NULL DEFAULT '',
-                stopped_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
+                stopped_at    TEXT NOT NULL DEFAULT {_TS_EXPR},
                 total_sent    INTEGER NOT NULL DEFAULT 0,
                 total_fetched INTEGER NOT NULL DEFAULT 0,
                 total_errors  INTEGER NOT NULL DEFAULT 0,
                 total_tokens  INTEGER NOT NULL DEFAULT 0,
                 runtime_secs  INTEGER NOT NULL DEFAULT 0,
                 last_poll     TEXT
-            );
+            )
         """)
-        conn.commit()
-    # 迁移：为已有数据库添加 log_type 列（幂等，列已存在时忽略）
-    try:
-        with _lock:
-            conn.execute(
-                "ALTER TABLE worker_logs ADD COLUMN log_type TEXT NOT NULL DEFAULT 'email'"
-            )
-            conn.commit()
-    except Exception:
-        pass  # 列已存在
-    try:
-        with _lock:
-            conn.execute(
-                "ALTER TABLE worker_logs ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0"
-            )
-            conn.commit()
-    except Exception:
-        pass  # 列已存在
-    # 迁移：将旧的单行 worker_stats (CHECK id=1) 转为多行设计
-    try:
-        schema_row = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='worker_stats'"
-        ).fetchone()
-        if schema_row and schema_row[0] and 'CHECK' in schema_row[0].upper():
-            with _lock:
-                conn.executescript("""
-                    CREATE TABLE IF NOT EXISTS worker_stats_new (
-                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                        started_at    TEXT NOT NULL DEFAULT '',
-                        stopped_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
-                        total_sent    INTEGER NOT NULL DEFAULT 0,
-                        total_fetched INTEGER NOT NULL DEFAULT 0,
-                        total_errors  INTEGER NOT NULL DEFAULT 0,
-                        total_tokens  INTEGER NOT NULL DEFAULT 0,
-                        runtime_secs  INTEGER NOT NULL DEFAULT 0,
-                        last_poll     TEXT
-                    );
-                    INSERT OR IGNORE INTO worker_stats_new
-                        (id, started_at, stopped_at, total_sent, total_fetched,
-                         total_errors, total_tokens, runtime_secs, last_poll)
-                    SELECT id, '', updated_at, total_sent, total_fetched,
-                           total_errors, total_tokens, total_runtime_secs, last_poll
-                    FROM worker_stats;
-                    DROP TABLE worker_stats;
-                    ALTER TABLE worker_stats_new RENAME TO worker_stats;
-                """)
-    except Exception:
-        pass  # 迁移失败则跳过（新库不需要）
 
 
-# ── sender ───────────────────────────────────────────────
+# ── sender ─────────────────────────────────────────────────────────
 
 def is_sent(email_id: str) -> bool:
-    return (
-        get_conn()
-        .execute("SELECT 1 FROM sender WHERE email_id = ?", (email_id,))
-        .fetchone()
-        is not None
-    )
+    with _cur() as cur:
+        cur.execute("SELECT 1 FROM sender WHERE email_id = %s", (email_id,))
+        return cur.fetchone() is not None
 
 
 def add_sent_id(email_id: str) -> None:
-    with _lock:
-        get_conn().execute(
-            "INSERT OR IGNORE INTO sender (email_id) VALUES (?)", (email_id,)
+    with _cur() as cur:
+        cur.execute(
+            "INSERT INTO sender (email_id) VALUES (%s) ON CONFLICT DO NOTHING",
+            (email_id,),
         )
-        get_conn().commit()
 
 
 def count_sender() -> int:
-    return get_conn().execute("SELECT COUNT(*) FROM sender").fetchone()[0]
+    with _cur() as cur:
+        cur.execute("SELECT COUNT(*) FROM sender")
+        return cur.fetchone()[0]
 
 
-# ── oauth_tokens ──────────────────────────────────────────
+# ── oauth_tokens ───────────────────────────────────────────────────
 
 def load_token_json() -> Optional[str]:
-    row = get_conn().execute(
-        "SELECT token_json FROM oauth_tokens WHERE id = 1"
-    ).fetchone()
-    return row[0] if row else None
+    with _cur() as cur:
+        cur.execute("SELECT token_json FROM oauth_tokens WHERE id = 1")
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 def save_token_json(token_json: str) -> None:
-    with _lock:
-        get_conn().execute(
-            "INSERT OR REPLACE INTO oauth_tokens (id, token_json, updated_at) "
-            "VALUES (1, ?, strftime('%Y-%m-%dT%H:%M:%S','now'))",
+    with _cur() as cur:
+        cur.execute(
+            f"""INSERT INTO oauth_tokens (id, token_json, updated_at)
+                VALUES (1, %s, {_TS_EXPR})
+                ON CONFLICT (id) DO UPDATE
+                    SET token_json = EXCLUDED.token_json,
+                        updated_at = EXCLUDED.updated_at""",
             (token_json,),
         )
-        get_conn().commit()
 
 
-# ── worker_logs ───────────────────────────────────────────
+# ── worker_logs ────────────────────────────────────────────────────
 
 def insert_log(ts: str, level: str, msg: str, log_type: LogType = LogType.EMAIL, tokens: int = 0) -> None:
-    with _lock:
-        get_conn().execute(
-            "INSERT INTO worker_logs (ts, level, log_type, tokens, msg) VALUES (?, ?, ?, ?, ?)",
+    with _cur() as cur:
+        cur.execute(
+            "INSERT INTO worker_logs (ts, level, log_type, tokens, msg) VALUES (%s, %s, %s, %s, %s)",
             (ts, level, str(log_type.value), tokens, msg),
         )
-        get_conn().commit()
 
 
 def get_recent_logs(limit: int = 100, log_type: Optional[LogType] = None) -> List[Dict[str, Any]]:
-    if log_type is not None:
-        rows = get_conn().execute(
-            "SELECT id, ts, level, log_type, tokens, msg FROM worker_logs WHERE log_type = ? ORDER BY id DESC LIMIT ?",
-            (str(log_type.value), limit),
-        ).fetchall()
-    else:
-        rows = get_conn().execute(
-            "SELECT id, ts, level, log_type, tokens, msg FROM worker_logs ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    # 反转使最旧的在前（时间正序显示）
-    return [{"id": r[0], "ts": r[1], "level": r[2], "log_type": r[3], "tokens": r[4], "msg": r[5]} for r in reversed(rows)]
+    with _cur() as cur:
+        if log_type is not None:
+            cur.execute(
+                "SELECT id, ts, level, log_type, tokens, msg FROM worker_logs"
+                " WHERE log_type = %s ORDER BY id DESC LIMIT %s",
+                (str(log_type.value), limit),
+            )
+        else:
+            cur.execute(
+                "SELECT id, ts, level, log_type, tokens, msg FROM worker_logs ORDER BY id DESC LIMIT %s",
+                (limit,),
+            )
+        rows = cur.fetchall()
+    return [
+        {"id": r[0], "ts": r[1], "level": r[2], "log_type": r[3], "tokens": r[4], "msg": r[5]}
+        for r in reversed(rows)
+    ]
 
 
 def clear_logs(log_type: Optional[str] = None) -> int:
-    """清空步骤日志。可选按 log_type 过滤（'email' 或 'chat'），不传则删除全部。返回被删除的条目数量。"""
-    with _lock:
+    """清空步骤日志。可选按 log_type 过滤；不传则删除全部。返回被删除条目数。"""
+    with _cur() as cur:
         if log_type:
-            count = get_conn().execute("SELECT COUNT(*) FROM worker_logs WHERE log_type = ?", (log_type,)).fetchone()[0]
-            get_conn().execute("DELETE FROM worker_logs WHERE log_type = ?", (log_type,))
+            cur.execute("SELECT COUNT(*) FROM worker_logs WHERE log_type = %s", (log_type,))
+            count = cur.fetchone()[0]
+            cur.execute("DELETE FROM worker_logs WHERE log_type = %s", (log_type,))
         else:
-            count = get_conn().execute("SELECT COUNT(*) FROM worker_logs").fetchone()[0]
-            get_conn().execute("DELETE FROM worker_logs")
-        get_conn().commit()
+            cur.execute("SELECT COUNT(*) FROM worker_logs")
+            count = cur.fetchone()[0]
+            cur.execute("DELETE FROM worker_logs")
     return count
 
 
 def cleanup_old_logs(keep: int = 10000) -> None:
     """删除多余的旧日志，只保留最近 keep 条"""
-    with _lock:
-        get_conn().execute(
+    with _cur() as cur:
+        cur.execute(
             """DELETE FROM worker_logs
                WHERE id NOT IN (
-                   SELECT id FROM worker_logs ORDER BY id DESC LIMIT ?
+                   SELECT id FROM worker_logs ORDER BY id DESC LIMIT %s
                )""",
             (keep,),
         )
-        get_conn().commit()
 
 
-# ── 统计信息 ──────────────────────────────────────────────
+# ── 统计信息 ────────────────────────────────────────────────────────
 
 def get_stats() -> Dict[str, Any]:
-    conn = get_conn()
-    sent_count    = conn.execute("SELECT COUNT(*) FROM sender").fetchone()[0]
-    log_count     = conn.execute("SELECT COUNT(*) FROM worker_logs").fetchone()[0]
-    record_count  = conn.execute("SELECT COUNT(*) FROM email_records").fetchone()[0]
-    has_token     = conn.execute(
-        "SELECT COUNT(*) FROM oauth_tokens WHERE id = 1"
-    ).fetchone()[0]
+    with _cur() as cur:
+        cur.execute("SELECT COUNT(*) FROM sender")
+        sent_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM worker_logs")
+        log_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM email_records")
+        record_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM oauth_tokens WHERE id = 1")
+        has_token = cur.fetchone()[0]
+
+    # 从 DSN 中提取 host/dbname 展示，不暴露密码
+    dsn = config.POSTGRES_DSN
+    try:
+        import urllib.parse as _up
+        parsed = _up.urlparse(dsn)
+        db_display = f"{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
+    except Exception:
+        db_display = "postgresql"
+
     return {
-        "db_path":             str(DB_PATH),
+        "db_path":             db_display,   # 保持与前端接口兼容
         "sender_count":        sent_count,
         "log_count":           log_count,
         "email_records_count": record_count,
@@ -262,44 +263,42 @@ def get_stats() -> Dict[str, Any]:
     }
 
 
-# ── user_profile ──────────────────────────────────────────
+# ── user_profile ────────────────────────────────────────────────────
 
 def get_profile(chat_id: str) -> str:
     """返回指定 chat_id 的用户画像文本，不存在则返回空字符串"""
-    row = get_conn().execute(
-        "SELECT profile FROM user_profile WHERE chat_id = ?", (chat_id,)
-    ).fetchone()
-    return row[0] if row else ""
+    with _cur() as cur:
+        cur.execute("SELECT profile FROM user_profile WHERE chat_id = %s", (chat_id,))
+        row = cur.fetchone()
+        return row[0] if row else ""
 
 
 def save_profile(chat_id: str, profile: str) -> None:
     """保存/更新用户画像（upsert）"""
-    with _lock:
-        get_conn().execute(
-            "INSERT INTO user_profile (chat_id, profile, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%S','now')) "
-            "ON CONFLICT(chat_id) DO UPDATE SET profile = excluded.profile, updated_at = excluded.updated_at",
+    with _cur() as cur:
+        cur.execute(
+            f"""INSERT INTO user_profile (chat_id, profile, updated_at)
+                VALUES (%s, %s, {_TS_EXPR})
+                ON CONFLICT (chat_id) DO UPDATE
+                    SET profile    = EXCLUDED.profile,
+                        updated_at = EXCLUDED.updated_at""",
             (chat_id, profile),
         )
-        get_conn().commit()
 
 
 def delete_profile(chat_id: str) -> None:
-    with _lock:
-        get_conn().execute("DELETE FROM user_profile WHERE chat_id = ?", (chat_id,))
-        get_conn().commit()
+    with _cur() as cur:
+        cur.execute("DELETE FROM user_profile WHERE chat_id = %s", (chat_id,))
 
 
 def get_profile_updated_at(chat_id: str) -> Optional[str]:
-    row = get_conn().execute(
-        "SELECT updated_at FROM user_profile WHERE chat_id = ?", (chat_id,)
-    ).fetchone()
-    return row[0] if row else None
+    with _cur() as cur:
+        cur.execute("SELECT updated_at FROM user_profile WHERE chat_id = %s", (chat_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
-# ── email_records ─────────────────────────────────────────
-
-import json as _json
-
+# ── email_records ───────────────────────────────────────────────────
 
 def save_email_record(
     email_id: str,
@@ -315,19 +314,19 @@ def save_email_record(
     sent_telegram: bool,
 ) -> None:
     """保存邮件处理记录（upsert）"""
-    with _lock:
-        get_conn().execute(
+    with _cur() as cur:
+        cur.execute(
             """INSERT INTO email_records
                (email_id, subject, sender, date, body, analysis_json, summary_json,
                 telegram_msg, tokens, priority, sent_telegram)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(email_id) DO UPDATE SET
-                   analysis_json = excluded.analysis_json,
-                   summary_json  = excluded.summary_json,
-                   telegram_msg  = excluded.telegram_msg,
-                   tokens        = excluded.tokens,
-                   priority      = excluded.priority,
-                   sent_telegram = excluded.sent_telegram""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (email_id) DO UPDATE SET
+                   analysis_json = EXCLUDED.analysis_json,
+                   summary_json  = EXCLUDED.summary_json,
+                   telegram_msg  = EXCLUDED.telegram_msg,
+                   tokens        = EXCLUDED.tokens,
+                   priority      = EXCLUDED.priority,
+                   sent_telegram = EXCLUDED.sent_telegram""",
             (
                 email_id,
                 subject,
@@ -339,86 +338,84 @@ def save_email_record(
                 telegram_msg,
                 tokens,
                 priority,
-                1 if sent_telegram else 0,
+                sent_telegram,
             ),
         )
-        get_conn().commit()
+
+
+def _row_to_email_record(r: tuple) -> Dict[str, Any]:
+    return {
+        "id":            r[0],
+        "email_id":      r[1],
+        "subject":       r[2],
+        "sender":        r[3],
+        "date":          r[4],
+        "body":          r[5],
+        "analysis":      _json.loads(r[6]),
+        "summary":       _json.loads(r[7]),
+        "telegram_msg":  r[8],
+        "tokens":        r[9],
+        "priority":      r[10],
+        "sent_telegram": bool(r[11]),
+        "created_at":    r[12],
+    }
+
+
+_EMAIL_COLS = (
+    "id, email_id, subject, sender, date, body,"
+    " analysis_json, summary_json, telegram_msg, tokens, priority, sent_telegram, created_at"
+)
 
 
 def get_email_records(limit: int = 50, priority: Optional[str] = None) -> List[Dict[str, Any]]:
     """返回邮件记录列表（按 id 倒序）"""
-    if priority:
-        rows = get_conn().execute(
-            "SELECT * FROM email_records WHERE priority = ? ORDER BY id DESC LIMIT ?",
-            (priority, limit),
-        ).fetchall()
-    else:
-        rows = get_conn().execute(
-            "SELECT * FROM email_records ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    return [
-        {
-            "id":            r["id"],
-            "email_id":      r["email_id"],
-            "subject":       r["subject"],
-            "sender":        r["sender"],
-            "date":          r["date"],
-            "body":          r["body"],
-            "analysis":      _json.loads(r["analysis_json"]),
-            "summary":       _json.loads(r["summary_json"]),
-            "telegram_msg":  r["telegram_msg"],
-            "tokens":        r["tokens"],
-            "priority":      r["priority"],
-            "sent_telegram": bool(r["sent_telegram"]),
-            "created_at":    r["created_at"],
-        }
-        for r in rows
-    ]
+    with _cur() as cur:
+        if priority:
+            cur.execute(
+                f"SELECT {_EMAIL_COLS} FROM email_records WHERE priority = %s ORDER BY id DESC LIMIT %s",
+                (priority, limit),
+            )
+        else:
+            cur.execute(
+                f"SELECT {_EMAIL_COLS} FROM email_records ORDER BY id DESC LIMIT %s",
+                (limit,),
+            )
+        return [_row_to_email_record(r) for r in cur.fetchall()]
 
 
 def get_email_record(email_id: str) -> Optional[Dict[str, Any]]:
     """返回单条邮件记录，不存在则返回 None"""
-    r = get_conn().execute(
-        "SELECT * FROM email_records WHERE email_id = ?", (email_id,)
-    ).fetchone()
-    if r is None:
-        return None
-    return {
-        "id":            r["id"],
-        "email_id":      r["email_id"],
-        "subject":       r["subject"],
-        "sender":        r["sender"],
-        "date":          r["date"],
-        "body":          r["body"],
-        "analysis":      _json.loads(r["analysis_json"]),
-        "summary":       _json.loads(r["summary_json"]),
-        "telegram_msg":  r["telegram_msg"],
-        "tokens":        r["tokens"],
-        "priority":      r["priority"],
-        "sent_telegram": bool(r["sent_telegram"]),
-        "created_at":    r["created_at"],
-    }
+    with _cur() as cur:
+        cur.execute(
+            f"SELECT {_EMAIL_COLS} FROM email_records WHERE email_id = %s",
+            (email_id,),
+        )
+        r = cur.fetchone()
+        return _row_to_email_record(r) if r else None
 
 
 def count_email_records() -> int:
-    return get_conn().execute("SELECT COUNT(*) FROM email_records").fetchone()[0]
+    with _cur() as cur:
+        cur.execute("SELECT COUNT(*) FROM email_records")
+        return cur.fetchone()[0]
 
 
-# ── worker_stats ──────────────────────────────────────────
+# ── worker_stats ────────────────────────────────────────────────────
 
 def get_worker_stats() -> Dict[str, Any]:
     """返回所有历史会话的累积统计（SUM）"""
-    row = get_conn().execute("""
-        SELECT
-            COALESCE(SUM(total_sent), 0),
-            COALESCE(SUM(total_fetched), 0),
-            COALESCE(SUM(total_errors), 0),
-            COALESCE(SUM(total_tokens), 0),
-            COALESCE(SUM(runtime_secs), 0),
-            (SELECT last_poll FROM worker_stats ORDER BY id DESC LIMIT 1)
-        FROM worker_stats
-    """).fetchone()
+    with _cur() as cur:
+        cur.execute("""
+            SELECT
+                COALESCE(SUM(total_sent), 0),
+                COALESCE(SUM(total_fetched), 0),
+                COALESCE(SUM(total_errors), 0),
+                COALESCE(SUM(total_tokens), 0),
+                COALESCE(SUM(runtime_secs), 0),
+                (SELECT last_poll FROM worker_stats ORDER BY id DESC LIMIT 1)
+            FROM worker_stats
+        """)
+        row = cur.fetchone()
     return {
         "total_sent":         row[0],
         "total_fetched":      row[1],
@@ -439,13 +436,12 @@ def save_worker_stats(
     last_poll: Optional[str],
 ) -> None:
     """插入一条新的会话记录（每次 Worker 停止时调用）"""
-    with _lock:
-        get_conn().execute(
-            """INSERT INTO worker_stats
+    with _cur() as cur:
+        cur.execute(
+            f"""INSERT INTO worker_stats
                    (started_at, stopped_at, total_sent, total_fetched, total_errors,
                     total_tokens, runtime_secs, last_poll)
-               VALUES (?, strftime('%Y-%m-%dT%H:%M:%S','now'), ?, ?, ?, ?, ?, ?)""",
+               VALUES (%s, {_TS_EXPR}, %s, %s, %s, %s, %s, %s)""",
             (started_at, total_sent, total_fetched, total_errors,
              total_tokens, runtime_secs, last_poll),
         )
-        get_conn().commit()

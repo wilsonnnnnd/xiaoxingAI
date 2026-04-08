@@ -259,7 +259,7 @@ export default function Debug() {
                                     <button key={tab} onClick={() => setPTab(tab)}
                                         className={`px-3 py-1 text-xs rounded border transition-colors ${pTab === tab ? 'border-[#6366f1] text-[#c7d2fe] bg-[#1e2240]' : 'border-[#2d3748] text-[#94a3b8] bg-[#0b0e14] hover:border-[#475569]'}`}
                                     >
-                                        {{ tg: `✈️ ${t('debug.tab.tg')}`, analysis: `🔍 ${t('debug.tab.analysis')}`, summary: `📝 ${t('debug.tab.summary')}`, raw: `{} ${t('debug.tab.raw')}` }[tab]}
+                                        {{ tg: ` ${t('debug.tab.tg')}`, analysis: ` ${t('debug.tab.analysis')}`, summary: ` ${t('debug.tab.summary')}`, raw: `${t('debug.tab.raw')}` }[tab]}
                                     </button>
                                 ))}
                             </div>

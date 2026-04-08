@@ -1,13 +1,13 @@
 """
 LLM 传输层 — 核心模块
 支持本地 llama-server（OpenAI 兼容接口）和 OpenAI API。
+相同 prompt + max_tokens 的结果会缓存到 Redis（TTL 1h），命中时直接返回。
 """
 import time
 
 import requests
 
 from app import config
-
 
 MAX_LLM_RETRIES = 3
 
@@ -22,10 +22,20 @@ def _build_headers() -> dict:
 def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
     """
     调用 LLM（本地 llama-server 或 OpenAI API，由 config.LLM_BACKEND 决定）。
+    - 优先命中 Redis 缓存（相同 prompt+max_tokens，TTL 1h）
     - 4xx 错误（如上下文过长）直接抛出，不重试
     - 5xx 或网络错误最多重试 MAX_LLM_RETRIES 次（指数退避）
     返回 (content_str, token_count)。
     """
+    # ── Redis 缓存命中 ────────────────────────────────────
+    try:
+        from app.core.redis_client import get_llm_cache, set_llm_cache
+        cached = get_llm_cache(prompt, max_tokens)
+        if cached is not None:
+            return cached
+    except Exception:
+        pass  # redis_client 未就绪时不阻断
+
     url     = config.LLM_API_URL
     model   = config.LLM_MODEL
     timeout = 120
@@ -56,6 +66,13 @@ def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
 
             content = data["choices"][0]["message"]["content"]
             tokens  = data.get("usage", {}).get("total_tokens", 0)
+
+            # ── 写入 Redis 缓存 ───────────────────────────
+            try:
+                set_llm_cache(prompt, max_tokens, content, tokens)
+            except Exception:
+                pass
+
             return content, tokens
 
         except requests.exceptions.HTTPError as e:

@@ -33,7 +33,7 @@ export default function Layout() {
           {imgOk ? (
             <div className="w-10 h-10 rounded-full bg-white p-0.5 shrink-0 flex items-center justify-center">
               <img
-                src="./../../public/xiaoxing_icon.png"
+                src="/xiaoxing_icon.png"
                 alt="Xiaoxing"
                 onError={(e) => {
                   const img = e.currentTarget as HTMLImageElement

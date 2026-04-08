@@ -1,23 +1,23 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n/useI18n'
 import { listPrompts, getPrompt, savePrompt, deletePrompt, getConfig, saveConfig } from '../api'
 
-const DEFAULT_FILES = new Set(['email_analysis.txt', 'email_summary.txt', 'telegram_notify.txt', 'chat.txt', 'user_profile.txt'])
+const DEFAULT_FILES = new Set(['gmail/email_analysis.txt', 'gmail/email_summary.txt', 'gmail/telegram_notify.txt', 'chat.txt', 'user_profile.txt'])
 
 const ASSIGN_KEYS = [
-  { id: 'PROMPT_ANALYZE',  label: '📊 Email Analysis',    default: 'email_analysis.txt' },
-  { id: 'PROMPT_SUMMARY',  label: '📝 Email Summary',     default: 'email_summary.txt' },
-  { id: 'PROMPT_TELEGRAM', label: '✈️ Telegram Format',   default: 'telegram_notify.txt' },
-  { id: 'PROMPT_CHAT',     label: '🤖 Bot Chat',          default: 'chat.txt' },
-  { id: 'PROMPT_PROFILE',  label: '👤 User Profile',      default: 'user_profile.txt' },
+  { id: 'PROMPT_ANALYZE', label: '📊 Email Analysis', default: 'gmail/email_analysis.txt' },
+  { id: 'PROMPT_SUMMARY', label: '📝 Email Summary', default: 'gmail/email_summary.txt' },
+  { id: 'PROMPT_TELEGRAM', label: '✈️ Telegram Format', default: 'gmail/telegram_notify.txt' },
+  { id: 'PROMPT_CHAT', label: '🤖 Bot Chat', default: 'chat.txt' },
+  { id: 'PROMPT_PROFILE', label: '👤 User Profile', default: 'user_profile.txt' },
 ] as const
 
 const FILE_LABELS: Record<string, string> = {
-  'email_analysis.txt':  '📊 Analyze',
-  'email_summary.txt':   '📝 Summary',
-  'telegram_notify.txt': '✈️ Telegram',
-  'chat.txt':            '🤖 Chat',
-  'user_profile.txt':    '👤 Profile',
+  'gmail/email_analysis.txt': '📊 Analyze',
+  'gmail/email_summary.txt': '📝 Summary',
+  'gmail/telegram_notify.txt': '✈️ Telegram',
+  'chat.txt': '🤖 Chat',
+  'user_profile.txt': '👤 Profile',
 }
 
 const editorCls = 'w-full min-h-[460px] bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3.5 text-sm text-[#e2e8f0] font-mono leading-relaxed resize-y outline-none focus:border-[#6366f1] transition-colors tab-size-2'
@@ -46,14 +46,16 @@ export default function Prompts() {
   const [newFileResult, setNewFileResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const isDirty = content !== savedContent
 
-  const loadFiles = useCallback(async (target?: string) => {
+  async function loadFiles(target?: string) {
     try {
       const d = await listPrompts()
       setFiles(d.files)
       const sel = (target && d.files.includes(target)) ? target : d.files[0]
       if (sel) switchTo(sel, d.files)
-    } catch { /* ignore */ }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    } catch {
+      /* ignore */
+    }
+  }
 
   const loadFile = async (filename: string) => {
     setLoading(true)
@@ -84,8 +86,8 @@ export default function Prompts() {
       const asgn: Record<string, string> = {}
       ASSIGN_KEYS.forEach(k => { asgn[k.id] = (cfg as unknown as Record<string, string>)[k.id] ?? k.default })
       setAssignment(asgn)
-    }).catch(() => {})
-  }, [loadFiles])
+    }).catch(() => { })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave() {
     if (!current) return
@@ -181,7 +183,7 @@ export default function Prompts() {
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleSaveAssignment} className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#6366f1] hover:bg-[#4f46e5] text-white transition-colors">
-            💾 {t('prompts.btn.save_assign')}
+            {t('prompts.btn.save_assign')}
           </button>
           {assignResult && <Badge label={assignResult.msg} ok={assignResult.ok} />}
         </div>
@@ -195,11 +197,10 @@ export default function Prompts() {
               <button
                 key={f}
                 onClick={() => switchTo(f)}
-                className={`px-4 py-2 rounded-t-lg border text-xs font-mono transition-colors ${
-                  f === current
-                    ? 'bg-[#1e2330] text-[#a5b4fc] border-[#2d3748] border-b-[#1e2330]'
-                    : 'bg-[#131720] text-[#64748b] border-[#2d3748] hover:bg-[#1e2330] hover:text-[#cbd5e1]'
-                }`}
+                className={`px-4 py-2 rounded-t-lg border text-xs font-mono transition-colors ${f === current
+                  ? 'bg-[#1e2330] text-[#a5b4fc] border-[#2d3748] border-b-[#1e2330]'
+                  : 'bg-[#131720] text-[#64748b] border-[#2d3748] hover:bg-[#1e2330] hover:text-[#cbd5e1]'
+                  }`}
               >
                 {FILE_LABELS[f] ?? ('📄 ' + f.replace(/\.txt$/, ''))}
               </button>
@@ -209,7 +210,7 @@ export default function Prompts() {
             onClick={() => setShowNewForm(v => !v)}
             className="px-3 py-1.5 mb-px text-xs font-semibold rounded-lg bg-[#14532d] text-[#86efac] hover:bg-[#166534] transition-colors"
           >
-            ＋ {t('prompts.btn.new')}
+            {t('prompts.btn.new')}
           </button>
         </div>
 
@@ -248,17 +249,17 @@ export default function Prompts() {
           />
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={handleSave} disabled={saving || loading} className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#6366f1] hover:bg-[#4f46e5] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {saving ? '…' : `💾 ${t('prompts.btn.save')}`}
+              {saving ? '…' : `${t('prompts.btn.save')}`}
             </button>
             <button
-              onClick={() => { if (!isDirty || confirm(t('prompts.confirm.discard'))) current && loadFile(current); setSaveResult(null) }}
+              onClick={() => { if (!isDirty || confirm(t('prompts.confirm.discard'))) { if (current) loadFile(current) }; setSaveResult(null) }}
               className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#334155] hover:bg-[#475569] text-white transition-colors"
             >
-              ↺ {t('prompts.btn.reset')}
+              {t('prompts.btn.reset')}
             </button>
             {current && !DEFAULT_FILES.has(current) && (
               <button onClick={handleDelete} className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-[#7f1d1d] hover:bg-[#991b1b] text-white transition-colors">
-                🗑️ {t('prompts.btn.delete')}
+                {t('prompts.btn.delete')}
               </button>
             )}
             {saveResult && <Badge label={saveResult.msg} ok={saveResult.ok} />}

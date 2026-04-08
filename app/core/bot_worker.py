@@ -18,6 +18,7 @@ from app import config, db
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
 from app.core.telegram import TELEGRAM_API
 from app.core import ws as ws_pub
+from app.core import redis_client as rc
 
 logger = logging.getLogger("tg_bot")
 
@@ -36,12 +37,13 @@ def _wlog(msg: str, level: str = "info", tokens: int = 0) -> None:
 
 _task:           asyncio.Task | None = None
 _schedule_task:  asyncio.Task | None = None
+_consumer_task:  asyncio.Task | None = None
 _running:        bool = False
 
-# chat_id → 对话历史列表（窗口，用于 prompt 注入）
+# chat_id → 对话历史列表（窗口，内存缓存 + Redis 持久化）
 _histories: Dict[str, List[Dict[str, str]]] = {}
 
-# chat_id → 今日完整对话历史（用于生成用户画像，重置于每次画像更新后）
+# chat_id → 今日完整对话历史（内存缓存 + Redis 持久化，画像更新后清空）
 _histories_today: Dict[str, List[Dict[str, str]]] = {}
 
 
@@ -75,6 +77,80 @@ def _send_reply(token: str, chat_id: str, text: str) -> None:
         logger.warning(f"[tg_bot] 发送回复失败: {e}")
 
 
+# 邮件相关关键词（中英文）
+_EMAIL_KEYWORDS = [
+    "邮件", "邮箱", "email", "mail", "收件", "发件", "信件",
+    "最新", "最近", "今天", "今日", "昨天", "昨日",
+    "统计", "记录", "历史", "数据",
+    "高优先级", "重要", "紧急", "优先",
+    "已发送", "未读", "已处理",
+    "摘要", "总结", "汇总",
+]
+
+
+def _fetch_db_context(text: str) -> str:
+    """
+    检测消息是否涉及邮件/数据库查询，如果是则查询数据库并返回格式化的上下文字符串。
+    不涉及则返回空字符串。
+    """
+    lower = text.lower()
+    if not any(kw in lower for kw in _EMAIL_KEYWORDS):
+        return ""
+
+    try:
+        records = db.get_email_records(limit=5)
+        stats = db.get_stats()
+
+        if not records:
+            return f"邮件记录总数：{stats.get('email_records_count', 0)} 封，暂无详细记录。"
+
+        lines = [f"邮件记录总数：{stats.get('email_records_count', 0)} 封，最近 {len(records)} 封如下：\n"]
+        for i, r in enumerate(records, 1):
+            summary = r.get("summary", {})
+            subject = r.get("subject", "（无主题）")
+            sender = r.get("sender", "未知")
+            date = r.get("date", "")
+            priority = r.get("priority", "")
+            brief = summary.get("brief", "") or r.get("telegram_msg", "")[:100]
+            lines.append(
+                f"{i}. [{priority}] {subject}\n"
+                f"   发件人：{sender}  时间：{date}\n"
+                f"   摘要：{brief}"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"[tg_bot] 数据库上下文查询失败: {e}")
+        return ""
+
+
+# ── 会话历史辅助函数（内存缓存 + Redis 持久化） ──────────────────
+
+def _get_history(chat_id: str) -> list:
+    """读取对话窗口历史：内存命中直接返回，否则从 Redis 加载（重启恢复）。"""
+    if chat_id not in _histories:
+        _histories[chat_id] = rc.load_history(chat_id)
+    return _histories[chat_id]
+
+
+def _save_history(chat_id: str, history: list) -> None:
+    _histories[chat_id] = history
+    rc.save_history(chat_id, history)
+
+
+def _get_today(chat_id: str) -> list:
+    if chat_id not in _histories_today:
+        _histories_today[chat_id] = rc.load_history_today(chat_id)
+    return _histories_today[chat_id]
+
+
+def _append_today(chat_id: str, user_msg: str, ai_msg: str) -> None:
+    today = _get_today(chat_id)
+    today.append({"role": "user",      "content": user_msg})
+    today.append({"role": "assistant", "content": ai_msg})
+    _histories_today[chat_id] = today
+    rc.save_history_today(chat_id, today)
+
+
 def _handle_message(token: str, chat_id: str, text: str) -> None:
     """处理单条消息，调用 AI 并回复"""
     text = text.strip()
@@ -85,6 +161,8 @@ def _handle_message(token: str, chat_id: str, text: str) -> None:
         return
     if text == "/clear":
         _histories.pop(chat_id, None)
+        _histories_today.pop(chat_id, None)
+        rc.delete_history(chat_id)
         _send_reply(token, chat_id, "🗑️ 对话历史已清空！重新开始聊天吧~")
         return
     if text == "/help":
@@ -97,33 +175,34 @@ def _handle_message(token: str, chat_id: str, text: str) -> None:
         )
         return
 
-    history = _histories.get(chat_id, [])
+    history = _get_history(chat_id)
 
     # 读取用户画像
     profile = db.get_profile(chat_id)
+
+    # 检测是否需要查询数据库并注入上下文
+    db_context = _fetch_db_context(text)
 
     # 记录用户消息
     _wlog(f"💬 用户: {text[:80]}")
 
     try:
-        reply, tokens = chat_reply(text, history, profile=profile)
+        reply, tokens = chat_reply(text, history, profile=profile, db_context=db_context)
     except Exception as e:
         logger.error(f"[tg_bot] AI 回复失败: {e}")
         _wlog(f"❌ AI 回复失败 [{chat_id}]: {e}", level="error")
         _send_reply(token, chat_id, "⚠️ AI 暂时无法回复，请稍后再试。")
         return
 
-    # 更新窗口历史
+    # 更新窗口历史（内存 + Redis）
     history.append({"role": "user",      "content": text})
     history.append({"role": "assistant", "content": reply})
     if len(history) > CHAT_HISTORY_MAX * 2:
         history = history[-(CHAT_HISTORY_MAX * 2):]
-    _histories[chat_id] = history
+    _save_history(chat_id, history)
 
-    # 追加今日完整历史（用于画像生成）
-    today = _histories_today.setdefault(chat_id, [])
-    today.append({"role": "user",      "content": text})
-    today.append({"role": "assistant", "content": reply})
+    # 追加今日完整历史（内存 + Redis）
+    _append_today(chat_id, text, reply)
 
     # 记录 AI 回复（含 token 数）
     _wlog(f"🤖 Xiaoxing: {reply[:80]}", tokens=tokens)
@@ -150,8 +229,9 @@ async def _loop() -> None:
             msg = upd.get("message") or upd.get("edited_message")
             if not msg:
                 continue
-            chat_id = str(msg.get("chat", {}).get("id", ""))
-            text    = msg.get("text", "").strip()
+            chat_id   = str(msg.get("chat", {}).get("id", ""))
+            text      = msg.get("text", "").strip()
+            update_id = upd["update_id"]
             if not text:
                 continue
 
@@ -160,8 +240,16 @@ async def _loop() -> None:
                 logger.warning(f"[tg_bot] 忽略未授权消息，来自 chat_id={chat_id}")
                 continue
 
+            # 防重复处理（Redis SET NX）
+            if not rc.mark_update(update_id):
+                logger.debug(f"[tg_bot] 跳过重复 update_id={update_id}")
+                continue
+
             logger.info(f"[tg_bot] 收到消息 [{chat_id}]: {text[:60]}")
-            await asyncio.to_thread(_handle_message, token, chat_id, text)
+
+            # 入队（Redis 可用时）；失败则降级为直接处理
+            if not rc.enqueue(update_id, chat_id, text):
+                await asyncio.to_thread(_handle_message, token, chat_id, text)
 
         # 如果没有 updates，短暂 yield 控制权（getUpdates 本身已经长轮询 30s）
         await asyncio.sleep(0)
@@ -170,13 +258,40 @@ async def _loop() -> None:
     _wlog("⏹️ Bot Worker 已停止")
 
 
+async def _consumer_loop() -> None:
+    """
+    任务队列消费者：从 Redis queue:chat BRPOP 消息并调用 _handle_message。
+    当 Redis 不可达时，此 loop 空转（消息已在 _loop 中降级为直接处理）。
+    """
+    token = config.TELEGRAM_BOT_TOKEN
+    logger.info("[tg_bot] 消费者任务已启动")
+    while _running:
+        try:
+            item = await rc.dequeue(timeout=2)
+            if item is None:
+                continue
+            chat_id = item.get("chat_id", "")
+            text    = item.get("text", "")
+            if chat_id and text:
+                await asyncio.to_thread(_handle_message, token, chat_id, text)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"[tg_bot] 消费者异常: {e}")
+            await asyncio.sleep(1)
+    logger.info("[tg_bot] 消费者任务已停止")
+
+
 async def _profile_update_job() -> None:
     """遍历所有今日有记录的 chat，生成/更新用户画像并存库。"""
-    if not _histories_today:
+    # 合并内存和 Redis 中的 chat_id（跨重启恢复）
+    all_chat_ids = set(_histories_today.keys()) | set(rc.get_today_chat_ids())
+    if not all_chat_ids:
         logger.info("[tg_bot] 画像更新：今日无聊天记录，跳过。")
         return
 
-    for chat_id, today_history in list(_histories_today.items()):
+    for chat_id in all_chat_ids:
+        today_history = _get_today(chat_id)
         if not today_history:
             continue
         try:
@@ -192,8 +307,9 @@ async def _profile_update_job() -> None:
         except Exception as e:
             logger.error(f"[tg_bot] 画像生成失败 [{chat_id}]: {e}")
 
-    # 清空今日历史，开始下一天的累积
+    # 清空今日历史（内存 + Redis）
     _histories_today.clear()
+    rc.clear_today_histories()
 
 
 async def _schedule_loop() -> None:
@@ -220,7 +336,7 @@ def is_running() -> bool:
 
 
 async def start() -> bool:
-    global _task, _schedule_task, _running
+    global _task, _schedule_task, _consumer_task, _running
     if _running:
         return False
     missing = config.validate_telegram()
@@ -229,6 +345,7 @@ async def start() -> bool:
     _running = True
     _task          = asyncio.create_task(_loop())
     _schedule_task = asyncio.create_task(_schedule_loop())
+    _consumer_task = asyncio.create_task(_consumer_loop())
     try:
         ws_pub.publish_bot_status({"running": True})
     except Exception:
@@ -237,9 +354,9 @@ async def start() -> bool:
 
 
 async def stop() -> None:
-    global _running, _task, _schedule_task
+    global _running, _task, _schedule_task, _consumer_task
     _running = False
-    for t in (_task, _schedule_task):
+    for t in (_task, _schedule_task, _consumer_task):
         if t:
             t.cancel()
             try:
@@ -248,6 +365,7 @@ async def stop() -> None:
                 pass
     _task          = None
     _schedule_task = None
+    _consumer_task = None
     try:
         ws_pub.publish_bot_status({"running": False})
     except Exception:
@@ -255,11 +373,16 @@ async def stop() -> None:
 
 
 def clear_history(chat_id: str | None = None) -> None:
-    """清空指定 chat 或所有 chat 的对话历史（供 API 调用）"""
+    """清空指定 chat 或所有 chat 的对话历史（内存 + Redis，供 API 调用）"""
     if chat_id:
-        _histories.pop(str(chat_id), None)
+        cid = str(chat_id)
+        _histories.pop(cid, None)
+        _histories_today.pop(cid, None)
+        rc.delete_history(cid)
     else:
         _histories.clear()
+        _histories_today.clear()
+        rc.clear_today_histories()
 
 
 def generate_profile_now(chat_id: str) -> tuple[str, int]:

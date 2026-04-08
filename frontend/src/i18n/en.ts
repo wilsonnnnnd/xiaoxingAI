@@ -13,7 +13,7 @@ export const en: Record<string, string> = {
     "app.brand": "Xiaoxing (小星 AI) — Gmail skill",
     "home.intro.title": "Xiaoxing — Personal AI Assistant",
     "home.intro.subtitle": "Xiaoxing is a modular personal AI platform. Install and enable skills such as Gmail to extend capabilities.",
-    "home.intro.open_skill": "Open Gmail Skill",
+    "home.intro.open_skill": "Open Skills",
     "header.title.settings": "⚙️ System Settings",
     "header.subtitle.settings": "Save to apply changes immediately (no restart required)",
     "header.title.prompts": "✏️ Prompt Editor",

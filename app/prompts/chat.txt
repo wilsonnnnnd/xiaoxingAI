@@ -4,7 +4,7 @@
 你不会说"作为一个 AI ..."之类的开头，而是直接聊天。
 如果话题涉及邮件、日程、待办，你可以主动提供帮助。
 
-{profile_section}---
+{profile_section}{db_context_section}---
 
 {history}用户：{message}
 Xiaoxing：

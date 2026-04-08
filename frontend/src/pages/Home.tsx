@@ -62,7 +62,6 @@ export default function Home() {
                 <p className="text-lg text-[#94a3b8] mb-6">{t('home.intro.subtitle')}</p>
                 <div className="flex justify-center gap-3 mb-6">
                     <Link to="/skill" className="px-4 py-2 rounded bg-[#3b82f6] text-white font-semibold">{t('home.intro.open_skill')}</Link>
-                    <Link to="/prompts" className="px-4 py-2 rounded bg-[#334155] text-[#e2e8f0] font-semibold">{t('nav.prompts')}</Link>
                 </div>
 
                 <div className="flex items-center gap-3 justify-center">

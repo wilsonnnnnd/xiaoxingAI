@@ -40,6 +40,12 @@ PROMPT_TELEGRAM:  str = _get("PROMPT_TELEGRAM",  "gmail/telegram_notify.txt")
 PROMPT_CHAT:      str = _get("PROMPT_CHAT",       "chat.txt")
 PROMPT_PROFILE:   str = _get("PROMPT_PROFILE",    "user_profile.txt")
 
+# Redis
+REDIS_URL:        str = _get("REDIS_URL", "redis://localhost:6380")
+
+# PostgreSQL
+POSTGRES_DSN:     str = _get("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/xiaoxing")
+
 # UI language for web pages (en / zh)
 UI_LANG:          str = _get("UI_LANG", "en").lower()
 

@@ -18,11 +18,13 @@ def chat_reply(
     message: str,
     history: List[Dict[str, str]] | None = None,
     profile: str = "",
+    db_context: str = "",
 ) -> tuple:
     """
     使用 chat.txt prompt 与用户进行对话。
     history: 形如 [{"role": "user", ...}, {"role": "assistant", ...}]
     profile: 用户画像文本，注入 prompt 让 AI 个性化回复。
+    db_context: 数据库查询结果文本，供 AI 回答数据相关问题。
     返回 (reply_str, token_count)。
     """
     if history is None:
@@ -41,11 +43,17 @@ def chat_reply(
     if profile and profile.strip():
         profile_section = f"【用户画像参考（请据此调整回复风格和内容）】\n{profile.strip()}\n\n"
 
+    # 数据库上下文注入段
+    db_context_section = ""
+    if db_context and db_context.strip():
+        db_context_section = f"【数据库查询结果（请根据此数据回答用户问题）】\n{db_context.strip()}\n\n"
+
     template = load_prompt(config.PROMPT_CHAT)
     prompt = template.format(
         history=history_text,
         message=message,
         profile_section=profile_section,
+        db_context_section=db_context_section,
     )
 
     raw, tokens = call_llm(prompt, max_tokens=400)

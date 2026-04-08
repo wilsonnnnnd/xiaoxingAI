@@ -13,7 +13,7 @@ export const zh: Record<string, string> = {
   "app.brand": "小星 AI（Gmail skill）",
   "home.intro.title": "小星 AI — 个人助手平台",
   "home.intro.subtitle": "小星 AI 是一个模块化的个人 AI 平台。通过安装并启用技能（例如 Gmail），即可扩展更多能力。",
-  "home.intro.open_skill": "打开 Gmail 功能",
+  "home.intro.open_skill": "打开功能",
   "header.title.settings": "🛠️ 系统配置",
   "header.subtitle.settings": "修改后点击保存，立即生效，无需重启",
   "header.title.prompts": "✏️ 提示词编辑器",
