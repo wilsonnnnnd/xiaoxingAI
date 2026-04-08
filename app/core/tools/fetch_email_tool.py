@@ -12,20 +12,26 @@ from app.core.tools import register
 
 logger = logging.getLogger("tools")
 
-# 提取 Gmail 查询关键词的 prompt
+# 同时提取 Gmail 查询字符串和用户想看的数量
 _EXTRACT_QUERY_PROMPT = """\
-根据用户消息，提取用于 Gmail 搜索的查询字符串（Gmail 搜索语法）。
-只输出查询字符串，不要任何解释。
+根据用户消息，提取两件事：
+1. Gmail 搜索查询字符串（Gmail 搜索语法）
+2. 用户想查看的邮件数量（默认 3，最多 10）
+
+只输出 JSON，格式：{"query": "...", "count": N}
+不要任何额外文字。
 
 用户消息：{message}
 
-常用语法：
+常用 Gmail 语法：
 - from:someone@example.com
 - subject:关键词
 - is:unread
-- 直接写关键词即可模糊搜索
+- 直接写关键词模糊搜索
 
-输出示例：from:github.com is:unread
+输出示例：
+{{"query": "from:github.com is:unread", "count": 3}}
+{{"query": "is:unread in:inbox", "count": 5}}
 """
 
 
@@ -41,23 +47,33 @@ _EXTRACT_QUERY_PROMPT = """\
     takes_user_id=True,
 )
 def fetch_email(message: str, user_id=None) -> str:
+    import json
     from app.core.llm import call_router
     from app.skills.gmail.client import fetch_emails
     from app.skills.gmail.pipeline import process_email
 
-    # Step 1: 用 Router LLM 提取 Gmail 查询字符串
+    # Step 1: 用 Router LLM 同时提取 Gmail 查询字符串 + 数量
     extract_prompt = _EXTRACT_QUERY_PROMPT.format(message=message)
+    query = "is:unread in:inbox"
+    count = 3
     try:
-        query_raw, _ = call_router(extract_prompt, max_tokens=60)
-        query = query_raw.strip().strip('"\'') or "is:unread in:inbox"
+        raw, _ = call_router(extract_prompt, max_tokens=80)
+        raw = raw.strip()
+        # 兼容 Router 输出不标准 JSON 的情况
+        import re as _re
+        m = _re.search(r'\{.*?\}', raw, _re.DOTALL)
+        if m:
+            parsed = json.loads(m.group())
+            query = str(parsed.get("query") or query).strip().strip('\'"') or query
+            count = min(max(int(parsed.get("count") or 3), 1), 10)
     except Exception:
-        query = "is:unread in:inbox"
+        pass
 
-    logger.info(f"[tools] fetch_email query={query!r}")
+    logger.info(f"[tools] fetch_email query={query!r} count={count}")
 
     # Step 2: 拉取邮件
     try:
-        emails = fetch_emails(query=query, max_results=3, user_id=user_id)
+        emails = fetch_emails(query=query, max_results=count, user_id=user_id)
     except Exception as e:
         raise RuntimeError(f"Gmail 拉取失败: {e}")
 

@@ -9,6 +9,7 @@ Telegram Bot 聊天 Worker — 多 Bot 版本
 import asyncio
 import dataclasses
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -49,6 +50,8 @@ _shared_running: bool = False
 _histories:       Dict[int, List[Dict[str, str]]] = {}
 # bot_id → 今日完整对话历史（内存 + Redis 持久化，画像更新后清空）
 _histories_today: Dict[int, List[Dict[str, str]]] = {}
+# bot_id → 历史读写锁（防止多线程并发竞态）
+_history_locks:   Dict[int, threading.Lock] = {}
 
 
 def _wlog(msg: str, level: str = "info", tokens: int = 0) -> None:
@@ -99,6 +102,12 @@ def _send_reply(token: str, chat_id: str, text: str) -> None:
 
 
 # ── 会话历史（内存 + Redis） ─────────────────────────────────────
+
+def _get_lock(bot_id: int) -> threading.Lock:
+    if bot_id not in _history_locks:
+        _history_locks[bot_id] = threading.Lock()
+    return _history_locks[bot_id]
+
 
 def _get_history(bot_id: int) -> list:
     if bot_id not in _histories:
@@ -152,6 +161,8 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
 
     history = _get_history(bot_id)
     profile = db.get_profile(bot_id) if bot_id else ""
+
+    # 工具路由和 AI 回复（耗时操作，放锁外）
     tool_context, tool_tokens = route_and_execute(text, user_id=user_id)
     db_context = tool_context
 
@@ -173,12 +184,15 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
         _send_reply(token, chat_id, "⚠️ AI 暂时无法回复，请稍后再试。")
         return
 
-    history.append({"role": "user",      "content": text})
-    history.append({"role": "assistant", "content": reply})
-    if len(history) > CHAT_HISTORY_MAX * 2:
-        history = history[-(CHAT_HISTORY_MAX * 2):]
-    _save_history(bot_id, history)
-    _append_today(bot_id, text, reply)
+    # 加锁写历史，防止并发竞态
+    with _get_lock(bot_id):
+        history = _get_history(bot_id)   # 重新读取，防止锁等待期间被其他线程修改
+        history.append({"role": "user",      "content": text})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > CHAT_HISTORY_MAX * 2:
+            history = history[-(CHAT_HISTORY_MAX * 2):]
+        _save_history(bot_id, history)
+        _append_today(bot_id, text, reply)
 
     _wlog(f"🤖 [bot#{bot_id}] Xiaoxing → {_sender_label(from_user)}: {reply[:80]}", tokens=tokens)
     _send_reply(token, chat_id, reply)
@@ -534,7 +548,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
     # 读取用户画像
     profile = db.get_profile(bot_id) if bot_id else ""
 
-    # 工具路由：LLM 决定调用哪些工具，注入上下文
+    # 工具路由和 AI 回复（耗时操作，放锁外）
     db_context, tool_tokens = route_and_execute(text, user_id=user_id)
 
     # 记录用户消息
@@ -548,15 +562,16 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
         _send_reply(token, chat_id, "⚠️ AI 暂时无法回复，请稍后再试。")
         return
 
-    # 更新窗口历史（内存 + Redis）
-    history.append({"role": "user",      "content": text})
-    history.append({"role": "assistant", "content": reply})
-    if len(history) > CHAT_HISTORY_MAX * 2:
-        history = history[-(CHAT_HISTORY_MAX * 2):]
-    _save_history(bot_id, history)
-
-    # 追加今日完整历史（内存 + Redis）
-    _append_today(bot_id, text, reply)
+    # 加锁写历史，防止并发竞态
+    with _get_lock(bot_id):
+        history = _get_history(bot_id)   # 重新读取，防止锁等待期间被其他线程修改
+        history.append({"role": "user",      "content": text})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > CHAT_HISTORY_MAX * 2:
+            history = history[-(CHAT_HISTORY_MAX * 2):]
+        _save_history(bot_id, history)
+        # 追加今日完整历史（内存 + Redis）
+        _append_today(bot_id, text, reply)
 
     # 记录 AI 回复（含 token 数）
     _wlog(f"🤖 Xiaoxing → {_sender_label(from_user)}: {reply[:80]}", tokens=tokens)
