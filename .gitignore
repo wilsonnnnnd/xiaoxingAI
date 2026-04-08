@@ -12,4 +12,6 @@ gmailmanager.db-shm
 gmailmanager.db-wal
 API.md
 frontend/package-lock.json
-test
+test、
+/doc
+/test

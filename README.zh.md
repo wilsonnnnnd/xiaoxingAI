@@ -14,10 +14,11 @@
 - 📱 **Telegram 推送** — AI 自动撰写 HTML 格式通知消息，发送到指定 Telegram 对话；消息风格可通过 Prompt 完全自定义
 - 💬 **Telegram Bot 对话** — 内置'小星 AI'人格 Bot，基于对话历史实时回复 Telegram 消息
 - 👤 **用户画像** — AI 自动从聊天记录中构建用户画像，每日凌晨更新并回输入后续对话
-- 🗃️ **邮件记录持久化** — 每封处理过的邮件（原始正文、AI 分析、摘要、Telegram 消息、token 数量）均会永久写入 SQLite
-- 🔄 **去重保障** — 已处理邮件 ID 持久化到 SQLite，重启后不重复推送
+- 🗃️ **邮件记录持久化** — 每封处理过的邮件（原始正文、AI 分析、摘要、Telegram 消息、token 数量）均会永久写入 PostgreSQL
+- 🔄 **去重保障** — 已处理邮件 ID 持久化到 PostgreSQL；Redis SET NX 驼层防止重复处理（重启后同样生效）
 - ⚙️ **优先级过滤** — 可配置只推送 high/medium 优先级邮件
-- 🗄️ **SQLite 数据库** — 所有状态（已处理 ID、OAuth token、Worker 日志、邮件记录、用户画像）均存储到 `gmailmanager.db`
+- 🗄️ **PostgreSQL 数据库** — 所有状态（已处理 ID、OAuth token、Worker 日志、邮件记录、用户画像）均存入 PostgreSQL（Docker）
+- ⚡ **Redis 缓存与队列** — LLM 结果缓存（1 小时 TTL）、聊天会话持久化（7 天 TTL）、Telegram 消息去重、异步任务队列；Redis 不可达时所有功能自动降级
 - 📋 **分类日志与 Token 计量** — Worker 日志按来源（`email` / `chat`）分类，每条记录 Token 用量，主页带颜色徽章显示
 - 🔌 **连接测试** — 设置页一键检测 AI / 数据库 / Telegram / Gmail OAuth 连接状态
 - 🖥️ **React Web 界面** — 4 页深色主题 SPA（React + TypeScript + Vite + Tailwind CSS）：主页仪表盘、配置设置、Prompt 编辑器、调试工具
@@ -99,6 +100,8 @@ copy .env.example .env        # Windows
 | `PROMPT_TELEGRAM` | Telegram 消息文案使用的 Prompt 文件（默认 `telegram_notify.txt`） |
 | `PROMPT_CHAT` | Telegram Bot 对话回复使用的 Prompt 文件（默认 `chat.txt`） |
 | `PROMPT_PROFILE` | 用户画像生成使用的 Prompt 文件（默认 `user_profile.txt`） |
+| `POSTGRES_DSN` | PostgreSQL 连接字符串（默认 `postgresql://postgres:postgres@localhost:5432/xiaoxing`） |
+| `REDIS_URL` | Redis 连接地址（默认 `redis://localhost:6380`） |
 
 ### 5. 放置 Google OAuth 凭据
 
@@ -186,7 +189,7 @@ gmailManager/
 ├── app/
 │   ├── main.py                 # FastAPI 入口，所有 API 路由
 │   ├── config.py               # 环境变量读取（支持热重载）
-│   ├── db.py                   # SQLite 持久层（线程本地连接，WAL 模式）
+│   ├── db.py                   # PostgreSQL 持久层（线程安全连接池，psycopg2）
 │   ├── mail/
 │   │   ├── auth.py             # Google OAuth2 授权流程（token 存入 DB）
 │   │   └── client.py           # Gmail API 拉取/解析/标记已读
@@ -277,7 +280,7 @@ Prompt 文件位于 `app/prompts/*.txt`，项目自带三个内置文件：
 | DELETE | `/prompts/{filename}` | 删除自定义 prompt（内置文件不可删） |
 | GET | `/config` | 读取当前运行时配置 |
 | POST | `/config` | 更新 `.env` 并热重载 |
-| GET | `/db/stats` | SQLite 数据库统计信息 |
+| GET | `/db/stats` | PostgreSQL 数据库统计信息（记录数、token 消耗等） |
 
 交互式文档：`http://127.0.0.1:8000/docs`
 
@@ -345,13 +348,15 @@ OPENAI_API_KEY=sk-...
 ## 注意事项
 
 - `credentials.json` 包含敏感的 OAuth 客户端密钥，已加入 `.gitignore`，请勿提交到版本库。
-- OAuth token、已处理邮件 ID、邮件记录和用户画像均存储在 **`gmailmanager.db`**（SQLite，同样在 `.gitignore` 中）。删除数据库文件可重置所有状态。
+- 所有持久化状态（OAuth token、已处理邮件 ID、邮件记录、用户画像）均存储在 **PostgreSQL** 中。通过 Docker 启动：`docker run -d --name xiaoxin-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=xiaoxing -p 5432:5432 --restart unless-stopped postgres:16-alpine`。
+- **Redis**（端口 6380）用于 LLM 结果缓存、聊天会话持久化、Telegram 消息去重和异步任务队列。启动命令：`docker run -d --name xiaoxin-redis -p 6380:6379 --restart unless-stopped redis:7`。Redis 不可达时所有功能自动降级，不影响主流程。
 - 每封邮件共进行 **3 次 LLM 调用**：分析 → 结构化摘要 → 模板填充生成 Telegram 消息。三个 Prompt 均可在 UI 中独立配置。
-- LLM 调用失败时会自动重试最多 3 次（指数退避）；邮件正文超过 4000 字符时自动截断。
-- SQLite 层使用**线程本地连接**配合 WAL 模式，FastAPI 线程池、邮件 Worker、Bot Worker 并发访问不会冲突。
+- LLM 调用失败时会自动重试最多 3 次（指数退避）；邮件正文超过 4000 字符时自动截断。相同的 LLM 请求在 Redis 中缓存 1 小时，避免重复调用浪费 token。
+- PostgreSQL 层使用**线程安全连接池**（`psycopg2.pool.ThreadedConnectionPool`，min=1、max=10），FastAPI 线程池、邮件 Worker、Bot Worker 并发访问安全
 - Worker 日志使用 ISO 时间戳（`YYYY-MM-DDTHH:MM:SS`），按来源（`email` / `chat`）分类，每条记录 Token 用量，在主页以颜色徽章展示。
-- Telegram Bot 对话 Worker 与邮件 Worker 独立运行，为每个对话维护历史记录，每天凌晨自动生成 AI 用户画像。
+- Telegram Bot 对话 Worker 与邮件 Worker 独立运行，为每个对话在 Redis 中维护历史记录（7 天 TTL，重启后自动恢复），每天凌晨自动生成 AI 用户画像。
 - Telegram 消息以 **HTML 格式**发送。LLM 输出在发送前会自动清洗：Markdown 加粗转为 `<b>`，不支持的标签规范化为换行，未知标签安全转义。
+- 详细的数据库表结构、Redis 键设计和基础设施配置说明，请参阅 [doc/database.md](doc/database.md)。
 
 ---
 

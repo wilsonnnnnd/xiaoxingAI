@@ -14,10 +14,11 @@
 - 📱 **Telegram Push** — AI-written HTML notifications sent to a specified chat; message style and language fully customizable via prompt
 - 💬 **Telegram Bot Chat** — Built-in "Xiaoxing" (小星 AI) persona bot replies to Telegram messages in real time using chat history
 - 👤 **User Profile** — AI automatically builds a user profile from chat history; updated every midnight and fed back into chats
-- 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) is persisted in SQLite for later querying
-- 🔄 **Deduplication** — Processed email IDs persisted in SQLite; no duplicate notifications after restart
+- 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) is persisted in PostgreSQL for later querying
+- 🔄 **Deduplication** — Processed email IDs persisted in PostgreSQL; Redis SET NX prevents duplicate processing even across restarts
 - ⚙️ **Priority Filter** — Configurable to only notify high/medium priority emails
-- 🗄️ **SQLite Database** — All state (sent IDs, OAuth token, worker logs, email records, user profiles) stored in `gmailmanager.db`
+- 🗄️ **PostgreSQL Database** — All state (sent IDs, OAuth token, worker logs, email records, user profiles) stored in a PostgreSQL database via Docker
+- ⚡ **Redis Cache & Queue** — LLM result caching (1 h TTL), chat session persistence (7 d TTL), Telegram update deduplication, and async task queue; all features gracefully degrade when Redis is unavailable
 - 📋 **Typed Logs with Token Tracking** — Worker logs are categorised (`email` / `chat`), token usage recorded per entry, displayed with colour-coded badges on the dashboard
 - 🔌 **Connection Tests** — One-click AI / Database / Telegram / Gmail OAuth health-check on the Settings page
 - 🖥️ **React Web UI** — 4-page dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Settings, Prompt Editor, Debug Tools
@@ -99,6 +100,8 @@ Edit `.env` and fill in the values (see [How to Get Tokens](#how-to-get-tokens) 
 | `PROMPT_TELEGRAM` | Prompt file for Telegram message writing (default: `telegram_notify.txt`) |
 | `PROMPT_CHAT` | Prompt file for Telegram Bot chat replies (default: `chat.txt`) |
 | `PROMPT_PROFILE` | Prompt file for user profile generation (default: `user_profile.txt`) |
+| `POSTGRES_DSN` | PostgreSQL connection string (default: `postgresql://postgres:postgres@localhost:5432/xiaoxing`) |
+| `REDIS_URL` | Redis connection URL (default: `redis://localhost:6380`) |
 
 ### 5. Place Google Credentials
 
@@ -186,7 +189,7 @@ gmailManager/
 ├── app/
 │   ├── main.py                 # FastAPI entry point, all API routes
 │   ├── config.py               # Environment variable loader (hot-reloadable)
-│   ├── db.py                   # SQLite layer — thread-local connections, WAL mode
+│   ├── db.py                   # PostgreSQL layer — threaded connection pool (psycopg2)
 │   ├── mail/
 │   │   ├── auth.py             # Google OAuth2 flow (token stored in DB)
 │   │   └── client.py           # Gmail fetch / parse / mark-as-read
@@ -277,7 +280,7 @@ Use the **Prompt Editor** page in the UI to edit/create/assign prompt files with
 | DELETE | `/prompts/{filename}` | Delete a custom prompt file (built-ins protected) |
 | GET | `/config` | Read current runtime config |
 | POST | `/config` | Update `.env` and hot-reload config |
-| GET | `/db/stats` | SQLite database statistics |
+| GET | `/db/stats` | PostgreSQL database statistics (record counts, token counts) |
 
 Interactive docs: `http://127.0.0.1:8000/docs`
 
@@ -345,13 +348,15 @@ OPENAI_API_KEY=sk-...
 ## Notes
 
 - `credentials.json` contains sensitive OAuth client secrets — keep it out of version control (already in `.gitignore`).
-- OAuth tokens, processed email IDs, email records, and user profiles are stored in **`gmailmanager.db`** (SQLite, also in `.gitignore`). Delete the database to reset all state.
+- All persistent state (OAuth token, processed email IDs, email records, chat profiles) is stored in **PostgreSQL**. Start the database with Docker: `docker run -d --name xiaoxin-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=xiaoxing -p 5432:5432 --restart unless-stopped postgres:16-alpine`.
+- **Redis** (port 6380) is used for LLM result caching, chat session persistence, Telegram update deduplication, and an async task queue. Start with: `docker run -d --name xiaoxin-redis -p 6380:6379 --restart unless-stopped redis:7`. All Redis features degrade gracefully when Redis is unavailable.
 - Each email triggers **3 LLM calls**: analysis → structured summary → template-based Telegram message. All three prompts are independently configurable from the UI.
-- LLM calls retry up to 3 times with exponential backoff on transient errors. Email bodies longer than 4000 characters are automatically truncated.
-- The SQLite layer uses **thread-local connections** with WAL mode — safe for concurrent access from FastAPI threadpool, email worker, and bot worker threads.
+- LLM calls retry up to 3 times with exponential backoff on transient errors. Email bodies longer than 4000 characters are automatically truncated. Identical LLM prompts are cached in Redis for 1 hour to avoid redundant calls.
+- The PostgreSQL layer uses a **threaded connection pool** (`psycopg2.pool.ThreadedConnectionPool`, min=1, max=10) — safe for concurrent access from the FastAPI threadpool, email worker, and bot worker.
 - Worker logs include ISO timestamps (`YYYY-MM-DDTHH:MM:SS`), are typed (`email` / `chat`), and include per-entry token counts displayed as colour-coded badges on the dashboard.
-- The Telegram Bot chat worker runs independently from the email worker. The bot maintains per-chat conversation history and generates an AI user profile each midnight.
+- The Telegram Bot chat worker runs independently from the email worker. The bot maintains per-chat conversation history in Redis (7-day TTL, survives restarts) and generates an AI user profile each midnight.
 - Telegram messages are sent in **HTML format**. LLM output is automatically sanitised: Markdown bold (`**text**`) is converted to `<b>`, unsupported tags are normalised, and unknown tags (e.g. `<user@domain>`) are safely escaped.
+- See [doc/database.md](doc/database.md) for detailed documentation on the database schema, Redis key design, and infrastructure setup.
 
 ---
 
