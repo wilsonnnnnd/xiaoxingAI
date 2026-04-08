@@ -4,6 +4,7 @@
 - build_user_profile(): 根据聊天历史生成/更新用户画像
 """
 import re
+from datetime import datetime
 from typing import Dict, List
 
 from app import config
@@ -49,11 +50,13 @@ def chat_reply(
         db_context_section = f"【数据库查询结果（请根据此数据回答用户问题）】\n{db_context.strip()}\n\n"
 
     template = load_prompt(config.PROMPT_CHAT)
+    now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
     prompt = template.format(
         history=history_text,
         message=message,
         profile_section=profile_section,
         db_context_section=db_context_section,
+        now=now,
     )
 
     raw, tokens = call_llm(prompt, max_tokens=400)
