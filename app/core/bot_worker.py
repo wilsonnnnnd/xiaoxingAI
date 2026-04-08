@@ -60,6 +60,16 @@ def _wlog(msg: str, level: str = "info", tokens: int = 0) -> None:
         logger.info(msg)
 
 
+def _sender_label(from_user: dict | None) -> str:
+    """Format a Telegram sender as '@username(id)' or 'FirstName(id)'."""
+    if not from_user:
+        return "用户"
+    tg_id = from_user.get("id", "?")
+    name = from_user.get("username") or from_user.get("first_name") or "用户"
+    prefix = "@" if from_user.get("username") else ""
+    return f"{prefix}{name}({tg_id})"
+
+
 # ── Telegram 通信 ────────────────────────────────────────────────
 
 def _get_updates(token: str, offset: int, timeout: int = 30) -> list:
@@ -152,7 +162,8 @@ def _append_today(bot_id: int, user_msg: str, ai_msg: str) -> None:
 # ── 消息处理 ─────────────────────────────────────────────────────
 
 def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
-                    chat_prompt_id: Optional[int] = None) -> None:
+                    chat_prompt_id: Optional[int] = None,
+                    from_user: Optional[dict] = None) -> None:
     """处理单条消息，调用 AI 并回复"""
     text = text.strip()
 
@@ -186,7 +197,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
         except Exception:
             pass
 
-    _wlog(f"💬 [bot#{bot_id}] 用户: {text[:80]}")
+    _wlog(f"💬 [bot#{bot_id}] {_sender_label(from_user)}: {text[:80]}")
     try:
         reply, tokens = chat_reply(text, history, profile=profile, db_context=db_context)
     except Exception as e:
@@ -202,7 +213,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
     _save_history(bot_id, history)
     _append_today(bot_id, text, reply)
 
-    _wlog(f"🤖 [bot#{bot_id}] Xiaoxing: {reply[:80]}", tokens=tokens)
+    _wlog(f"🤖 [bot#{bot_id}] Xiaoxing → {_sender_label(from_user)}: {reply[:80]}", tokens=tokens)
     _send_reply(token, chat_id, reply)
 
 
@@ -221,6 +232,7 @@ async def _bot_loop(state: _BotState) -> None:
             if not msg:
                 continue
             chat_id   = str(msg.get("chat", {}).get("id", ""))
+            from_user = msg.get("from", {})
             text      = msg.get("text", "").strip()
             update_id = upd["update_id"]
             if not text:
@@ -239,10 +251,10 @@ async def _bot_loop(state: _BotState) -> None:
             logger.info(f"[tg_bot] bot#{state.bot_id} 收到消息 [{chat_id}]: {text[:60]}")
 
             # 入队或直接处理
-            if not rc.enqueue(update_id, state.bot_id, chat_id, text):
+            if not rc.enqueue(update_id, state.bot_id, chat_id, text, from_user):
                 await asyncio.to_thread(
                     _handle_message,
-                    state.token, state.bot_id, chat_id, text, state.chat_prompt_id,
+                    state.token, state.bot_id, chat_id, text, state.chat_prompt_id, from_user,
                 )
 
         await asyncio.sleep(0)
@@ -261,15 +273,16 @@ async def _consumer_loop() -> None:
             item = await rc.dequeue(timeout=2)
             if item is None:
                 continue
-            bot_id  = int(item.get("bot_id", 0))
-            chat_id = item.get("chat_id", "")
-            text    = item.get("text", "")
+            bot_id    = int(item.get("bot_id", 0))
+            chat_id   = item.get("chat_id", "")
+            text      = item.get("text", "")
+            from_user = item.get("from_user", {})
             if not chat_id or not text:
                 continue
             state = _bots.get(bot_id)
             token = state.token if state else config.TELEGRAM_BOT_TOKEN
             prompt_id = state.chat_prompt_id if state else None
-            await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, prompt_id)
+            await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, prompt_id, from_user)
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -565,7 +578,8 @@ def _append_today(bot_id: int, user_msg: str, ai_msg: str) -> None:
     rc.save_history_today(bot_id, today)
 
 
-def _handle_message(token: str, bot_id: int, chat_id: str, text: str) -> None:
+def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
+                    from_user: Optional[dict] = None) -> None:
     """处理单条消息，调用 AI 并回复"""
     text = text.strip()
 
@@ -598,7 +612,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str) -> None:
     db_context = _fetch_db_context(text)
 
     # 记录用户消息
-    _wlog(f"💬 用户: {text[:80]}")
+    _wlog(f"💬 {_sender_label(from_user)}: {text[:80]}")
 
     try:
         reply, tokens = chat_reply(text, history, profile=profile, db_context=db_context)
@@ -619,7 +633,7 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str) -> None:
     _append_today(bot_id, text, reply)
 
     # 记录 AI 回复（含 token 数）
-    _wlog(f"🤖 Xiaoxing: {reply[:80]}", tokens=tokens)
+    _wlog(f"🤖 Xiaoxing → {_sender_label(from_user)}: {reply[:80]}", tokens=tokens)
     _send_reply(token, chat_id, reply)
 
 
@@ -652,6 +666,7 @@ async def _loop() -> None:
             if not msg:
                 continue
             chat_id   = str(msg.get("chat", {}).get("id", ""))
+            from_user = msg.get("from", {})
             text      = msg.get("text", "").strip()
             update_id = upd["update_id"]
             if not text:
@@ -670,8 +685,8 @@ async def _loop() -> None:
             logger.info(f"[tg_bot] 收到消息 [{chat_id}]: {text[:60]}")
 
             # 入队（Redis 可用时）；失败则降级为直接处理
-            if not rc.enqueue(update_id, _bot_id, chat_id, text):
-                await asyncio.to_thread(_handle_message, token, _bot_id, chat_id, text)
+            if not rc.enqueue(update_id, _bot_id, chat_id, text, from_user):
+                await asyncio.to_thread(_handle_message, token, _bot_id, chat_id, text, from_user)
 
         # 如果没有 updates，短暂 yield 控制权（getUpdates 本身已经长轮询 30s）
         await asyncio.sleep(0)
@@ -692,11 +707,12 @@ async def _consumer_loop() -> None:
             item = await rc.dequeue(timeout=2)
             if item is None:
                 continue
-            bot_id  = int(item.get("bot_id", 0))
-            chat_id = item.get("chat_id", "")
-            text    = item.get("text", "")
+            bot_id    = int(item.get("bot_id", 0))
+            chat_id   = item.get("chat_id", "")
+            text      = item.get("text", "")
+            from_user = item.get("from_user", {})
             if chat_id and text:
-                await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text)
+                await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, from_user)
         except asyncio.CancelledError:
             break
         except Exception as e:

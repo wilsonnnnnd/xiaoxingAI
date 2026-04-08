@@ -229,7 +229,8 @@ def mark_update(update_id: int) -> bool:
 _QUEUE_KEY = "queue:chat"
 
 
-def enqueue(update_id: int, bot_id: int, chat_id: str, text: str) -> bool:
+def enqueue(update_id: int, bot_id: int, chat_id: str, text: str,
+            from_user: Optional[dict] = None) -> bool:
     """
     将消息入队（LPUSH）。
     返回 True 表示成功，False 表示 Redis 不可达（调用方应降级为直接处理）。
@@ -239,7 +240,8 @@ def enqueue(update_id: int, bot_id: int, chat_id: str, text: str) -> bool:
         return False
     try:
         payload = json.dumps(
-            {"update_id": update_id, "bot_id": bot_id, "chat_id": chat_id, "text": text},
+            {"update_id": update_id, "bot_id": bot_id, "chat_id": chat_id, "text": text,
+             "from_user": from_user or {}},
             ensure_ascii=False,
         )
         r.lpush(_QUEUE_KEY, payload)

@@ -119,7 +119,13 @@ export default function Chat() {
             }
         },
     })
-    const botClearMut = useMutation({ mutationFn: clearBotHistory, onSuccess: () => qc.invalidateQueries({ queryKey: ['logs', 'chat'] }) })
+    const botClearMut = useMutation({
+        mutationFn: clearBotHistory,
+        onSuccess: () => {
+            qc.setQueryData(['logs', 'chat'], [])
+            qc.invalidateQueries({ queryKey: ['logs', 'chat'] })
+        },
+    })
 
     const botRunning = botQuery.data?.running ?? false
 

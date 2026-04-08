@@ -421,10 +421,12 @@ def chat_work_status():
 
 
 @app.post("/telegram/bot/clear_history")
-def tg_bot_clear_history():
-    """清空所有对话历史记录"""
+def tg_bot_clear_history(user: dict = Depends(auth_mod.current_user)):
+    """清空对话历史记录（内存 + Redis + 日志DB）"""
     tg_bot_worker.clear_history()
-    return {"ok": True}
+    uid = None if user.get("role") == "admin" else user["id"]
+    deleted = db.clear_logs("chat", user_id=uid)
+    return {"ok": True, "deleted": deleted}
 
 
 @app.get("/telegram/bot/profile")
