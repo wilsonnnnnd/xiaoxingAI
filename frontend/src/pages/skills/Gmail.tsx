@@ -64,7 +64,9 @@ const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
 function LogRow({ entry, usersMap }: { entry: LogEntry; usersMap: Map<number, string> }) {
     const { t } = useI18n()
-    const display = formatLogMessage(entry.msg, t)
+    // Strip [user#N] prefix from message — user is already shown as a badge
+    const stripped = entry.msg.replace(/\[user#\d+\]\s*/g, '')
+    const display = formatLogMessage(stripped, t)
     const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('✅') ? 'text-[#86efac]' : 'text-[#e2e8f0]')
     const userName = entry.user_id != null ? (usersMap.get(entry.user_id) ?? `#${entry.user_id}`) : null
     return (
