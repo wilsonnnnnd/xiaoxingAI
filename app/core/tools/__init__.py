@@ -76,17 +76,18 @@ from app.core.tools import fetch_email_tool  # noqa: E402, F401
 
 # ── Router ────────────────────────────────────────────────────────
 
-_ROUTER_PROMPT = """\
-你是一个工具调度器。根据用户消息，从下面的可用工具中选出需要调用的工具。
+def _load_router_prompt() -> str:
+    try:
+        from app.utils.prompt_loader import load_prompt
+        return load_prompt("router.txt")
+    except Exception:
+        # 内联备用（文件丢失时）
+        return (
+            "你是工具调度器。根据用户消息，从可用工具中选出需要调用的工具。\n"
+            "工具：{tools}\n用户消息：{message}\n"
+            "只输出 JSON 数组，不要任何其他文字。不需要工具时输出 []。"
+        )
 
-可用工具：
-{tools}
-
-用户消息：{message}
-
-只输出 JSON 数组，不要任何其他文字。不需要任何工具时输出 []。
-正确示例：["get_time"]  ["get_emails"]  ["get_emails","get_time"]  []
-"""
 
 
 def _keyword_match(message: str) -> list[str]:
@@ -98,10 +99,11 @@ def _keyword_match(message: str) -> list[str]:
 
 
 def _llm_route(message: str) -> tuple[list[str], int]:
+    prompt_template = _load_router_prompt()
     tools_desc = "\n".join(
         f"- {t.name}: {t.description}" for t in _registry.values()
     )
-    prompt = _ROUTER_PROMPT.format(tools=tools_desc, message=message)
+    prompt = prompt_template.format(tools=tools_desc, message=message)
     try:
         raw, tokens = call_router(prompt)
         m = re.search(r"\[.*?\]", raw, re.DOTALL)

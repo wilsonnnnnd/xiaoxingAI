@@ -544,6 +544,8 @@ _DEFAULT_PROMPTS = {
     "chat.txt",
     "user_profile.txt",
 }
+# 系统内部使用的 prompt，不暴露给前端
+_INTERNAL_PROMPTS = {"router.txt"}
 
 
 def _check_prompt_filename(filename: str) -> None:
@@ -566,7 +568,7 @@ def prompts_list(user: dict = Depends(auth_mod.current_user)):
     disk_files = sorted(
         str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/")
         for p in _PROMPTS_DIR.rglob("*.txt")
-        if p.is_file()
+        if p.is_file() and str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/") not in _INTERNAL_PROMPTS
     )
     user_names = db.list_user_prompt_names(user["id"])
     disk_set = set(disk_files)
