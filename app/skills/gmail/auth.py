@@ -57,7 +57,9 @@ def get_credentials(user_id: Optional[int] = None) -> Credentials:
 
 
 def get_oauth_url(redirect_uri: str, user_id: Optional[int] = None) -> str:
-    """生成 Google OAuth 授权 URL，并将 PKCE code_verifier 临时保存"""
+    """生成 Google OAuth 授权 URL，并将 PKCE code_verifier 临时保存。
+    user_id 通过 OAuth state 参数传递，供 callback 恢复，无需依赖已登录 JWT。
+    """
     if not CREDENTIALS_FILE.exists():
         raise FileNotFoundError(
             f"缺少 credentials.json，请从 Google Cloud Console 下载并放到：{CREDENTIALS_FILE}"
@@ -68,9 +70,12 @@ def get_oauth_url(redirect_uri: str, user_id: Optional[int] = None) -> str:
         scopes=SCOPES,
         redirect_uri=redirect_uri
     )
+    # 将 user_id 编码到 state，callback 中解析以正确保存 token
+    state = str(user_id) if user_id is not None else ""
     auth_url, _ = flow.authorization_url(
         access_type="offline",
-        prompt="consent"
+        prompt="consent",
+        state=state,
     )
 
     vpath = _verifier_path(user_id)

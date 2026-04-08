@@ -104,9 +104,20 @@ def ai_process(payload: EmailRequest):
 # Gmail OAuth
 # ─────────────────────────────────────────
 
+@app.get("/gmail/auth/url")
+def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_user)):
+    """返回 Gmail OAuth 授权 URL（JSON）。前端用此接口获取 URL 后由 JS 跳转，可携带 user_id。"""
+    try:
+        redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
+        url = get_oauth_url(redirect_uri, user_id=user["id"])
+        return {"url": url}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/gmail/auth")
 def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
-    """跳转到 Google OAuth 授权页面"""
+    """跳转到 Google OAuth 授权页面（浏览器直接跳转的兼容路由，无 JWT 时 user_id=None）"""
     user_id = user["id"] if user else None
     try:
         redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
@@ -120,8 +131,17 @@ def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_cur
 def gmail_callback(request: Request, code: str,
                    state: Optional[str] = None,
                    user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
-    """返回 Google OAuth 回调，保存 token"""
-    user_id = user["id"] if user else None
+    """返回 Google OAuth 回调，保存 token。优先从 state 参数恢复 user_id。"""
+    # 优先从 OAuth state 参数恢复 user_id（由 /gmail/auth/url 编码进去）
+    user_id = None
+    if state:
+        try:
+            user_id = int(state)
+        except (ValueError, TypeError):
+            pass
+    # 降级：若 state 未携带（旧路由 /gmail/auth 直接跳转），尝试 JWT
+    if user_id is None and user:
+        user_id = user["id"]
     try:
         redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
         exchange_code_for_token(code, redirect_uri, user_id=user_id)
@@ -464,7 +484,7 @@ _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 
 @app.get("/config")
-def config_get():
+def config_get(user: dict = Depends(auth_mod.require_admin)):
     """返回当前运行时配置（从内存读取，与 .env 一致）"""
     return {
         "LLM_BACKEND":        app_config.LLM_BACKEND,
@@ -488,7 +508,7 @@ def config_get():
 
 
 @app.post("/config")
-def config_update(payload: Dict[str, str]):
+def config_update(payload: Dict[str, str], user: dict = Depends(auth_mod.require_admin)):
     """更新 .env 文件并热重载配置，无需重启服务"""
     if not _ENV_PATH.exists():
         raise HTTPException(status_code=500, detail=".env 文件不存在，请先创建")
@@ -694,7 +714,7 @@ def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod
     auth_mod.assert_self_or_admin(user, user_id)
     if not db.get_user_by_id(user_id):
         raise HTTPException(status_code=404, detail="用户不存在")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updates = payload.model_dump(exclude_unset=True)
     if updates:
         db.update_user(user_id, **updates)
     row = db.get_user_by_id(user_id)
@@ -736,7 +756,7 @@ def bot_update(user_id: int, bot_id: int, payload: BotUpdate, user: dict = Depen
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Bot 不存在")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updates = payload.model_dump(exclude_unset=True)
     if updates:
         db.update_bot(bot_id, **updates)
     return db.get_bot(bot_id)
@@ -799,7 +819,7 @@ def db_prompt_update(prompt_id: int, payload: PromptUpdate, user: dict = Depends
         raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可修改")
     if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="无权修改")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updates = payload.model_dump(exclude_unset=True)
     if updates:
         db.update_prompt(prompt_id, **updates)
     return db.get_prompt(prompt_id)

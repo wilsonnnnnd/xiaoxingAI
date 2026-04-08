@@ -94,14 +94,12 @@ export default function Gmail() {
     const { data: stats } = useQuery({ queryKey: ['dbStats'], queryFn: getDbStats, refetchInterval: 10_000 })
 
 
-    const { data: emailLogs = [] } = useQuery({
-        queryKey: ['logs', 'email'],
-        queryFn: () => getLogs(200, 'email'),
-        // disable frequent polling — logs were being fetched every 2s
+    const { data: displayLogs = [] } = useQuery({
+        queryKey: ['logs', logFilter],
+        queryFn: () => getLogs(200, logFilter === 'all' ? undefined : 'email'),
         refetchInterval: false,
         refetchOnWindowFocus: false,
     })
-    const displayLogs = emailLogs
 
 
     useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [displayLogs.length])
@@ -165,7 +163,7 @@ export default function Gmail() {
         },
     })
 
-    const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs', 'email'] }) })
+    const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }) })
     const tgMut = useMutation({ mutationFn: testTelegram, onSuccess: () => setNotice(t('home.tg.test_ok')) })
 
     const workerRunning = worker?.running ?? false
@@ -182,10 +180,18 @@ export default function Gmail() {
                     : 'bg-[#431407] border-[#7c2d12] text-[#fbbf24]'
                     }`}>
                     {authorized ? '🔑 ' + t('home.auth.ok') : '⚠️ ' + t('home.auth.unauthorized')}
-                    <a href={getGmailAuthUrl()} target="_blank" rel="noopener noreferrer"
+                    <button
+                        onClick={async () => {
+                            try {
+                                const url = await getGmailAuthUrl()
+                                window.open(url, '_blank')
+                            } catch {
+                                window.open(`${window.location.origin}/api/gmail/auth`, '_blank')
+                            }
+                        }}
                         className="ml-2 px-2 py-0.5 rounded bg-[#334155] hover:bg-[#475569] text-[#e2e8f0] transition-colors">
                         {t('home.btn.google_auth')}
-                    </a>
+                    </button>
                 </div>
 
                 {notice && (

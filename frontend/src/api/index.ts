@@ -92,7 +92,8 @@ export const clearLogs = (log_type?: string) => api.delete('/worker/logs', { par
 
 // ── Gmail ────────────────────────────────────────────────────────
 
-export const getGmailAuthUrl = () => `${window.location.origin}/api/gmail/auth`
+export const getGmailAuthUrl = () =>
+  api.get<{ url: string }>('/gmail/auth/url').then(r => r.data.url)
 
 // ── Telegram Bot ─────────────────────────────────────────────────
 
