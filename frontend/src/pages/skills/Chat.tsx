@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../../i18n/useI18n'
 import { formatLogMessage } from '../../utils/formatLog'
-import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, type LogEntry } from '../../api'
+import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, getMe, listUsers, type LogEntry } from '../../api'
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
     return (
@@ -37,17 +37,18 @@ const LEVEL_CLS: Record<string, string> = {
 
 const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
-function LogRow({ entry }: { entry: LogEntry }) {
+function LogRow({ entry, usersMap }: { entry: LogEntry; usersMap: Map<number, string> }) {
     const { t } = useI18n()
-    const display = formatLogMessage(entry.msg, t)
-    const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('✅') ? 'text-[#86efac]' : 'text-[#e2e8f0]')
-    const typeCls = entry.log_type === 'chat'
-        ? 'bg-[#2d1b69] text-[#c4b5fd]'
-        : 'bg-[#1e3a5f] text-[#7dd3fc]'
+    const stripped = entry.msg.replace(/\[user#\d+\]\s*/g, '')
+    const display = formatLogMessage(stripped, t)
+    const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('\u2705') ? 'text-[#86efac]' : 'text-[#e2e8f0]')
+    const userName = entry.user_id != null ? (usersMap.get(entry.user_id) ?? `#${entry.user_id}`) : null
     return (
         <div className={`flex gap-2 py-0.5 font-mono text-xs leading-5 ${cls}`}>
             <span className="text-[#475569] shrink-0">[{getTime(entry.ts)}]</span>
-            <span className={`shrink-0 px-1 rounded text-[10px] self-center ${typeCls}`}>{entry.log_type ?? 'email'}</span>
+            {userName && (
+                <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#2d1b69] text-[#c4b5fd]">{userName}</span>
+            )}
             {entry.tokens > 0 && (
                 <span className="shrink-0 px-1 rounded text-[10px] self-center bg-[#1c2a1c] text-[#86efac]">{entry.tokens}t</span>
             )}
@@ -64,6 +65,14 @@ export default function Chat() {
     // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
     const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
     const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 8000 })
+    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
+    const { data: allUsers = [] } = useQuery({
+        queryKey: ['users'],
+        queryFn: async () => { try { return await listUsers() } catch { return [] } },
+        staleTime: 60_000,
+        enabled: me?.role === 'admin',
+    })
+    const usersMap = new Map<number, string>(allUsers.map((u: { id: number; email: string }) => [u.id, u.email.split('@')[0]]))
 
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
     type BotStatus = {
@@ -150,7 +159,7 @@ export default function Chat() {
                     <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3 h-[60vh] overflow-y-auto flex flex-col gap-0.5">
                         {chatLogs.length === 0
                             ? <div className="text-xs text-[#475569] text-center pt-8">—</div>
-                            : chatLogs.map((e) => <LogRow key={e.id} entry={e} />)
+                            : chatLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
                         }
                         <div ref={endRef} />
                     </div>
