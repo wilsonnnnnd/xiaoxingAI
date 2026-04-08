@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../i18n/useI18n'
 import { formatLogMessage } from '../../utils/formatLog'
 import {
     getGmailWorkStatus, getChatWorkStatus, getDbStats, getLogs, clearLogs,
     startWorker, stopWorker, pollNow, testTelegram,
-    getGmailAuthUrl, type LogEntry, type WorkerStatus,
+    getGmailAuthUrl, getMe, type LogEntry, type WorkerStatus,
 } from '../../api'
 
 export type BotStatus = {
@@ -83,15 +84,22 @@ function LogRow({ entry }: { entry: LogEntry }) {
 export default function Gmail() {
     const { t } = useI18n()
     const qc = useQueryClient()
+    const navigate = useNavigate()
 
     // Avoid continuous polling / cache-subscribe invalidation loops.
     // Fetch bot status only on demand (before user-triggered send actions).
     const [logFilter, setLogFilter] = useState<'all' | 'email'>('all')
     const [notice, setNotice] = useState("")
+    const [errMsg, setErrMsg] = useState("")
     const logEndRef = useRef<HTMLDivElement>(null)
+
+    const _apiErr = (e: unknown) =>
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        (e instanceof Error ? e.message : String(e))
 
     const { data: worker } = useQuery({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus, refetchOnWindowFocus: false })
     const { data: stats } = useQuery({ queryKey: ['dbStats'], queryFn: getDbStats, refetchInterval: 10_000 })
+    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
 
 
     const { data: displayLogs = [] } = useQuery({
@@ -115,6 +123,7 @@ export default function Gmail() {
             return startWorker()
         },
         onSuccess: (data) => {
+            setErrMsg('')
             try {
                 qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => ({
                     ...(old ?? {}),
@@ -124,6 +133,19 @@ export default function Gmail() {
                 /* ignore */
             }
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
+        },
+        onError: (e) => {
+            const raw = _apiErr(e)
+            // Worker 无法启动最常见原因：还没有用户开启 worker_enabled
+            if (raw.includes('worker_enabled')) {
+                setErrMsg(
+                    me?.role === 'admin'
+                        ? raw  // admin 看原始提示并能直接跳转
+                        : '当前账号未启用邮件轮询，请联系管理员开启 Worker 权限后再试'
+                )
+            } else {
+                setErrMsg(raw)
+            }
         },
     })
 
@@ -137,6 +159,7 @@ export default function Gmail() {
             return stopWorker()
         },
         onSuccess: (data) => {
+            setErrMsg('')
             try {
                 qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => ({
                     ...(old ?? {}),
@@ -147,6 +170,7 @@ export default function Gmail() {
             }
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
         },
+        onError: (e) => setErrMsg(_apiErr(e)),
     })
 
     const pollMut = useMutation({
@@ -159,12 +183,14 @@ export default function Gmail() {
             return pollNow()
         },
         onSuccess: () => {
+            setErrMsg('')
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
         },
+        onError: (e) => setErrMsg(_apiErr(e)),
     })
 
     const clearMut = useMutation({ mutationFn: () => clearLogs('email'), onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }) })
-    const tgMut = useMutation({ mutationFn: testTelegram, onSuccess: () => setNotice(t('home.tg.test_ok')) })
+    const tgMut = useMutation({ mutationFn: testTelegram, onSuccess: () => setNotice(t('home.tg.test_ok')), onError: (e) => setErrMsg(_apiErr(e)) })
 
     const workerRunning = worker?.running ?? false
     const authorized = stats?.has_token ?? false
@@ -198,6 +224,20 @@ export default function Gmail() {
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-[#052e16] border border-[#166534] text-[#86efac] rounded-lg text-xs">
                         {notice}
                         <button onClick={() => setNotice('')} className="hover:text-white">✕</button>
+                    </div>
+                )}
+                {errMsg && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#450a0a] border border-[#7f1d1d] text-[#fca5a5] rounded-lg text-xs flex-wrap">
+                        <span>❌ {errMsg}</span>
+                        {me?.role === 'admin' && errMsg.includes('worker_enabled') && (
+                            <button
+                                onClick={() => { setErrMsg(''); navigate('/users') }}
+                                className="px-2 py-0.5 rounded bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5] border border-[#991b1b] transition-colors whitespace-nowrap"
+                            >
+                                → 前往用户管理
+                            </button>
+                        )}
+                        <button onClick={() => setErrMsg('')} className="hover:text-white ml-auto">✕</button>
                     </div>
                 )}
 

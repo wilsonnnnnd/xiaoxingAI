@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n/useI18n'
-import { getConfig, saveConfig } from '../api'
+import { getConfig, saveConfig, getMe, getUser, updateUser } from '../api'
 import type { Config } from '../api'
 import { api } from '../api/client'
 
@@ -88,14 +88,19 @@ const POLL_QUERIES: [string, string][] = [
 export default function Settings() {
     const { t, lang, setLang } = useI18n()
     const [form, setForm] = useState<Partial<Config>>({})
-    const [priorities, setPriorities] = useState<Set<string>>(new Set())
     const [saving, setSaving] = useState(false)
     const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
+    const [myId, setMyId] = useState<number | null>(null)
+    const [userForm, setUserForm] = useState({ min_priority: 'medium', max_emails_per_run: 10, poll_interval: 300 })
     useEffect(() => {
-        getConfig().then(cfg => {
-            setForm(cfg)
-            const vals = (cfg.NOTIFY_MIN_PRIORITY ?? '').split(',').map(s => s.trim()).filter(Boolean)
-            setPriorities(new Set(vals))
+        getConfig().then(cfg => setForm(cfg)).catch(() => { })
+    }, [])
+    useEffect(() => {
+        getMe().then(me => {
+            setMyId(me.id)
+            return getUser(me.id)
+        }).then(u => {
+            setUserForm({ min_priority: u.min_priority, max_emails_per_run: u.max_emails_per_run, poll_interval: u.poll_interval })
         }).catch(() => { })
     }, [])
 
@@ -105,7 +110,10 @@ export default function Settings() {
         setSaving(true)
         setResult(null)
         try {
-            await saveConfig({ ...form, NOTIFY_MIN_PRIORITY: [...priorities].join(',') })
+            await Promise.all([
+                saveConfig(form),
+                ...(myId != null ? [updateUser(myId, userForm)] : []),
+            ])
             setResult({ ok: true, msg: t('result.saved') })
             if (form.UI_LANG === 'zh' || form.UI_LANG === 'en') setLang(form.UI_LANG)
         } catch (e: unknown) {
@@ -113,14 +121,6 @@ export default function Settings() {
         } finally {
             setSaving(false)
         }
-    }
-
-    function togglePriority(p: string) {
-        setPriorities(prev => {
-            const next = new Set(prev)
-            if (next.has(p)) { next.delete(p) } else { next.add(p) }
-            return next
-        })
     }
 
     return (
@@ -183,19 +183,19 @@ export default function Settings() {
                 </FormGrid>
             </Card>
 
-            {/* Gmail polling */}
+            {/* Gmail settings (merged) */}
             <Card title={t('card.gmail')}>
                 <FormGrid>
-                    <Field label={t('label.GMAIL_POLL_INTERVAL')} id="GMAIL_POLL_INTERVAL">
-                        <input id="GMAIL_POLL_INTERVAL" type="number" min={30} className={inputCls} value={form.GMAIL_POLL_INTERVAL ?? ''} onChange={e => set('GMAIL_POLL_INTERVAL', e.target.value)} />
-                    </Field>
-                    <Field label={t('label.GMAIL_POLL_MAX')} id="GMAIL_POLL_MAX">
-                        <input id="GMAIL_POLL_MAX" type="number" min={1} max={100} className={inputCls} value={form.GMAIL_POLL_MAX ?? ''} onChange={e => set('GMAIL_POLL_MAX', e.target.value)} />
-                    </Field>
-                    <Field label={t('label.GMAIL_POLL_QUERY')} id="GMAIL_POLL_QUERY">
-                        <select id="GMAIL_POLL_QUERY" className={inputCls} value={form.GMAIL_POLL_QUERY ?? ''} onChange={e => set('GMAIL_POLL_QUERY', e.target.value)}>
-                            {POLL_QUERIES.map(([q, k]) => <option key={q} value={q}>{t(k)}</option>)}
+                    <Field label={t('users.min_priority')} id="user_min_priority">
+                        <select id="user_min_priority" className={inputCls} value={userForm.min_priority} onChange={e => setUserForm(f => ({ ...f, min_priority: e.target.value }))}>
+                            {PRIORITIES.map(p => <option key={p} value={p}>{t(`opt.priority.${p}`)}</option>)}
                         </select>
+                    </Field>
+                    <Field label={t('users.max_emails')} id="user_max_emails">
+                        <input id="user_max_emails" type="number" min={1} max={100} className={inputCls} value={userForm.max_emails_per_run} onChange={e => setUserForm(f => ({ ...f, max_emails_per_run: Number(e.target.value) }))} />
+                    </Field>
+                    <Field label={t('users.poll_interval')} id="user_poll_interval">
+                        <input id="user_poll_interval" type="number" min={60} step={60} className={inputCls} value={userForm.poll_interval} onChange={e => setUserForm(f => ({ ...f, poll_interval: Number(e.target.value) }))} />
                     </Field>
                     <Field label={t('label.GMAIL_MARK_READ')} id="GMAIL_MARK_READ">
                         <select id="GMAIL_MARK_READ" className={inputCls} value={form.GMAIL_MARK_READ ?? 'true'} onChange={e => set('GMAIL_MARK_READ', e.target.value)}>
@@ -203,19 +203,18 @@ export default function Settings() {
                             <option value="false">{t('opt.GMAIL_MARK_READ.false')}</option>
                         </select>
                     </Field>
-                    <Field label={`${t('label.NOTIFY_MIN_PRIORITY')} — ${t('label.NOTIFY_MIN_PRIORITY_hint')}`} full>
-                        <div className="flex gap-4 py-1 flex-wrap">
-                            {PRIORITIES.map(p => (
-                                <label key={p} className="flex items-center gap-1.5 cursor-pointer text-sm text-[#e2e8f0]">
-                                    <input type="checkbox" checked={priorities.has(p)} onChange={() => togglePriority(p)} className="accent-[#6366f1] w-3.5 h-3.5" />
-                                    {t(`opt.priority.${p}`)}
-                                </label>
-                            ))}
-                        </div>
+                    <Field label={t('label.GMAIL_POLL_QUERY')} id="GMAIL_POLL_QUERY" full>
+                        <select id="GMAIL_POLL_QUERY" className={inputCls} value={form.GMAIL_POLL_QUERY ?? ''} onChange={e => set('GMAIL_POLL_QUERY', e.target.value)}>
+                            {POLL_QUERIES.map(([q, k]) => <option key={q} value={q}>{t(k)}</option>)}
+                        </select>
                     </Field>
                 </FormGrid>
             </Card>
-
+            {result && (
+                <div className={`mt-3 text-xs px-3 py-2 rounded-lg border ${result.ok ? 'bg-[#052e16] text-[#86efac] border-[#166534]' : 'bg-[#450a0a] text-[#fca5a5] border-[#7f1d1d]'}`}>
+                    {result.msg}
+                </div>
+            )}
             {/* Save bar */}
             <div className="flex items-center gap-3 flex-wrap">
                 <button
@@ -226,17 +225,16 @@ export default function Settings() {
                     {saving ? '…' : `${t('btn.save')}`}
                 </button>
                 <button
-                    onClick={() => getConfig().then(cfg => { setForm(cfg); const v = (cfg.NOTIFY_MIN_PRIORITY ?? '').split(',').map(s => s.trim()).filter(Boolean); setPriorities(new Set(v)) }).catch(() => { })}
+                    onClick={() => {
+                        getConfig().then(cfg => setForm(cfg)).catch(() => { })
+                        if (myId != null) getUser(myId).then(u => setUserForm({ min_priority: u.min_priority, max_emails_per_run: u.max_emails_per_run, poll_interval: u.poll_interval })).catch(() => { })
+                    }}
                     className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#334155] hover:bg-[#475569] text-white transition-colors"
                 >
                     {t('btn.reload')}
                 </button>
             </div>
-            {result && (
-                <div className={`mt-3 text-xs px-3 py-2 rounded-lg border ${result.ok ? 'bg-[#052e16] text-[#86efac] border-[#166534]' : 'bg-[#450a0a] text-[#fca5a5] border-[#7f1d1d]'}`}>
-                    {result.msg}
-                </div>
-            )}
+
         </div>
     )
 }

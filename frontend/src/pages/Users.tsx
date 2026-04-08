@@ -203,9 +203,6 @@ function UserPanel({ user }: UserPanelProps) {
     const [addingBot, setAddingBot] = useState(false)
     const [settingsForm, setSettingsForm] = useState({
         worker_enabled: user.worker_enabled,
-        min_priority: user.min_priority,
-        max_emails_per_run: user.max_emails_per_run,
-        poll_interval: user.poll_interval,
     })
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
@@ -257,51 +254,15 @@ function UserPanel({ user }: UserPanelProps) {
                     {/* Settings */}
                     <div className="flex flex-col gap-3">
                         <h3 className="text-xs font-semibold text-[#64748b] uppercase tracking-wide">{t('users.section.settings')}</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <label className="flex items-center gap-2 text-sm text-[#94a3b8]">
-                                <input
-                                    type="checkbox"
-                                    checked={settingsForm.worker_enabled}
-                                    onChange={e => setSettingsForm(f => ({ ...f, worker_enabled: e.target.checked }))}
-                                    className="accent-[#3b82f6]"
-                                />
-                                {t('users.enabled')}
-                            </label>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs text-[#94a3b8]">{t('users.min_priority')}</label>
-                                <select
-                                    value={settingsForm.min_priority}
-                                    onChange={e => setSettingsForm(f => ({ ...f, min_priority: e.target.value }))}
-                                    className={`${inputCls} w-full`}
-                                >
-                                    {['high', 'medium', 'low'].map(p => (
-                                        <option key={p} value={p}>{t(`opt.priority.${p}`)}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs text-[#94a3b8]">{t('users.max_emails')}</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={100}
-                                    value={settingsForm.max_emails_per_run}
-                                    onChange={e => setSettingsForm(f => ({ ...f, max_emails_per_run: Number(e.target.value) }))}
-                                    className={`${inputCls} w-full`}
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs text-[#94a3b8]">{t('users.poll_interval')}</label>
-                                <input
-                                    type="number"
-                                    min={60}
-                                    step={60}
-                                    value={settingsForm.poll_interval}
-                                    onChange={e => setSettingsForm(f => ({ ...f, poll_interval: Number(e.target.value) }))}
-                                    className={`${inputCls} w-full`}
-                                />
-                            </div>
-                        </div>
+                        <label className="flex items-center gap-2 text-sm text-[#94a3b8]">
+                            <input
+                                type="checkbox"
+                                checked={settingsForm.worker_enabled}
+                                onChange={e => setSettingsForm(f => ({ ...f, worker_enabled: e.target.checked }))}
+                                className="accent-[#3b82f6]"
+                            />
+                            {t('users.enabled')}
+                        </label>
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={handleSave}
