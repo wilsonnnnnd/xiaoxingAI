@@ -14,7 +14,10 @@
 - 📱 **Telegram Push (Multi-bot)** — Each user binds their own Telegram Bot; AI-written HTML notifications sent to each user's designated chat
 - 💬 **Telegram Bot Chat (Multi-bot)** — Multiple Telegram Bots run simultaneously; each maintains its own conversation history, user profile, and (optionally) a custom system prompt
 - 👤 **Per-bot User Profile** — AI builds a profile from each bot's chat history; auto-updated at midnight and fed back into subsequent conversations
-- 🔐 **JWT Authentication** — Admin login with bcrypt-hashed passwords; JWT (HS256) with Redis-based token versioning for instant revocation
+- �️ **Tool System** — Telegram bot can call built-in tools (`get_time`, `get_emails`, `fetch_email`) based on message intent; a lightweight Router LLM (Qwen2.5-1.5B on port 8002) dispatches tool calls with keyword-based fallback; the dispatch prompt (`router.txt`) is hot-reloaded and excluded from the prompt editor UI
+- 🔒 **Thread-safe Chat History** — Per-bot `threading.Lock` prevents race conditions when multiple bots receive concurrent messages
+- 📊 **Structured Logging** — HTTP request timing middleware, LLM call performance (latency + tokens), Redis cache hit/miss, retry tracking, and login audit log
+- �🔐 **JWT Authentication** — Admin login with bcrypt-hashed passwords; JWT (HS256) with Redis-based token versioning for instant revocation
 - 👥 **User Management** — Admin can create and manage regular users; each user controls their own Gmail worker, bots, and prompts
 - 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) persisted in PostgreSQL, isolated per user
 - 🔄 **Deduplication** — Processed email IDs stored per (user_id, email_id) pair; Redis SET NX prevents duplicate processing across restarts
@@ -39,6 +42,7 @@
 - **LLM backend** — either:
   - Local: llama.cpp llama-server (listening on 127.0.0.2:8001)
   - Cloud: OpenAI API key
+- **Router LLM (optional)** — second llama-server on port 8002 (Qwen2.5-1.5B recommended) for AI-driven tool dispatch; falls back to keyword matching if unavailable
 
 ---
 
@@ -107,6 +111,8 @@ Edit `.env`:
 | `OPENAI_API_KEY` | OpenAI API key (required when LLM_BACKEND=openai) |
 | `POSTGRES_DSN` | PostgreSQL DSN (default: postgresql://postgres:postgres@localhost:5432/xiaoxing) |
 | `REDIS_URL` | Redis URL (default: redis://localhost:6380) |
+| `ROUTER_API_URL` | Router LLM endpoint (default: http://127.0.0.1:8002/v1/chat/completions) |
+| `ROUTER_MODEL` | Router model name (default: local-router) |
 
 ### 6. Place Google Credentials
 
@@ -200,7 +206,12 @@ xiaoxing/
 │   │   ├── llm.py              # LLM client (local / OpenAI)
 │   │   ├── redis_client.py     # Redis helpers (history, queue, dedup)
 │   │   ├── telegram.py         # Telegram sender + HTML sanitiser
-│   │   └── ws.py               # WebSocket publisher (status push)
+│   │   ├── ws.py               # WebSocket publisher (status push)
+│   │   └── tools/              # Tool registry + Router LLM dispatcher
+│   │       ├── __init__.py     # Registry, route_and_execute()
+│   │       ├── time_tool.py    # get_time — server timestamp
+│   │       ├── emails_tool.py  # get_emails — DB records per user
+│   │       └── fetch_email_tool.py  # fetch_email — live Gmail pull + AI summary
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 flow (per-user token storage)
@@ -213,6 +224,7 @@ xiaoxing/
 │   │   └── prompt_loader.py    # Load prompt files from app/prompts/
 │   └── prompts/
 │       ├── chat.txt
+│       ├── router.txt          # Tool dispatch prompt (internal, not shown in UI)
 │       ├── user_profile.txt
 │       └── gmail/
 │           ├── email_analysis.txt
@@ -349,6 +361,20 @@ LLM_BACKEND=local
 LLM_API_URL=http://127.0.0.2:8001/v1/chat/completions
 LLM_MODEL=local-model
 ```
+
+### Option C — Router LLM (optional, for tool dispatch)
+
+A second, lightweight model handles tool intent detection; the main LLM handles chat replies.
+
+1. Start a second llama-server on 127.0.0.1:8002 with a small model (Qwen2.5-1.5B recommended)
+2. Set in `.env`:
+
+```ini
+ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
+ROUTER_MODEL=local-router
+```
+
+If `ROUTER_API_URL` is not set or the endpoint is unreachable, tool dispatch falls back to keyword matching automatically.
 
 ### Option B — OpenAI API
 

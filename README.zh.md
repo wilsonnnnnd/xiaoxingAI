@@ -14,7 +14,10 @@
 - 📱 **Telegram 多 Bot 推送** — 每个用户绑定自己的 Telegram Bot，AI 自动撰写 HTML 格式通知并发送到各自的对话
 - 💬 **多 Bot 实时对话** — 多个 Telegram Bot 同时运行，每个 Bot 维护独立的对话历史、用户画像，并可绑定自定义系统 Prompt
 - 👤 **Bot 用户画像** — AI 从每个 Bot 的聊天记录中构建用户画像，每日凌晨自动更新并融入后续对话
-- 🔐 **JWT 身份认证** — 管理员使用 bcrypt 加密密码登录；JWT (HS256) 结合 Redis 版本号控制，支持即时吊销
+- �️ **AI 工具系统** — Telegram Bot 可根据消息意图调用内置工具（`get_time`、`get_emails`、`fetch_email`）；轻量 Router LLM（Qwen2.5-1.5B，端口 8002）调度工具调用，关键词匹配作为备选方案；调度 Prompt（`router.txt`）支持热重载，不在 UI 的 Prompt 编辑器中显示
+- 🔒 **线程安全的对话历史** — 每个 Bot 独立一个 `threading.Lock`，防止并发消息时的竞争条件
+- 📊 **结构化日志** — HTTP 请求耗时中间件、LLM 调用性能计量（延迟 + token 数）、Redis 缓存命中/未命中、重试追踪、登录审计日志
+- �🔐 **JWT 身份认证** — 管理员使用 bcrypt 加密密码登录；JWT (HS256) 结合 Redis 版本号控制，支持即时吊销
 - 👥 **用户管理** — 管理员可创建和管理普通用户；每个用户自主管理自己的 Gmail Worker、Bot 和 Prompt
 - 🗃️ **邮件记录持久化** — 每封处理过的邮件（原始正文、AI 分析、摘要、Telegram 消息、token 数量）均写入 PostgreSQL，按用户隔离
 - 🔄 **去重保障** — 已处理邮件 ID 按 (user_id, email_id) 组合存储；Redis SET NX 防止重启后重复处理
@@ -39,6 +42,7 @@
 - **LLM 后端**，二选一：
   - 本地：llama.cpp llama-server（监听 127.0.0.2:8001）
   - 云端：OpenAI API Key
+- **Router LLM（可选）** — 第二个 llama-server，端口 8002（推荐 Qwen2.5-1.5B），用于 AI 工具调度；不可该地址时自动降级为关键词匹配
 
 ---
 
@@ -107,6 +111,8 @@ copy .env.example .env        # Windows
 | `OPENAI_API_KEY` | OpenAI API Key（LLM_BACKEND=openai 时必填） |
 | `POSTGRES_DSN` | PostgreSQL 连接字符串（默认 postgresql://postgres:postgres@localhost:5432/xiaoxing） |
 | `REDIS_URL` | Redis 连接地址（默认 redis://localhost:6380） |
+| `ROUTER_API_URL` | Router LLM 地址（默认 http://127.0.0.1:8002/v1/chat/completions） |
+| `ROUTER_MODEL` | Router 模型名称（默认 local-router） |
 
 ### 6. 放置 Google OAuth 凭据
 
@@ -200,7 +206,12 @@ xiaoxing/
 │   │   ├── llm.py              # LLM 客户端（本地 / OpenAI）
 │   │   ├── redis_client.py     # Redis 工具（历史、队列、去重）
 │   │   ├── telegram.py         # Telegram 消息发送 + HTML 清洗
-│   │   └── ws.py               # WebSocket 推送（Worker / Bot 状态）
+│   │   ├── ws.py               # WebSocket 推送（Worker / Bot 状态）
+│   │   └── tools/              # 工具注册表 + Router LLM 调度器
+│   │       ├── __init__.py     # 工具注册表、route_and_execute()
+│   │       ├── time_tool.py    # get_time — 当前服务器时间
+│   │       ├── emails_tool.py  # get_emails — 数据库邮件记录查询
+│   │       └── fetch_email_tool.py  # fetch_email — 实时拉取 Gmail + AI 摘要
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 授权流程（按用户存储 token）
@@ -213,6 +224,7 @@ xiaoxing/
 │   │   └── prompt_loader.py    # 加载 app/prompts/ 下的文件
 │   └── prompts/
 │       ├── chat.txt
+│       ├── router.txt          # 工具调度 Prompt（内部使用，不在 UI 中显示）
 │       ├── user_profile.txt
 │       └── gmail/
 │           ├── email_analysis.txt
@@ -349,6 +361,20 @@ LLM_BACKEND=local
 LLM_API_URL=http://127.0.0.2:8001/v1/chat/completions
 LLM_MODEL=local-model
 ```
+
+### 方案 C — Router LLM（可选，用于工具调度）
+
+第二个轻量级模型专门处理工具意图检测，主模型专注于对话回复。
+
+1. 在 127.0.0.1:8002 启动第二个 llama-server，加载轻量级模型（推荐 Qwen2.5-1.5B）
+2. 在 `.env` 中配置：
+
+```ini
+ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
+ROUTER_MODEL=local-router
+```
+
+如果未配置 `ROUTER_API_URL` 或端点不可达，工具调度将自动降级为关键词匹配。
 
 ### 方案 B — OpenAI API
 
