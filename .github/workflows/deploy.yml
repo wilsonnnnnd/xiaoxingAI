@@ -19,6 +19,7 @@ jobs:
           port: ${{ secrets.PORT }}
           script: |
             set -e
+            export PATH="/home/ubuntu/.nvm/versions/node/v22.22.2/bin:$PATH"
             cd ~/xiaoxingAI
 
             echo "📥 Pull latest code"
