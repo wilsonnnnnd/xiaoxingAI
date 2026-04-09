@@ -6,7 +6,7 @@ import { formatLogMessage } from '../../utils/formatLog'
 import {
     getGmailWorkStatus, getChatWorkStatus, getDbStats, getLogs, clearLogs,
     startWorker, stopWorker, pollNow, testTelegram,
-    getGmailAuthUrl, getMe, listUsers, type LogEntry, type WorkerStatus,
+    getGmailAuthUrl, getMe, listUsers, listBots, type LogEntry, type WorkerStatus,
 } from '../../api'
 
 export type BotStatus = {
@@ -118,6 +118,13 @@ export default function Gmail() {
     })
     const usersMap = new Map<number, string>(allUsers.map((u: { id: number; email: string }) => [u.id, u.email.split('@')[0]]))
 
+    const { data: myBots = [] } = useQuery({
+        queryKey: ['bots', me?.id],
+        queryFn: () => listBots(me!.id),
+        enabled: me != null,
+        staleTime: 30_000,
+    })
+
 
     useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [displayLogs.length])
 
@@ -209,6 +216,12 @@ export default function Gmail() {
 
     const workerRunning = worker?.running ?? false
     const authorized = stats?.has_token ?? false
+    // bots that can receive Gmail notifications (mode 'all' or 'notify')
+    const notifyBots = (myBots as { bot_mode: string; token: string; chat_id: string }[]).filter(
+        b => b.bot_mode === 'all' || b.bot_mode === 'notify'
+    )
+    const hasNotifyBot = notifyBots.length > 0
+    const canStart = authorized && hasNotifyBot
 
     const fmt = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : '—'
 
@@ -283,11 +296,41 @@ export default function Gmail() {
                                 : t('home.worker.stopped')}
                         </span>
                     </div>
+
+                    {/* Prerequisite checklist */}
+                    {!workerRunning && (
+                        <div className="flex flex-col gap-1.5 bg-[#0b0e14] border border-[#273347] rounded-lg px-3 py-2.5">
+                            <p className="text-[10px] text-[#64748b] mb-0.5">{t('worker.prereq.title')}</p>
+                            <div className={`flex items-center gap-2 text-xs ${authorized ? 'text-[#86efac]' : 'text-[#fbbf24]'}`}>
+                                <span>{authorized ? '✅' : '⚠️'}</span>
+                                <span>{t('worker.prereq.google')}</span>
+                                {!authorized && (
+                                    <button
+                                        onClick={async () => {
+                                            try { window.open(await getGmailAuthUrl(), '_blank') }
+                                            catch { window.open(`${window.location.origin}/api/gmail/auth`, '_blank') }
+                                        }}
+                                        className="ml-1 px-2 py-0.5 rounded bg-[#334155] hover:bg-[#475569] text-[#e2e8f0] transition-colors"
+                                    >
+                                        {t('home.btn.google_auth')}
+                                    </button>
+                                )}
+                            </div>
+                            <div className={`flex items-center gap-2 text-xs ${hasNotifyBot ? 'text-[#86efac]' : 'text-[#fbbf24]'}`}>
+                                <span>{hasNotifyBot ? '✅' : '⚠️'}</span>
+                                <span>{t('worker.prereq.bot')}</span>
+                                {!hasNotifyBot && (
+                                    <a href="/settings" className="ml-1 px-2 py-0.5 rounded bg-[#334155] hover:bg-[#475569] text-[#e2e8f0] transition-colors">
+                                        {t('worker.prereq.bot_goto')}
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-2 flex-wrap">
-
-
                         {!workerRunning
-                            ? <Btn variant="green" onClick={() => startMut.mutate()} disabled={startMut.isPending}>{t('home.btn.start')}</Btn>
+                            ? <Btn variant="green" onClick={() => startMut.mutate()} disabled={startMut.isPending || !canStart}>{t('home.btn.start')}</Btn>
                             : <Btn variant="red" onClick={() => stopMut.mutate()} disabled={stopMut.isPending}>{t('home.btn.stop')}</Btn>
                         }
                         <Btn variant="blue" onClick={() => pollMut.mutate()} disabled={pollMut.isPending}>{t('home.btn.poll_now')}</Btn>
@@ -323,7 +366,7 @@ export default function Gmail() {
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[#cbd5e1]">{t('home.worker.log_title')}</span>
                     <div className="ml-auto">
-                        <Btn variant="ghost" onClick={() => clearMut.mutate()}>{t('home.worker.log_clear')}</Btn>
+                        <Btn variant="ghost" onClick={() => clearMut.mutate()} disabled={clearMut.isPending || displayLogs.length === 0}>{t('home.worker.log_clear')}</Btn>
                     </div>
                 </div>
 

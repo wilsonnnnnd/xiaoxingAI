@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../../i18n/useI18n'
 import { formatLogMessage } from '../../utils/formatLog'
-import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, getMe, listUsers, type LogEntry } from '../../api'
+import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, getMe, listUsers, listBots, type LogEntry } from '../../api'
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
     return (
@@ -74,6 +74,13 @@ export default function Chat() {
     })
     const usersMap = new Map<number, string>(allUsers.map((u: { id: number; email: string }) => [u.id, u.email.split('@')[0]]))
 
+    const { data: myBots = [] } = useQuery({
+        queryKey: ['bots', me?.id],
+        queryFn: () => listBots(me!.id),
+        enabled: me != null,
+        staleTime: 30_000,
+    })
+
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
     type BotStatus = {
         running?: boolean
@@ -128,7 +135,9 @@ export default function Chat() {
     })
 
     const botRunning = botQuery.data?.running ?? false
-
+    const chatBots = (myBots as { bot_mode: string }[]).filter(b => b.bot_mode === 'all' || b.bot_mode === 'chat')
+    const hasChatBot = chatBots.length > 0
+    const canStart = hasChatBot
     
 
     return (
@@ -152,16 +161,35 @@ export default function Chat() {
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    {/* Prerequisite checklist */}
+                    {!botRunning && (
+                        <div className="flex flex-col gap-1.5 bg-[#0b0e14] border border-[#273347] rounded-lg px-3 py-2.5">
+                            <p className="text-[10px] text-[#64748b] mb-0.5">{t('worker.prereq.title')}</p>
+                            <div className={`flex items-center gap-2 text-xs ${hasChatBot ? 'text-[#86efac]' : 'text-[#fbbf24]'}`}>
+                                <span>{hasChatBot ? '✅' : '⚠️'}</span>
+                                <span>{t('worker.prereq.chat_bot')}</span>
+                                {!hasChatBot && (
+                                    <a href="/settings" className="ml-1 px-2 py-0.5 rounded bg-[#334155] hover:bg-[#475569] text-[#e2e8f0] transition-colors">
+                                        {t('worker.prereq.bot_goto')}
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
+                    <div className="flex items-center gap-2 flex-wrap">
                         {!botRunning
-                            ? <Btn variant="green" onClick={() => botStartMut.mutate()} disabled={botStartMut.isPending}>{t('home.btn.bot_start')}</Btn>
+                            ? <Btn variant="green" onClick={() => botStartMut.mutate()} disabled={botStartMut.isPending || !canStart}>{t('home.btn.bot_start')}</Btn>
                             : <Btn variant="red" onClick={() => botStopMut.mutate()} disabled={botStopMut.isPending}>{t('home.btn.bot_stop')}</Btn>
                         }
-                        <Btn onClick={() => botClearMut.mutate()} disabled={botClearMut.isPending}>{t('home.btn.bot_clear')}</Btn>
                     </div>
 
-                    <div className="text-xs text-[#64748b] font-semibold">{t('home.bot.log_title')}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-[#cbd5e1]">{t('home.bot.log_title')}</span>
+                        <div className="ml-auto">
+                            <Btn variant="ghost" onClick={() => botClearMut.mutate()} disabled={botClearMut.isPending || chatLogs.length === 0}>{t('home.worker.log_clear')}</Btn>
+                        </div>
+                    </div>
                     <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3 h-[60vh] overflow-y-auto flex flex-col gap-0.5">
                         {chatLogs.length === 0
                             ? <div className="text-xs text-[#475569] text-center pt-8">—</div>
