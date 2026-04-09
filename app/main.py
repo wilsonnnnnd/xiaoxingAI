@@ -299,9 +299,9 @@ def worker_logs_clear(log_type: Optional[str] = None,
 
 
 @app.get("/db/stats")
-def db_stats():
-    """返回数据库统计信息"""
-    return db.get_stats()
+def db_stats(user: dict = Depends(auth_mod.current_user)):
+    """返回数据库统计信息，has_token 按当前用户 ID 过滤"""
+    return db.get_stats(user_id=user["id"])
 
 
 # ─────────────────────────────────────────
@@ -705,16 +705,16 @@ class PromptUpdate(BaseModel):
 
 @app.post("/auth/login")
 def admin_login(payload: AdminLoginRequest):
-    """管理员账号密码登录，返回 JWT"""
+    """账号密码登录，返回 JWT（admin 和普通用户均可登录）"""
     user = db.get_user_by_email(payload.email)
-    if not user or user["role"] != "admin" or not user.get("password_hash"):
-        logger.warning("[auth] 登录失败 (user not found / not admin): %s", payload.email)
+    if not user or not user.get("password_hash"):
+        logger.warning("[auth] 登录失败 (user not found): %s", payload.email)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     if not auth_mod.verify_password(payload.password, user["password_hash"]):
         logger.warning("[auth] 登录失败 (wrong password): %s", payload.email)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     token = auth_mod.create_access_token(user)
-    logger.info("[auth] 登录成功: %s", payload.email)
+    logger.info("[auth] 登录成功: %s (role=%s)", payload.email, user["role"])
     return {"access_token": token, "token_type": "bearer"}
 
 

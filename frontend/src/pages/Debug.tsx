@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useI18n } from '../i18n/useI18n'
 import { api } from '../api/client'
+import { getMe } from '../api'
 
 const SAMPLE = {
     subject: 'Interview Invitation - Software Engineer',
@@ -81,6 +83,17 @@ const POLL_QUERIES: [string, string][] = [
 
 export default function Debug() {
     const { t } = useI18n()
+    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
+
+    if (me && me.role !== 'admin') {
+        return (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+                <div className="text-4xl">🔒</div>
+                <div className="text-base font-semibold text-[#e2e8f0]">{t('error.admin_only')}</div>
+                <div className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</div>
+            </div>
+        )
+    }
 
     // Health
     const [health, setHealth] = useState<{ ok: boolean; msg: string } | null>(null)

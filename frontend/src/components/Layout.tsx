@@ -1,14 +1,16 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useI18n } from '../i18n/useI18n'
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getMe } from '../api'
 
 const NAV = [
-  { to: '/home', key: 'nav.home' },
-  { to: '/skill', key: 'nav.skill' },
-  { to: '/users', key: 'nav.users' },
-  { to: '/settings', key: 'nav.settings' },
-  { to: '/prompts', key: 'nav.prompts' },
-  { to: '/debug', key: 'nav.debug' },
+  { to: '/home', key: 'nav.home', adminOnly: false },
+  { to: '/skill', key: 'nav.skill', adminOnly: false },
+  { to: '/users', key: 'nav.users', adminOnly: true },
+  { to: '/settings', key: 'nav.settings', adminOnly: false },
+  { to: '/prompts', key: 'nav.prompts', adminOnly: false },
+  { to: '/debug', key: 'nav.debug', adminOnly: true },
 ]
 
 export default function Layout() {
@@ -16,6 +18,8 @@ export default function Layout() {
   const [skillOpen, setSkillOpen] = useState(false)
   const [imgOk, setImgOk] = useState(true)
   const skillRef = useRef<HTMLDivElement | null>(null)
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
+  const isAdmin = me?.role === 'admin'
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (skillRef.current && !skillRef.current.contains(e.target as Node)) {
@@ -60,8 +64,23 @@ export default function Layout() {
           </div>
         </div>
 
+        {/* Current user info */}
+        {me && (
+          <div className="px-4 py-2 border-b border-[#1f2a3a] flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#60a5fa] to-[#7c3aed] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+              {me.email[0].toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="text-xs text-[#e2e8f0] truncate">{me.email}</div>
+              <div className="text-[10px] text-[#64748b] mt-0.5">
+                {isAdmin ? t('sidebar.role.admin') : t('sidebar.role.user')}
+              </div>
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3">
-          {NAV.map(({ to, key }) => {
+          {NAV.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ to, key }) => {
             if (key === 'nav.skill') {
               return (
                 <div key="skill" className="relative" ref={skillRef}>

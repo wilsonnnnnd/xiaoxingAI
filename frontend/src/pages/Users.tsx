@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n/useI18n'
 import {
-  listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser,
+  listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe,
 } from '../api'
 import type { User, Bot } from '../api'
 
@@ -407,10 +407,21 @@ export default function Users() {
   const { t } = useI18n()
   const [addingUser, setAddingUser] = useState(false)
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
   const { data: users, isLoading, isError } = useQuery({
     queryKey: ['users'],
     queryFn: listUsers,
   })
+
+  if (me && me.role !== 'admin') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+        <div className="text-4xl">🔒</div>
+        <div className="text-base font-semibold text-[#e2e8f0]">{t('error.admin_only')}</div>
+        <div className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 flex flex-col gap-6">
