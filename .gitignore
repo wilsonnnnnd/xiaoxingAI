@@ -8,12 +8,11 @@ sent_ids.json
 **/__pycache__/
 *.py[cod]
 .venv/
-API.md
 frontend/package-lock.json
 frontend/node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.local
-test、
-/doc
+# API.md
+# /doc
 /test
