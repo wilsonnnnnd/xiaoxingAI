@@ -25,7 +25,8 @@
 - 🗄️ **PostgreSQL Database** — 8-table schema: user, bot, prompts, oauth_tokens, email_records, worker_stats, user_profile, log
 - ⚡ **Redis Cache & Queue** — LLM result caching, chat session persistence (7 d TTL), update deduplication, async task queue; degrades gracefully if unavailable
 - 📋 **Typed Logs with Token Tracking** — Logs categorised (email / chat), token usage recorded per entry, displayed with colour-coded badges on the dashboard
-- 🖥️ **React Web UI** — Dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Settings, Prompt Editor, Debug Tools, User Management
+- 🖥️ **React Web UI** — Dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Skills Hub, Settings, Prompt Editor, Debug Tools, User Management
+- 🧠 **Modular Skills** — Skills are organized under a dedicated Skills page (`/skill`); currently includes Gmail (email processing) and Chat (Telegram bot) sub-pages, each with independent worker controls and live log feeds
 - ✏️ **Prompt Editor** — System-wide built-in prompts + per-user custom prompts, editable from the UI; each bot can be assigned a custom chat prompt
 - 🔧 **Hot Reload Config** — All settings update live via the web UI without restarting the server
 - 🌐 **i18n** — English / Chinese UI, language preference persisted via Zustand
@@ -113,6 +114,8 @@ Edit `.env`:
 | `REDIS_URL` | Redis URL (default: redis://localhost:6380) |
 | `ROUTER_API_URL` | Router LLM endpoint (default: http://127.0.0.1:8002/v1/chat/completions) |
 | `ROUTER_MODEL` | Router model name (default: local-router) |
+| `FRONTEND_URL` | Frontend origin for OAuth callback and CORS (default: http://localhost:5173) |
+| `UI_LANG` | Default UI language — `en` or `zh` (default: en) |
 
 ### 6. Place Google Credentials
 
@@ -236,15 +239,16 @@ xiaoxing/
 │       ├── components/         # Layout, Sidebar
 │       ├── i18n/               # EN/ZH translations, Zustand language store
 │       └── pages/
-│           ├── Home.tsx        # Dashboard: worker controls, step log
+│           ├── Home.tsx        # Dashboard: health status, quick links
+│           ├── Skill.tsx       # Skills hub index (Gmail / Chat)
 │           ├── Settings.tsx    # Config editor + connection tests
 │           ├── Prompts.tsx     # Prompt file editor
 │           ├── Debug.tsx       # Manual AI/Gmail debug tools
 │           ├── Users.tsx       # User & bot management (admin)
 │           ├── Login.tsx       # JWT login page
 │           └── skills/
-│               ├── Chat.tsx
-│               └── Gmail.tsx
+│               ├── Gmail.tsx   # Gmail worker controls + live log
+│               └── Chat.tsx    # Telegram bot controls + live log
 ├── credentials.json            # Google OAuth2 credentials (not in git)
 ├── .env                        # Runtime config (not in git)
 ├── .env.example

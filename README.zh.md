@@ -25,7 +25,8 @@
 - 🗄️ **PostgreSQL 数据库** — 8 张表：user、bot、prompts、oauth_tokens、email_records、worker_stats、user_profile、log
 - ⚡ **Redis 缓存与队列** — LLM 结果缓存、聊天会话持久化（7 天 TTL）、消息去重、异步任务队列；Redis 不可达时自动降级
 - 📋 **分类日志与 Token 计量** — 日志按来源（email / chat）分类，每条记录 token 用量，主页带颜色徽章显示
-- 🖥️ **React Web 界面** — 深色主题 SPA（React + TypeScript + Vite + Tailwind CSS）：主页仪表盘、配置设置、Prompt 编辑器、调试工具、用户管理
+- 🖥️ **React Web 界面** — 深色主题 SPA（React + TypeScript + Vite + Tailwind CSS）：主页仪表盘、技能中心、配置设置、Prompt 编辑器、调试工具、用户管理
+- 🧠 **模块化技能** — 技能统一收录在专属技能页（`/skill`）；目前包含 Gmail（邮件处理）和 Chat（Telegram Bot）两个子页面，各自拥有独立的 Worker 控制面板和实时日志流
 - ✏️ **Prompt 管理** — 系统内置 Prompt + 每用户自定义 Prompt，均可在 UI 中编辑；每个 Bot 可绑定独立的对话 Prompt
 - 🔧 **配置热重载** — 所有设置通过 Web UI 实时生效，无需重启服务
 - 🌐 **双语界面** — 支持中文 / 英文切换，语言偏好通过 Zustand 持久化
@@ -113,6 +114,8 @@ copy .env.example .env        # Windows
 | `REDIS_URL` | Redis 连接地址（默认 redis://localhost:6380） |
 | `ROUTER_API_URL` | Router LLM 地址（默认 http://127.0.0.1:8002/v1/chat/completions） |
 | `ROUTER_MODEL` | Router 模型名称（默认 local-router） |
+| `FRONTEND_URL` | 前端来源地址，用于 OAuth 回调和 CORS（默认 http://localhost:5173） |
+| `UI_LANG` | 默认 UI 语言，`en` 或 `zh`（默认 en） |
 
 ### 6. 放置 Google OAuth 凭据
 
@@ -236,15 +239,16 @@ xiaoxing/
 │       ├── components/         # Layout、Sidebar
 │       ├── i18n/               # 中英文翻译，Zustand 语言状态
 │       └── pages/
-│           ├── Home.tsx        # 主页：Worker 控制、步骤日志
+│           ├── Home.tsx        # 主页：服务健康状态、快速入口
+│           ├── Skill.tsx       # 技能中心首页（Gmail / Chat）
 │           ├── Settings.tsx    # 配置编辑器 + 连接测试
 │           ├── Prompts.tsx     # Prompt 文件编辑器
 │           ├── Debug.tsx       # 手动 AI/Gmail 调试工具
 │           ├── Users.tsx       # 用户与 Bot 管理（管理员）
 │           ├── Login.tsx       # JWT 登录页
 │           └── skills/
-│               ├── Chat.tsx
-│               └── Gmail.tsx
+│               ├── Gmail.tsx   # Gmail Worker 控制面板 + 实时日志
+│               └── Chat.tsx    # Telegram Bot 控制面板 + 实时日志
 ├── credentials.json            # Google OAuth2 凭据（不入 git）
 ├── .env                        # 运行时配置（不入 git）
 ├── .env.example
