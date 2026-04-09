@@ -117,8 +117,8 @@ async def _poll_once(state: _UserWorkerState) -> None:
     min_priority  = user_row.get("min_priority") or None  # e.g. "high"
     mark_read     = config.GMAIL_MARK_READ
 
-    # 获取该用户的默认 Telegram Bot
-    bot = db.get_default_bot(user_id)
+    # 获取该用户的 Gmail 通知 Bot（mode='all' 或 'notify'）
+    notify_bots = db.get_notify_bots(user_id)
 
     async with state.get_lock():
         state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
@@ -183,20 +183,23 @@ async def _poll_once(state: _UserWorkerState) -> None:
                     )
                     continue
 
-                # 发送 Telegram（使用该用户的默认 Bot）
-                _wlog(f"✈️ 发送 Telegram：{subj}", user_id=user_id)
-                tg_token   = bot["token"]   if bot else None
-                tg_chat_id = bot["chat_id"] if bot else None
-                await asyncio.to_thread(
-                    send_message,
-                    result["telegram_message"],
-                    tg_chat_id,
-                    "HTML",
-                    tg_token,
-                )
-                state.stats["total_sent"] += 1
-                _wlog(f"✅ 已发送：{subj}",
-                      tokens=result.get("tokens", 0), user_id=user_id)
+                # 发送 Telegram（发送给所有通知 Bot）
+                if not notify_bots:
+                    _wlog(f"⚠️ 无通知 Bot（mode='all'/'notify'），跳过 Telegram 发送：{subj}",
+                          level="warn", user_id=user_id)
+                else:
+                    _wlog(f"✈️ 发送 Telegram：{subj}", user_id=user_id)
+                    for n_bot in notify_bots:
+                        await asyncio.to_thread(
+                            send_message,
+                            result["telegram_message"],
+                            n_bot["chat_id"],
+                            "HTML",
+                            n_bot["token"],
+                        )
+                    state.stats["total_sent"] += 1
+                    _wlog(f"✅ 已发送：{subj}",
+                          tokens=result.get("tokens", 0), user_id=user_id)
 
                 db.save_email_record(
                     email_id=email["id"], subject=subj,

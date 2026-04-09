@@ -671,6 +671,7 @@ class BotCreate(BaseModel):
     chat_id: str
     is_default: bool = False
     chat_prompt_id: Optional[int] = None
+    bot_mode: str = "all"
 
 
 class BotUpdate(BaseModel):
@@ -679,6 +680,10 @@ class BotUpdate(BaseModel):
     chat_id: Optional[str] = None
     is_default: Optional[bool] = None
     chat_prompt_id: Optional[int] = None
+    bot_mode: Optional[str] = None
+
+
+_VALID_BOT_MODES = {"all", "notify", "chat"}
 
 
 class PromptCreate(BaseModel):
@@ -785,6 +790,8 @@ def bot_create(user_id: int, payload: BotCreate, user: dict = Depends(auth_mod.c
     auth_mod.assert_self_or_admin(user, user_id)
     if not db.get_user_by_id(user_id):
         raise HTTPException(status_code=404, detail="用户不存在")
+    if payload.bot_mode not in _VALID_BOT_MODES:
+        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all'、'notify' 或 'chat'")
     bot = db.create_bot(
         user_id=user_id,
         name=payload.name,
@@ -792,6 +799,7 @@ def bot_create(user_id: int, payload: BotCreate, user: dict = Depends(auth_mod.c
         chat_id=payload.chat_id,
         is_default=payload.is_default,
         chat_prompt_id=payload.chat_prompt_id,
+        bot_mode=payload.bot_mode,
     )
     return bot
 
@@ -804,8 +812,10 @@ def bot_update(user_id: int, bot_id: int, payload: BotUpdate, user: dict = Depen
     if not existing or existing["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Bot 不存在")
     updates = payload.model_dump(exclude_unset=True)
+    if "bot_mode" in updates and updates["bot_mode"] not in _VALID_BOT_MODES:
+        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all'、'notify' 或 'chat'")
     if updates:
-        db.update_bot(bot_id, **updates)
+        db.update_bot(bot_id, user_id, **updates)
     return db.get_bot(bot_id)
 
 

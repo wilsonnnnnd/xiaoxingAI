@@ -29,7 +29,7 @@ function BotRow({ bot, userId }: BotRowProps) {
     const { t } = useI18n()
     const qc = useQueryClient()
     const [editing, setEditing] = useState(false)
-    const [form, setForm] = useState({ name: bot.name, token: bot.token, chat_id: bot.chat_id })
+    const [form, setForm] = useState({ name: bot.name, token: bot.token, chat_id: bot.chat_id, bot_mode: bot.bot_mode ?? 'all' })
 
     const key = ['bots', userId]
 
@@ -69,6 +69,15 @@ function BotRow({ bot, userId }: BotRowProps) {
                     onChange={e => setForm(f => ({ ...f, chat_id: e.target.value }))}
                     className={`${inputCls} w-full`}
                 />
+                <select
+                    value={form.bot_mode}
+                    onChange={e => setForm(f => ({ ...f, bot_mode: e.target.value }))}
+                    className={`${inputCls} w-full`}
+                >
+                    <option value="all">{t('users.bot.mode.all')}</option>
+                    <option value="notify">{t('users.bot.mode.notify')}</option>
+                    <option value="chat">{t('users.bot.mode.chat')}</option>
+                </select>
                 <div className="flex gap-2">
                     <button
                         onClick={() => doUpdate.mutate()}
@@ -100,6 +109,12 @@ function BotRow({ bot, userId }: BotRowProps) {
                     {bot.name}
                     {bot.is_default && (
                         <span className="text-xs bg-[#1d4ed8] text-white px-1.5 py-0 rounded">{t('users.bot.default')}</span>
+                    )}
+                    {bot.bot_mode === 'notify' && (
+                        <span className="text-xs bg-[#854d0e] text-[#fef08a] px-1.5 py-0 rounded">{t('users.bot.mode.notify')}</span>
+                    )}
+                    {bot.bot_mode === 'chat' && (
+                        <span className="text-xs bg-[#312e81] text-[#c4b5fd] px-1.5 py-0 rounded">{t('users.bot.mode.chat')}</span>
                     )}
                 </span>
                 <span className="text-xs text-[#64748b] font-mono truncate">{bot.chat_id}</span>
@@ -139,7 +154,7 @@ function BotRow({ bot, userId }: BotRowProps) {
 function AddBotForm({ userId, onDone }: { userId: number; onDone: () => void }) {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const [form, setForm] = useState({ name: '', token: '', chat_id: '' })
+    const [form, setForm] = useState({ name: '', token: '', chat_id: '', bot_mode: 'all' })
 
     const doCreate = useMutation({
         mutationFn: () => createBot(userId, form),
@@ -166,6 +181,15 @@ function AddBotForm({ userId, onDone }: { userId: number; onDone: () => void }) 
                 onChange={e => setForm(f => ({ ...f, chat_id: e.target.value }))}
                 className={`${inputCls} w-full`}
             />
+            <select
+                value={form.bot_mode}
+                onChange={e => setForm(f => ({ ...f, bot_mode: e.target.value }))}
+                className={`${inputCls} w-full`}
+            >
+                <option value="all">{t('users.bot.mode.all')}</option>
+                <option value="notify">{t('users.bot.mode.notify')}</option>
+                <option value="chat">{t('users.bot.mode.chat')}</option>
+            </select>
             <div className="flex gap-2">
                 <button
                     onClick={() => doCreate.mutate()}

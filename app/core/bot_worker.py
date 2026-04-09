@@ -34,6 +34,7 @@ class _BotState:
     chat_id: str           # 安全过滤白名单（Telegram chat_id 字符串）
     user_id: Optional[int] = None    # 所属用户 ID（用于 Gmail OAuth 等）
     chat_prompt_id: Optional[int] = None
+    bot_mode: str = "all"            # 'all'（全能）/ 'notify'（仅通知）/ 'chat'（仅聊天）
     poll_task: Optional[asyncio.Task] = None
     running: bool = False
 
@@ -233,6 +234,10 @@ async def _bot_loop(state: _BotState) -> None:
 
             # 入队或直接处理
             if not rc.enqueue(update_id, state.bot_id, chat_id, text, from_user):
+                # 通知专用 Bot：不响应聊天消息
+                if state.bot_mode == "notify":
+                    logger.debug(f"[tg_bot] bot#{state.bot_id} [notify-only] 忽略聊天: {text[:40]}")
+                    continue
                 await asyncio.to_thread(
                     _handle_message,
                     state.token, state.bot_id, chat_id, text, state.chat_prompt_id, from_user,
@@ -265,6 +270,9 @@ async def _consumer_loop() -> None:
             token = state.token if state else config.TELEGRAM_BOT_TOKEN
             prompt_id = state.chat_prompt_id if state else None
             uid = state.user_id if state else None
+            # 通知专用 Bot：不处理聊天消息
+            if state and state.bot_mode == "notify":
+                continue
             await asyncio.to_thread(_handle_message, token, bot_id, chat_id, text, prompt_id, from_user, uid)
         except asyncio.CancelledError:
             break
@@ -350,6 +358,7 @@ async def start() -> bool:
             chat_id=chat_id,
             user_id=row.get("user_id"),
             chat_prompt_id=row.get("chat_prompt_id"),
+            bot_mode=row.get("bot_mode", "all"),
         )
         state.running = True
         state.poll_task = asyncio.create_task(_bot_loop(state))

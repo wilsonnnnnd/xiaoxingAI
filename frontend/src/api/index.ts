@@ -169,6 +169,7 @@ export interface Bot {
   chat_id: string
   is_default: boolean
   chat_prompt_id: number | null
+  bot_mode: string
   created_at: string
 }
 
@@ -207,10 +208,10 @@ export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled
 export const listBots = (userId: number) =>
   api.get<{ bots: Bot[] }>(`/users/${userId}/bots`).then(r => r.data.bots)
 
-export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; chat_prompt_id?: number | null }) =>
+export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; chat_prompt_id?: number | null; bot_mode?: string }) =>
   api.post<Bot>(`/users/${userId}/bots`, data).then(r => r.data)
 
-export const updateBot = (userId: number, botId: number, data: { name?: string; token?: string; chat_id?: string; chat_prompt_id?: number | null }) =>
+export const updateBot = (userId: number, botId: number, data: { name?: string; token?: string; chat_id?: string; chat_prompt_id?: number | null; bot_mode?: string }) =>
   api.put<Bot>(`/users/${userId}/bots/${botId}`, data).then(r => r.data)
 
 export const deleteBot = (userId: number, botId: number) =>
