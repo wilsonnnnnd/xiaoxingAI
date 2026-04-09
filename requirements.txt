@@ -12,3 +12,4 @@ redis[asyncio]
 psycopg2-binary
 PyJWT>=2.9
 python-multipart
+bcrypt
