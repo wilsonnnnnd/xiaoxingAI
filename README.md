@@ -2,34 +2,23 @@
 
 > Multi-user Gmail automation + Telegram AI chatbot platform
 
-
 [中文文档](README.zh.md)
 
 ---
 
 ## Features
 
-- 📥 **Gmail Polling (Multi-account)** — Each registered user has an independent polling worker; fetches unread emails via Google OAuth2 with per-user configurable interval, max emails, and priority filter
-- 🤖 **AI Analysis** — Local llama.cpp or OpenAI model classifies, prioritizes, and summarizes each email; results cached in Redis (1 h TTL)
-- 📱 **Telegram Push (Multi-bot)** — Each user binds their own Telegram Bot; AI-written HTML notifications sent to each user's designated chat
-- 💬 **Telegram Bot Chat (Multi-bot)** — Multiple Telegram Bots run simultaneously; each maintains its own conversation history, user profile, and (optionally) a custom system prompt
-- 👤 **Per-bot User Profile** — AI builds a profile from each bot's chat history; auto-updated at midnight and fed back into subsequent conversations
-- �️ **Tool System** — Telegram bot can call built-in tools (`get_time`, `get_emails`, `fetch_email`) based on message intent; a lightweight Router LLM (Qwen2.5-1.5B on port 8002) dispatches tool calls with keyword-based fallback; the dispatch prompt (`router.txt`) is hot-reloaded and excluded from the prompt editor UI
-- 🔒 **Thread-safe Chat History** — Per-bot `threading.Lock` prevents race conditions when multiple bots receive concurrent messages
-- 📊 **Structured Logging** — HTTP request timing middleware, LLM call performance (latency + tokens), Redis cache hit/miss, retry tracking, and login audit log
-- �🔐 **JWT Authentication** — Admin login with bcrypt-hashed passwords; JWT (HS256) with Redis-based token versioning for instant revocation
-- 👥 **User Management** — Admin can create and manage regular users; each user controls their own Gmail worker, bots, and prompts
-- 🗃️ **Email Records** — Every processed email (raw body, AI analysis, summary, Telegram message, token count) persisted in PostgreSQL, isolated per user
-- 🔄 **Deduplication** — Processed email IDs stored per (user_id, email_id) pair; Redis SET NX prevents duplicate processing across restarts
-- ⚙️ **Priority Filter** — Per-user configurable minimum priority; only emails above threshold trigger notifications
-- 🗄️ **PostgreSQL Database** — 8-table schema: user, bot, prompts, oauth_tokens, email_records, worker_stats, user_profile, log
-- ⚡ **Redis Cache & Queue** — LLM result caching, chat session persistence (7 d TTL), update deduplication, async task queue; degrades gracefully if unavailable
-- 📋 **Typed Logs with Token Tracking** — Logs categorised (email / chat), token usage recorded per entry, displayed with colour-coded badges on the dashboard
-- 🖥️ **React Web UI** — Dark-themed SPA (React + TypeScript + Vite + Tailwind CSS): Dashboard, Skills Hub, Settings, Prompt Editor, Debug Tools, User Management
-- 🧠 **Modular Skills** — Skills are organized under a dedicated Skills page (`/skill`); currently includes Gmail (email processing) and Chat (Telegram bot) sub-pages, each with independent worker controls and live log feeds
-- ✏️ **Prompt Editor** — System-wide built-in prompts + per-user custom prompts, editable from the UI; each bot can be assigned a custom chat prompt
-- 🔧 **Hot Reload Config** — All settings update live via the web UI without restarting the server
-- 🌐 **i18n** — English / Chinese UI, language preference persisted via Zustand
+| Feature | Description |
+|---------|-------------|
+| 📥 [Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 4-stage AI pipeline (classify → summarise → push); priority filter and deduplication |
+| 📱 [Telegram Push](feature/telegram-push.md) | Each user binds their own bot; AI-written HTML notifications delivered after email processing |
+| 💬 [Telegram Chat](feature/telegram-chat.md) | Multi-bot concurrent chat; per-bot history, persona, and tool access; thread-safe |
+| 🧠 [Memory System](feature/memory.md) | Structured long-term memory (`[Facts]` `[Preferences]` `[Events]` `[Personality]`); relevance-filtered injection |
+| 🛠️ [Tool System](feature/tool-system.md) | `get_time`, `get_emails`, `fetch_email`; Router LLM dispatch with keyword fallback |
+| 🎭 [Persona Generator](feature/persona.md) | 4-stage AI persona pipeline; identity attributes (zodiac, gender, age) embedded in prompt content |
+| 🔐 [Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
+| ✏️ [Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
+| 🖥️ [Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
 
 ---
 
@@ -274,72 +263,7 @@ xiaoxing/
 
 ## API Reference
 
-### Auth
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/login` | Admin login → JWT |
-| GET | `/auth/me` | Current user info |
-
-### Users
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/users` | List all users (admin only) |
-| POST | `/users` | Create regular user (admin only) |
-| GET | `/users/{id}` | Get user (self or admin) |
-| PUT | `/users/{id}` | Update user settings (self or admin) |
-
-### Bots
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/users/{id}/bots` | List user's bots |
-| POST | `/users/{id}/bots` | Create bot |
-| PUT | `/users/{id}/bots/{bot_id}` | Update bot |
-| DELETE | `/users/{id}/bots/{bot_id}` | Delete bot |
-| POST | `/users/{id}/bots/{bot_id}/set-default` | Set as default bot |
-
-### DB Prompts
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/db/prompts` | List prompts (system + own) |
-| POST | `/db/prompts` | Create custom prompt |
-| PUT | `/db/prompts/{id}` | Update prompt |
-| DELETE | `/db/prompts/{id}` | Delete prompt |
-
-### Gmail Worker
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/worker/start` | Start all enabled workers |
-| POST | `/worker/stop` | Stop all workers |
-| GET | `/worker/status` | Aggregated worker status |
-| POST | `/worker/poll` | Trigger immediate poll |
-| GET | `/worker/logs` | Recent logs |
-| DELETE | `/worker/logs` | Clear logs |
-| GET | `/gmail/auth` | Redirect to Google OAuth |
-| GET | `/gmail/callback` | OAuth callback, save token |
-
-### Telegram Bot
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/telegram/bot/start` | Start all registered bots |
-| POST | `/telegram/bot/stop` | Stop all bots |
-| GET | `/telegram/bot/status` | Bot worker status |
-| POST | `/telegram/bot/clear_history` | Clear all chat history |
-| GET | `/telegram/bot/profile` | Get user profile |
-| DELETE | `/telegram/bot/profile` | Delete user profile |
-| POST | `/telegram/bot/generate_profile` | Manually trigger profile generation |
-
-### Email Records & Config
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/email/records` | List email records |
-| GET | `/email/records/{email_id}` | Get single record |
-| GET | `/config` | Read current runtime config |
-| POST | `/config` | Update .env and hot-reload |
-| GET | `/db/stats` | Database statistics |
-| GET | `/health` | Health check |
-| GET | `/ai/ping` | Test LLM connectivity |
-
-Interactive docs: http://127.0.0.1:8000/docs
+See [API.md](API.md) for the full endpoint reference.
 
 ---
 

@@ -2,34 +2,23 @@
 
 > 多用户 Gmail 自动化 + Telegram AI 聊天机器人平台
 
-
 [English](README.md)
 
 ---
 
 ## 功能特性
 
-- 📥 **Gmail 多账号轮询** — 每个注册用户独立运行一个轮询 Worker，通过 Google OAuth2 授权拉取未读邮件；轮询间隔、最大处理数、优先级过滤均可按用户单独配置
-- 🤖 **AI 分析** — 调用本地 llama.cpp 或 OpenAI 模型对邮件进行分类、优先级判断和摘要；结果在 Redis 中缓存（1 小时 TTL）
-- 📱 **Telegram 多 Bot 推送** — 每个用户绑定自己的 Telegram Bot，AI 自动撰写 HTML 格式通知并发送到各自的对话
-- 💬 **多 Bot 实时对话** — 多个 Telegram Bot 同时运行，每个 Bot 维护独立的对话历史、用户画像，并可绑定自定义系统 Prompt
-- 👤 **Bot 用户画像** — AI 从每个 Bot 的聊天记录中构建用户画像，每日凌晨自动更新并融入后续对话
-- �️ **AI 工具系统** — Telegram Bot 可根据消息意图调用内置工具（`get_time`、`get_emails`、`fetch_email`）；轻量 Router LLM（Qwen2.5-1.5B，端口 8002）调度工具调用，关键词匹配作为备选方案；调度 Prompt（`router.txt`）支持热重载，不在 UI 的 Prompt 编辑器中显示
-- 🔒 **线程安全的对话历史** — 每个 Bot 独立一个 `threading.Lock`，防止并发消息时的竞争条件
-- 📊 **结构化日志** — HTTP 请求耗时中间件、LLM 调用性能计量（延迟 + token 数）、Redis 缓存命中/未命中、重试追踪、登录审计日志
-- �🔐 **JWT 身份认证** — 管理员使用 bcrypt 加密密码登录；JWT (HS256) 结合 Redis 版本号控制，支持即时吊销
-- 👥 **用户管理** — 管理员可创建和管理普通用户；每个用户自主管理自己的 Gmail Worker、Bot 和 Prompt
-- 🗃️ **邮件记录持久化** — 每封处理过的邮件（原始正文、AI 分析、摘要、Telegram 消息、token 数量）均写入 PostgreSQL，按用户隔离
-- 🔄 **去重保障** — 已处理邮件 ID 按 (user_id, email_id) 组合存储；Redis SET NX 防止重启后重复处理
-- ⚙️ **优先级过滤** — 每用户可配置最低优先级阈值，仅推送达到阈值的邮件
-- 🗄️ **PostgreSQL 数据库** — 8 张表：user、bot、prompts、oauth_tokens、email_records、worker_stats、user_profile、log
-- ⚡ **Redis 缓存与队列** — LLM 结果缓存、聊天会话持久化（7 天 TTL）、消息去重、异步任务队列；Redis 不可达时自动降级
-- 📋 **分类日志与 Token 计量** — 日志按来源（email / chat）分类，每条记录 token 用量，主页带颜色徽章显示
-- 🖥️ **React Web 界面** — 深色主题 SPA（React + TypeScript + Vite + Tailwind CSS）：主页仪表盘、技能中心、配置设置、Prompt 编辑器、调试工具、用户管理
-- 🧠 **模块化技能** — 技能统一收录在专属技能页（`/skill`）；目前包含 Gmail（邮件处理）和 Chat（Telegram Bot）两个子页面，各自拥有独立的 Worker 控制面板和实时日志流
-- ✏️ **Prompt 管理** — 系统内置 Prompt + 每用户自定义 Prompt，均可在 UI 中编辑；每个 Bot 可绑定独立的对话 Prompt
-- 🔧 **配置热重载** — 所有设置通过 Web UI 实时生效，无需重启服务
-- 🌐 **双语界面** — 支持中文 / 英文切换，语言偏好通过 Zustand 持久化
+| 功能 | 简介 |
+|------|------|
+| 📥 [Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，4 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重 |
+| 📱 [Telegram 推送](feature/zh/telegram-push.md) | 每用户绑定自己的 Bot，AI 自动撰写 HTML 通知，邮件处理后即时推送 |
+| 💬 [Telegram 聊天](feature/zh/telegram-chat.md) | 多 Bot 并发对话，各自维护对话历史、人格提示词和工具访问权限，线程安全 |
+| 🧠 [记忆系统](feature/zh/memory.md) | 结构化长期记忆（`[事实]` `[偏好]` `[近期事件]` `[性格观察]`），按相关性筛选注入 |
+| 🛠️ [工具系统](feature/zh/tool-system.md) | `get_time`、`get_emails`、`fetch_email`；Router LLM 调度，关键词降级兜底 |
+| 🎭 [人格生成器](feature/zh/persona.md) | 4 阶段 AI 人格生成流水线，身份属性（星座/性别/年龄感）内嵌到 Prompt 内容 |
+| 🔐 [认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
+| ✏️ [Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
+| 🖥️ [Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
 
 ---
 
@@ -274,72 +263,7 @@ xiaoxing/
 
 ## API 接口
 
-### 认证
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/auth/login` | 管理员登录 → JWT |
-| GET | `/auth/me` | 当前用户信息 |
-
-### 用户管理
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/users` | 列出所有用户（仅管理员） |
-| POST | `/users` | 创建普通用户（仅管理员） |
-| GET | `/users/{id}` | 获取用户（本人或管理员） |
-| PUT | `/users/{id}` | 更新用户设置（本人或管理员） |
-
-### Bot 管理
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/users/{id}/bots` | 列出用户的所有 Bot |
-| POST | `/users/{id}/bots` | 创建 Bot |
-| PUT | `/users/{id}/bots/{bot_id}` | 更新 Bot |
-| DELETE | `/users/{id}/bots/{bot_id}` | 删除 Bot |
-| POST | `/users/{id}/bots/{bot_id}/set-default` | 设为默认 Bot |
-
-### Prompt 管理（数据库版）
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/db/prompts` | 列出 Prompt（系统内置 + 本人创建） |
-| POST | `/db/prompts` | 创建自定义 Prompt |
-| PUT | `/db/prompts/{id}` | 更新 Prompt |
-| DELETE | `/db/prompts/{id}` | 删除 Prompt |
-
-### Gmail Worker
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/worker/start` | 启动所有已启用用户的 Worker |
-| POST | `/worker/stop` | 停止所有 Worker |
-| GET | `/worker/status` | 聚合状态 |
-| POST | `/worker/poll` | 立即触发一次轮询 |
-| GET | `/worker/logs` | 获取日志 |
-| DELETE | `/worker/logs` | 清空日志 |
-| GET | `/gmail/auth` | 跳转 Google OAuth 授权页 |
-| GET | `/gmail/callback` | OAuth 回调，保存 token |
-
-### Telegram Bot
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/telegram/bot/start` | 启动所有已注册 Bot |
-| POST | `/telegram/bot/stop` | 停止所有 Bot |
-| GET | `/telegram/bot/status` | Bot 运行状态 |
-| POST | `/telegram/bot/clear_history` | 清空所有对话历史 |
-| GET | `/telegram/bot/profile` | 获取用户画像 |
-| DELETE | `/telegram/bot/profile` | 删除用户画像 |
-| POST | `/telegram/bot/generate_profile` | 手动触发画像生成 |
-
-### 邮件记录 & 配置
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/email/records` | 列出邮件记录 |
-| GET | `/email/records/{email_id}` | 获取单条邮件记录 |
-| GET | `/config` | 读取当前运行时配置 |
-| POST | `/config` | 更新 .env 并热重载 |
-| GET | `/db/stats` | 数据库统计信息 |
-| GET | `/health` | 健康检查 |
-| GET | `/ai/ping` | 测试 LLM 连接 |
-
-交互式文档：http://127.0.0.1:8000/docs
+完整接口文档见 [API.md](API.md)。
 
 ---
 
