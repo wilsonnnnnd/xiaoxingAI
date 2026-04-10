@@ -1,17 +1,20 @@
 """
 PostgreSQL 持久化层 — Xiaoxing AI
 
-表结构（新架构）：
-  user         — Gmail 账号（用户）
-  prompts      — Prompt 模板（系统内置 user_id=NULL + 用户私有）
-  bot          — Telegram Bot（每用户可多个）
-  oauth_tokens — Google OAuth token（每用户一行）
-  email_records — 邮件处理记录
-  worker_stats  — Worker 运行统计
-  user_profile  — Bot 对话用户画像（每 bot_id 一行）
-  log           — Worker 步骤日志（含系统日志 user_id=NULL）
+表结构：
+  user           — 用户账号
+  system_prompts — 系统/管理员级 Prompt（内置 AI 提示词 + 人设配置）
+  user_prompts   — 用户自主创建/保存的 Prompt（聊天人设、自定义内容等）
+  bot            — Telegram Bot（每用户可多个，chat_prompt_id → user_prompts）
+  oauth_tokens   — Google OAuth token（每用户一行）
+  email_records  — 邮件处理记录
+  worker_stats   — Worker 运行统计
+  user_profile   — Bot 对话用户画像（每 bot_id 一行）
+  log            — Worker 步骤日志（含系统日志 user_id=NULL）
 
-迁移说明：首次检测到无 user 表时，自动删除旧表并建立新架构。
+迁移说明：
+  - 首次检测到无 user 表时，自动删除旧表并建立新架构。
+  - 检测到旧版 prompts 单表时，自动拆分到 system_prompts + user_prompts。
 """
 import enum
 import json as _json
@@ -118,11 +121,26 @@ def init_db() -> None:
             )
         """)
 
-        # ── prompts ──────────────────────────────────────────────
+        # ── system_prompts ───────────────────────────────────────
+        # 系统/管理员级别 Prompt：内置 AI 提示词 + 人设配置（persona_config）
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS prompts (
+            CREATE TABLE IF NOT EXISTS system_prompts (
                 id         BIGSERIAL PRIMARY KEY,
-                user_id    BIGINT REFERENCES "user"(id) ON DELETE CASCADE,
+                name       VARCHAR NOT NULL,
+                type       VARCHAR NOT NULL,
+                content    TEXT NOT NULL,
+                is_default BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── user_prompts ─────────────────────────────────────────
+        # 用户自主创建/保存的 Prompt（AI 生成聊天人设、用户自定义内容等）
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_prompts (
+                id         BIGSERIAL PRIMARY KEY,
+                user_id    BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
                 name       VARCHAR NOT NULL,
                 type       VARCHAR NOT NULL,
                 content    TEXT NOT NULL,
@@ -141,7 +159,7 @@ def init_db() -> None:
                 token          TEXT NOT NULL,
                 chat_id        VARCHAR NOT NULL,
                 is_default     BOOLEAN NOT NULL DEFAULT FALSE,
-                chat_prompt_id BIGINT REFERENCES prompts(id) ON DELETE SET NULL,
+                chat_prompt_id BIGINT REFERENCES user_prompts(id) ON DELETE SET NULL,
                 bot_mode       VARCHAR NOT NULL DEFAULT 'all',
                 created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
@@ -222,14 +240,72 @@ def init_db() -> None:
             )
         """)
 
+    # 从旧 prompts 单表拆分到 system_prompts + user_prompts（幂等）
+    _migrate_prompts_split()
+
     # 导入系统内置 Prompt（幂等）
     _init_system_prompts()
 
 
-def _init_system_prompts() -> None:
-    """首次启动时将 prompts/ 目录下的文件导入为系统内置 Prompt（user_id=NULL）。"""
+def _migrate_prompts_split() -> None:
+    """
+    一次性迁移：将旧版 prompts 单表拆分到 system_prompts / user_prompts。
+    - user_id IS NULL  → system_prompts
+    - user_id IS NOT NULL → user_prompts
+    保留原始 id，修复序列，迁移 bot.chat_prompt_id 外键，最后删除旧表。
+    再次调用时（旧表已不存在）立即返回，完全幂等。
+    """
     with _cur() as cur:
-        cur.execute("SELECT COUNT(*) FROM prompts WHERE user_id IS NULL")
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables"
+            " WHERE table_schema='public' AND table_name='prompts')"
+        )
+        if not cur.fetchone()[0]:
+            return  # 旧表不存在，无需迁移
+
+        # 迁移系统提示词（user_id IS NULL → system_prompts）
+        cur.execute("""
+            INSERT INTO system_prompts (id, name, type, content, is_default, created_at, updated_at)
+            SELECT id, name, type, content, is_default, created_at, updated_at
+            FROM prompts WHERE user_id IS NULL
+            ON CONFLICT DO NOTHING
+        """)
+        cur.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('system_prompts', 'id'),
+                COALESCE((SELECT MAX(id) FROM system_prompts), 1)
+            )
+        """)
+
+        # 迁移用户提示词（user_id IS NOT NULL → user_prompts）
+        cur.execute("""
+            INSERT INTO user_prompts (id, user_id, name, type, content, is_default, created_at, updated_at)
+            SELECT id, user_id, name, type, content, is_default, created_at, updated_at
+            FROM prompts WHERE user_id IS NOT NULL
+            ON CONFLICT DO NOTHING
+        """)
+        cur.execute("""
+            SELECT setval(
+                pg_get_serial_sequence('user_prompts', 'id'),
+                COALESCE((SELECT MAX(id) FROM user_prompts), 1)
+            )
+        """)
+
+        # 更新 bot.chat_prompt_id 外键：prompts → user_prompts
+        cur.execute("ALTER TABLE bot DROP CONSTRAINT IF EXISTS bot_chat_prompt_id_fkey")
+        cur.execute("""
+            ALTER TABLE bot ADD CONSTRAINT bot_chat_prompt_id_fkey
+            FOREIGN KEY (chat_prompt_id) REFERENCES user_prompts(id) ON DELETE SET NULL
+        """)
+
+        # 删除旧表（CASCADE 处理残留依赖）
+        cur.execute("DROP TABLE IF EXISTS prompts CASCADE")
+
+
+def _init_system_prompts() -> None:
+    """首次启动时将 prompts/ 目录下的文件导入为系统内置 Prompt（system_prompts 表）。"""
+    with _cur() as cur:
+        cur.execute("SELECT COUNT(*) FROM system_prompts WHERE type != 'persona_config'")
         if cur.fetchone()[0] > 0:
             return  # 已导入过，跳过
 
@@ -239,8 +315,8 @@ def _init_system_prompts() -> None:
                 continue
             content = fpath.read_text(encoding="utf-8")
             cur.execute(
-                "INSERT INTO prompts (user_id, name, type, content, is_default)"
-                " VALUES (NULL, %s, %s, %s, TRUE)"
+                "INSERT INTO system_prompts (name, type, content, is_default)"
+                " VALUES (%s, %s, %s, TRUE)"
                 " ON CONFLICT DO NOTHING",
                 (name, ptype, content),
             )
@@ -249,10 +325,10 @@ def _init_system_prompts() -> None:
 # ── per-user prompts ───────────────────────────────────────────────
 
 def get_user_prompt(user_id: int, filename: str) -> Optional[str]:
-    """用户专属 Prompt 内容；不存在时返回 None（前端回退到磁盘默认）。"""
+    """用户专属 Prompt 内容（来自 user_prompts 表）；不存在时返回 None。"""
     with _cur() as cur:
         cur.execute(
-            "SELECT content FROM prompts WHERE user_id = %s AND name = %s",
+            "SELECT content FROM user_prompts WHERE user_id = %s AND name = %s",
             (user_id, filename),
         )
         row = cur.fetchone()
@@ -260,16 +336,16 @@ def get_user_prompt(user_id: int, filename: str) -> Optional[str]:
 
 
 def save_user_prompt(user_id: int, filename: str, content: str) -> None:
-    """Upsert 用户专属 Prompt（UPDATE 优先，行不存在时 INSERT）。"""
+    """Upsert 用户专属 Prompt 到 user_prompts 表（UPDATE 优先，行不存在时 INSERT）。"""
     with _cur() as cur:
         cur.execute(
-            "UPDATE prompts SET content = %s, updated_at = NOW()"
+            "UPDATE user_prompts SET content = %s, updated_at = NOW()"
             " WHERE user_id = %s AND name = %s",
             (content, user_id, filename),
         )
         if cur.rowcount == 0:
             cur.execute(
-                "INSERT INTO prompts (user_id, name, type, content, is_default)"
+                "INSERT INTO user_prompts (user_id, name, type, content, is_default)"
                 " VALUES (%s, %s, %s, %s, FALSE)",
                 (user_id, filename, filename, content),
             )
@@ -279,17 +355,17 @@ def delete_user_prompt(user_id: int, filename: str) -> bool:
     """删除用户专属 Prompt；成功返回 True，不存在返回 False。"""
     with _cur() as cur:
         cur.execute(
-            "DELETE FROM prompts WHERE user_id = %s AND name = %s RETURNING id",
+            "DELETE FROM user_prompts WHERE user_id = %s AND name = %s RETURNING id",
             (user_id, filename),
         )
         return cur.fetchone() is not None
 
 
 def list_user_prompt_names(user_id: int) -> List[str]:
-    """返回用户在 DB 中保存过的所有 Prompt 文件名（覆盖 + 自定义）。"""
+    """返回用户在 user_prompts 中保存过的所有 Prompt 名称。"""
     with _cur() as cur:
         cur.execute(
-            "SELECT name FROM prompts WHERE user_id = %s ORDER BY name",
+            "SELECT name FROM user_prompts WHERE user_id = %s ORDER BY name",
             (user_id,),
         )
         return [r[0] for r in cur.fetchall()]
@@ -673,45 +749,58 @@ def _row_to_bot(r: tuple) -> Dict[str, Any]:
 # ── prompts ─────────────────────────────────────────────────────────
 
 def get_prompts(user_id: Optional[int] = None, ptype: Optional[str] = None) -> List[Dict[str, Any]]:
-    """返回系统内置 prompt + 该用户私有 prompt。"""
+    """返回 user_prompts 表中的提示词。user_id=None 时返回全部（管理员视图）。"""
     with _cur() as cur:
-        conditions = ["(user_id IS NULL"]
+        conditions: List[str] = []
         params: List[Any] = []
         if user_id is not None:
-            conditions[0] += f" OR user_id = %s)"
+            conditions.append("user_id = %s")
             params.append(user_id)
-        else:
-            conditions[0] += ")"
         if ptype:
             conditions.append("type = %s")
             params.append(ptype)
-        where = "WHERE " + " AND ".join(conditions)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         cur.execute(
             f"SELECT id, user_id, name, type, content, is_default, created_at, updated_at"
-            f" FROM prompts {where} ORDER BY user_id NULLS FIRST, id",
+            f" FROM user_prompts {where} ORDER BY id",
             params,
         )
         return [_row_to_prompt(r) for r in cur.fetchall()]
 
 
 def get_prompt(prompt_id: int) -> Optional[Dict[str, Any]]:
+    """按 ID 查找 Prompt：先查 user_prompts，再查 system_prompts。"""
     with _cur() as cur:
         cur.execute(
             "SELECT id, user_id, name, type, content, is_default, created_at, updated_at"
-            " FROM prompts WHERE id = %s",
+            " FROM user_prompts WHERE id = %s",
             (prompt_id,),
         )
         row = cur.fetchone()
-        return _row_to_prompt(row) if row else None
+        if row:
+            return _row_to_prompt(row)
+        cur.execute(
+            "SELECT id, name, type, content, is_default, created_at, updated_at"
+            " FROM system_prompts WHERE id = %s",
+            (prompt_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            return {
+                "id": row[0], "user_id": None, "name": row[1], "type": row[2],
+                "content": row[3], "is_default": row[4],
+                "created_at": str(row[5]), "updated_at": str(row[6]),
+            }
+        return None
 
 
 def get_active_prompt(ptype: str, user_id: Optional[int] = None, bot_id: Optional[int] = None) -> Optional[str]:
     """按优先级获取 prompt 内容：bot 绑定 → 用户默认 → 系统内置。"""
     with _cur() as cur:
-        # 1. Bot 绑定的专属 chat prompt
+        # 1. Bot 绑定的专属 chat prompt（来自 user_prompts）
         if bot_id is not None and ptype == "chat":
             cur.execute(
-                "SELECT p.content FROM prompts p"
+                "SELECT p.content FROM user_prompts p"
                 " JOIN bot b ON b.chat_prompt_id = p.id"
                 " WHERE b.id = %s",
                 (bot_id,),
@@ -719,20 +808,27 @@ def get_active_prompt(ptype: str, user_id: Optional[int] = None, bot_id: Optiona
             row = cur.fetchone()
             if row:
                 return row[0]
-        # 2. 用户默认
+        # 2. 用户自定义默认（user_prompts）
         if user_id is not None:
             cur.execute(
-                "SELECT content FROM prompts"
+                "SELECT content FROM user_prompts"
                 " WHERE user_id = %s AND type = %s AND is_default = TRUE LIMIT 1",
                 (user_id, ptype),
             )
             row = cur.fetchone()
             if row:
                 return row[0]
-        # 3. 系统内置
+        # 3. 系统内置（system_prompts，is_default=TRUE 优先）
         cur.execute(
-            "SELECT content FROM prompts"
-            " WHERE user_id IS NULL AND type = %s LIMIT 1",
+            "SELECT content FROM system_prompts"
+            " WHERE type = %s AND is_default = TRUE LIMIT 1",
+            (ptype,),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute(
+            "SELECT content FROM system_prompts WHERE type = %s LIMIT 1",
             (ptype,),
         )
         row = cur.fetchone()
@@ -749,11 +845,11 @@ def create_prompt(
     with _cur() as cur:
         if is_default:
             cur.execute(
-                "UPDATE prompts SET is_default = FALSE WHERE user_id = %s AND type = %s",
+                "UPDATE user_prompts SET is_default = FALSE WHERE user_id = %s AND type = %s",
                 (user_id, ptype),
             )
         cur.execute(
-            """INSERT INTO prompts (user_id, name, type, content, is_default)
+            """INSERT INTO user_prompts (user_id, name, type, content, is_default)
                VALUES (%s, %s, %s, %s, %s)
                RETURNING id, user_id, name, type, content, is_default, created_at, updated_at""",
             (user_id, name, ptype, content, is_default),
@@ -761,40 +857,36 @@ def create_prompt(
         return _row_to_prompt(cur.fetchone())
 
 
-def update_prompt(prompt_id: int, user_id: int, **fields: Any) -> Optional[Dict[str, Any]]:
+def update_prompt(prompt_id: int, **fields: Any) -> Optional[Dict[str, Any]]:
     allowed = {"name", "content", "is_default"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return get_prompt(prompt_id)
+    existing = get_prompt(prompt_id)
+    if existing is None:
+        return None
+    table = "user_prompts" if existing.get("user_id") is not None else "system_prompts"
     with _cur() as cur:
-        # 验证所有权（system prompts user_id IS NULL 需要 admin 权限，由上层保证）
-        if updates.get("is_default"):
+        if updates.get("is_default") and table == "user_prompts":
             cur.execute(
-                "SELECT type FROM prompts WHERE id = %s", (prompt_id,)
+                "UPDATE user_prompts SET is_default = FALSE"
+                " WHERE user_id = %s AND type = %s",
+                (existing["user_id"], existing["type"]),
             )
-            prow = cur.fetchone()
-            if prow:
-                cur.execute(
-                    "UPDATE prompts SET is_default = FALSE"
-                    " WHERE user_id = %s AND type = %s",
-                    (user_id, prow[0]),
-                )
         set_clause = ", ".join(f"{k} = %s" for k in updates)
         values = list(updates.values()) + [prompt_id]
         cur.execute(
-            f"""UPDATE prompts SET {set_clause}, updated_at = NOW()
-                WHERE id = %s
-                RETURNING id, user_id, name, type, content, is_default, created_at, updated_at""",
+            f"UPDATE {table} SET {set_clause}, updated_at = NOW() WHERE id = %s",
             values,
         )
-        row = cur.fetchone()
-        return _row_to_prompt(row) if row else None
+    return get_prompt(prompt_id)
 
 
 def delete_prompt(prompt_id: int) -> bool:
+    """删除 user_prompts 中的提示词。系统提示词不能通过此函数删除。"""
     with _cur() as cur:
-        cur.execute("DELETE FROM prompts WHERE id = %s AND user_id IS NOT NULL", (prompt_id,))
-        return cur.rowcount > 0
+        cur.execute("DELETE FROM user_prompts WHERE id = %s RETURNING id", (prompt_id,))
+        return cur.fetchone() is not None
 
 
 def _row_to_prompt(r: tuple) -> Dict[str, Any]:
@@ -803,6 +895,42 @@ def _row_to_prompt(r: tuple) -> Dict[str, Any]:
         "content": r[4], "is_default": r[5],
         "created_at": str(r[6]), "updated_at": str(r[7]),
     }
+
+
+# ── persona config (star sign / chinese zodiac / gender) ──────────
+
+def get_persona_configs() -> Dict[str, Dict[str, str]]:
+    """Return all persona config prompts grouped by category (zodiac / chinese_zodiac / gender)."""
+    with _cur() as cur:
+        cur.execute(
+            "SELECT name, content FROM system_prompts"
+            " WHERE type = 'persona_config'"
+        )
+        rows = cur.fetchall()
+    result: Dict[str, Dict[str, str]] = {"zodiac": {}, "chinese_zodiac": {}, "gender": {}}
+    for name, content in rows:
+        if ":" in name:
+            cat, key = name.split(":", 1)
+            if cat in result:
+                result[cat][key] = content
+    return result
+
+
+def upsert_persona_config(category: str, key: str, content: str) -> None:
+    """Save a persona config prompt in system_prompts. Update if exists, else insert."""
+    name = f"{category}:{key}"
+    with _cur() as cur:
+        cur.execute(
+            "UPDATE system_prompts SET content = %s, updated_at = NOW()"
+            " WHERE type = 'persona_config' AND name = %s",
+            (content, name),
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO system_prompts (name, type, content, is_default)"
+                " VALUES (%s, 'persona_config', %s, FALSE)",
+                (name, content),
+            )
 
 
 # ── 统计信息 ────────────────────────────────────────────────────────

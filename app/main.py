@@ -447,6 +447,132 @@ def chat_work_status():
     return {"running": tg_bot_worker.is_running()}
 
 
+class ChatPersonaRequest(BaseModel):
+    keywords: str
+    zodiac: Optional[str] = None
+    chinese_zodiac: Optional[str] = None
+    gender: Optional[str] = None
+
+
+@app.post("/chat/generate_persona_prompt")
+def chat_generate_persona_prompt(payload: ChatPersonaRequest, user: dict = Depends(auth_mod.current_user)):
+    """
+    四阶段 AI 聊天提示词生成流水线：
+    1. tonePersonaGenerator.txt  — 分析语气/风格 → tone JSON
+    2. characterPortraitGeneration.txt — 生成角色画像 → portrait JSON
+    3. chatPrompt.txt — 由画像生成自由叙述型 system prompt（参考用）
+    4. specificChatStyle.txt — 用 JSON 字段程序性填入模板 → 最终结构化 system prompt
+
+    可选：传入 zodiac / chinese_zodiac / gender，自动从 persona_config 中
+    加载对应风格提示作为补充语境，拼入 keywords 一起送给 AI。
+    """
+    import json as _json
+    import re as _re
+    from app.core.llm import call_llm
+
+    def _extract_json(text: str) -> dict:
+        """从 LLM 输出中提取 JSON 对象，兼容 markdown 代码块。"""
+        text = text.strip()
+        text = _re.sub(r"^```(?:json)?\s*", "", text, flags=_re.MULTILINE)
+        text = _re.sub(r"\s*```\s*$", "", text, flags=_re.MULTILINE)
+        text = text.strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            text = text[start:end + 1]
+        try:
+            return _json.loads(text)
+        except Exception:
+            return {}
+
+    def _fmt(val) -> str:
+        if isinstance(val, list):
+            return "、".join(str(v) for v in val) if val else "—"
+        return str(val) if val not in (None, "") else "—"
+
+    keywords = payload.keywords.strip()
+    if not keywords:
+        raise HTTPException(status_code=422, detail="keywords 不能为空")
+
+    # ── 拼入星座 / 属相 / 性别 风格补充 ──────────────────────────
+    persona_configs = db.get_persona_configs()
+    supplements: list[str] = []
+
+    _LABEL_MAP = {
+        "zodiac":         "星座风格参考",
+        "chinese_zodiac": "属相风格参考",
+        "gender":         "性别风格参考",
+    }
+    for cat_key, selection in [
+        ("zodiac",         payload.zodiac),
+        ("chinese_zodiac", payload.chinese_zodiac),
+        ("gender",         payload.gender),
+    ]:
+        if selection:
+            content = persona_configs.get(cat_key, {}).get(selection, "").strip()
+            if content:
+                supplements.append(f"[{_LABEL_MAP[cat_key]}]\n{content}")
+
+    enriched_keywords = keywords
+    if supplements:
+        enriched_keywords = keywords + "\n\n" + "\n\n".join(supplements)
+
+    tools_dir = _PROMPTS_DIR / "tools"
+    try:
+        tone_tpl     = (tools_dir / "tonePersonaGenerator.txt").read_text(encoding="utf-8")
+        portrait_tpl = (tools_dir / "characterPortraitGeneration.txt").read_text(encoding="utf-8")
+        chat_tpl     = (tools_dir / "chatPrompt.txt").read_text(encoding="utf-8")
+        style_tpl    = (tools_dir / "specificChatStyle.txt").read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=f"提示词模板缺失: {e}")
+
+    total_tokens = 0
+    try:
+        # Step 1: 语气/风格分析 → tone JSON
+        tone_result, t1 = call_llm(tone_tpl.replace("{{user_input}}", enriched_keywords), max_tokens=512)
+        total_tokens += t1
+        tone_data = _extract_json(tone_result)
+
+        # Step 2: 角色画像 → portrait JSON
+        portrait_prompt = (portrait_tpl
+                           .replace("{{user_input}}", enriched_keywords)
+                           .replace("{{tone_json}}", tone_result.strip()))
+        portrait_result, t2 = call_llm(portrait_prompt, max_tokens=1024)
+        total_tokens += t2
+        portrait_data = _extract_json(portrait_result)
+
+        # Step 3: 自由叙述型 system prompt (chatPrompt.txt)
+        narrative_prompt, t3 = call_llm(
+            chat_tpl.replace("{{persona_json}}", portrait_result.strip()),
+            max_tokens=1024,
+        )
+        total_tokens += t3
+
+        # Step 4: 结构化模板填充 (specificChatStyle.txt) — 无需 LLM
+        final_prompt = (style_tpl
+            .replace("{{personality_traits}}",    _fmt(portrait_data.get("personality_traits")))
+            .replace("{{overall_persona_summary}}", _fmt(portrait_data.get("overall_persona_summary")))
+            .replace("{{social_persona}}",        _fmt(portrait_data.get("social_persona")))
+            .replace("{{role_impression}}",       _fmt(portrait_data.get("role_impression")))
+            .replace("{{tone}}",                  _fmt(tone_data.get("tone")))
+            .replace("{{style}}",                 _fmt(tone_data.get("style")))
+            .replace("{{communication_style}}",   _fmt(portrait_data.get("communication_style")))
+            .replace("{{rhythm}}",                _fmt(tone_data.get("rhythm")))
+            .replace("{{emotional_pattern}}",     _fmt(portrait_data.get("emotional_pattern")))
+            .replace("{{language_features}}",     _fmt(tone_data.get("language_features")))
+            .replace("{{expression_habits}}",     _fmt(portrait_data.get("expression_habits")))
+            .replace("{{humor_style}}",           _fmt(portrait_data.get("humor_style")))
+            .replace("{{age_vibe}}",              _fmt(portrait_data.get("age_vibe")))
+            .replace("{{gender_style}}",          _fmt(portrait_data.get("gender_style")))
+            .replace("{{zodiac_style}}",          _fmt(portrait_data.get("zodiac_style")))
+            .replace("{{zodiac_animal_style}}",   _fmt(portrait_data.get("zodiac_animal_style")))
+            .replace("{{values_vibe}}",           _fmt(portrait_data.get("values_vibe")))
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
+
+    return {"prompt": final_prompt.strip(), "tokens": total_tokens}
+
+
 @app.post("/telegram/bot/clear_history")
 def tg_bot_clear_history(user: dict = Depends(auth_mod.current_user)):
     """清空对话历史记录（内存 + Redis + 日志DB）"""
@@ -716,6 +842,34 @@ class PromptUpdate(BaseModel):
     is_default: Optional[bool] = None
 
 
+class PersonaConfigSave(BaseModel):
+    category: str
+    key: str
+    content: str
+
+
+_VALID_PERSONA_CATS = {"zodiac", "chinese_zodiac", "gender"}
+
+
+# ─────────────────────────────────────────
+# Admin — Persona Config
+# ─────────────────────────────────────────
+
+@app.get("/admin/persona-config")
+def admin_persona_config_get(user: dict = Depends(auth_mod.require_admin)):
+    """返回所有人设配置 Prompt（星座 / 属相 / 性别），按分类分组。"""
+    return db.get_persona_configs()
+
+
+@app.put("/admin/persona-config")
+def admin_persona_config_save(payload: PersonaConfigSave, user: dict = Depends(auth_mod.require_admin)):
+    """保存单条人设配置 Prompt（管理员专用）。"""
+    if payload.category not in _VALID_PERSONA_CATS:
+        raise HTTPException(status_code=422, detail=f"无效的分类：{payload.category}")
+    db.upsert_persona_config(payload.category, payload.key, payload.content)
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────
 # Auth
 # ─────────────────────────────────────────
@@ -875,7 +1029,7 @@ def db_prompt_create(payload: PromptCreate, user: dict = Depends(auth_mod.curren
     row = db.create_prompt(
         user_id=user["id"],
         name=payload.name,
-        type=payload.type,
+        ptype=payload.type,
         content=payload.content,
         is_default=payload.is_default,
     )

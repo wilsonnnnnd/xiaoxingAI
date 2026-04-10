@@ -1,8 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../i18n/useI18n'
 import { formatLogMessage } from '../../utils/formatLog'
-import { getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory, getMe, listUsers, listBots, type LogEntry } from '../../api'
+import {
+    getLogs, getChatWorkStatus, startBot, stopBot, clearBotHistory,
+    getMe, listUsers, listBots, updateBot,
+    generateChatPersona, getPersonaConfig, getDbPrompts, createDbPrompt, deleteDbPrompt,
+    type LogEntry, type DbPrompt, type Bot,
+} from '../../api'
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
     return (
@@ -37,6 +42,24 @@ const LEVEL_CLS: Record<string, string> = {
 
 const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
+// 显示元数据（emoji + 中文名），下拉选项内容从数据库动态获取
+const PERSONA_ITEM_META: Record<string, { emoji: string; zh: string }> = {
+    aries: { emoji: '♈', zh: '白羊座' }, taurus: { emoji: '♉', zh: '金牛座' },
+    gemini: { emoji: '♊', zh: '双子座' }, cancer: { emoji: '♋', zh: '巨蟹座' },
+    leo: { emoji: '♌', zh: '狮子座' }, virgo: { emoji: '♍', zh: '处女座' },
+    libra: { emoji: '♎', zh: '天秤座' }, scorpio: { emoji: '♏', zh: '天蝎座' },
+    sagittarius: { emoji: '♐', zh: '射手座' }, capricorn: { emoji: '♑', zh: '摩羯座' },
+    aquarius: { emoji: '♒', zh: '水瓶座' }, pisces: { emoji: '♓', zh: '双鱼座' },
+    rat: { emoji: '🐭', zh: '鼠' }, ox: { emoji: '🐮', zh: '牛' },
+    tiger: { emoji: '🐯', zh: '虎' }, rabbit: { emoji: '🐰', zh: '兔' },
+    dragon: { emoji: '🐲', zh: '龙' }, snake: { emoji: '🐍', zh: '蛇' },
+    horse: { emoji: '🐴', zh: '马' }, goat: { emoji: '🐑', zh: '羊' },
+    monkey: { emoji: '🐵', zh: '猴' }, rooster: { emoji: '🐔', zh: '鸡' },
+    dog: { emoji: '🐶', zh: '狗' }, pig: { emoji: '🐷', zh: '猪' },
+    male: { emoji: '♂️', zh: '男性' }, female: { emoji: '♀️', zh: '女性' },
+    other: { emoji: '⚧', zh: '其他' },
+}
+
 function LogRow({ entry, usersMap }: { entry: LogEntry; usersMap: Map<number, string> }) {
     const { t } = useI18n()
     const stripped = entry.msg.replace(/\[user#\d+\]\s*/g, '')
@@ -62,6 +85,24 @@ export default function Chat() {
     const qc = useQueryClient()
     const endRef = useRef<HTMLDivElement>(null)
 
+    // ── Persona generator state ───────────────────────────────────
+    const [keywords, setKeywords] = useState('')
+    const [zodiac, setZodiac] = useState('')
+    const [chineseZodiac, setChineseZodiac] = useState('')
+    const [gender, setGender] = useState('')
+    const [generatedPrompt, setGeneratedPrompt] = useState('')
+    const [genTokens, setGenTokens] = useState(0)
+    const [promptName, setPromptName] = useState('')
+    const [savedMsg, setSavedMsg] = useState('')
+    const [assignStatus, setAssignStatus] = useState<Record<number, string>>({})  // promptId → msg
+    const [selectedBot, setSelectedBot] = useState<Record<number, number | ''>>({})  // promptId → botId
+
+    const { data: personaConfig = {} as Record<string, Record<string, string>> } = useQuery({
+        queryKey: ['personaConfig'],
+        queryFn: getPersonaConfig,
+        staleTime: 60_000,
+    })
+
     // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
     const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
     const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 8000 })
@@ -79,6 +120,58 @@ export default function Chat() {
         queryFn: () => listBots(me!.id),
         enabled: me != null,
         staleTime: 30_000,
+    })
+
+    // ── Chat prompts list (user-owned, type=chat) ─────────────────
+    const { data: chatPrompts = [] } = useQuery({
+        queryKey: ['dbPrompts', 'chat', me?.id],
+        queryFn: async () => {
+            const all = await getDbPrompts()
+            return all.filter((p: DbPrompt) => p.user_id === me?.id && p.type === 'chat')
+        },
+        enabled: me != null,
+        staleTime: 15_000,
+    })
+
+    // ── Mutations ─────────────────────────────────────────────────
+    const generateMut = useMutation({
+        mutationFn: () => generateChatPersona(
+            keywords.trim(),
+            zodiac || undefined,
+            chineseZodiac || undefined,
+            gender || undefined,
+        ),
+        onSuccess: (data) => {
+            setGeneratedPrompt(data.prompt)
+            setGenTokens(data.tokens)
+            setSavedMsg('')
+        },
+    })
+
+    const saveMut = useMutation({
+        mutationFn: () => createDbPrompt({ name: promptName.trim(), type: 'chat', content: generatedPrompt }),
+        onSuccess: () => {
+            setSavedMsg(t('chat.persona.saved'))
+            setPromptName('')
+            setGeneratedPrompt('')
+            setGenTokens(0)
+            qc.invalidateQueries({ queryKey: ['dbPrompts', 'chat', me?.id] })
+        },
+    })
+
+    const assignMut = useMutation({
+        mutationFn: ({ botId, promptId }: { botId: number; promptId: number }) =>
+            updateBot(me!.id, botId, { chat_prompt_id: promptId }),
+        onSuccess: (_, vars) => {
+            setAssignStatus(s => ({ ...s, [vars.promptId]: t('chat.prompts.assigned') }))
+            qc.invalidateQueries({ queryKey: ['bots', me?.id] })
+            setTimeout(() => setAssignStatus(s => { const n = { ...s }; delete n[vars.promptId]; return n }), 2500)
+        },
+    })
+
+    const deleteMut = useMutation({
+        mutationFn: (id: number) => deleteDbPrompt(id),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['dbPrompts', 'chat', me?.id] }),
     })
 
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
@@ -197,6 +290,200 @@ export default function Chat() {
                         }
                         <div ref={endRef} />
                     </div>
+                </Card>
+
+                {/* ── 聊天提示词生成器 ───────────────────────── */}
+                <Card title={t('chat.persona.card_title')}>
+                    <p className="text-xs text-[#64748b]">{t('chat.persona.desc')}</p>
+
+                    {/* 星座 / 属相 / 性别 选择器 */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-[#94a3b8]">{t('chat.persona.zodiac_label')}</label>
+                            <select
+                                value={zodiac}
+                                onChange={e => setZodiac(e.target.value)}
+                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2 py-1.5 text-sm text-[#e2e8f0] focus:outline-none focus:border-[#475569]"
+                            >
+                                <option value="">{t('chat.persona.select_none')}</option>
+                                {Object.keys(personaConfig.zodiac ?? {}).map(key => {
+                                    const m = PERSONA_ITEM_META[key] ?? { emoji: '', zh: key }
+                                    return <option key={key} value={key}>{m.emoji} {m.zh}</option>
+                                })}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-[#94a3b8]">{t('chat.persona.chinese_zodiac_label')}</label>
+                            <select
+                                value={chineseZodiac}
+                                onChange={e => setChineseZodiac(e.target.value)}
+                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2 py-1.5 text-sm text-[#e2e8f0] focus:outline-none focus:border-[#475569]"
+                            >
+                                <option value="">{t('chat.persona.select_none')}</option>
+                                {Object.keys(personaConfig.chinese_zodiac ?? {}).map(key => {
+                                    const m = PERSONA_ITEM_META[key] ?? { emoji: '', zh: key }
+                                    return <option key={key} value={key}>{m.emoji} {m.zh}</option>
+                                })}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-[#94a3b8]">{t('chat.persona.gender_label')}</label>
+                            <select
+                                value={gender}
+                                onChange={e => setGender(e.target.value)}
+                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2 py-1.5 text-sm text-[#e2e8f0] focus:outline-none focus:border-[#475569]"
+                            >
+                                <option value="">{t('chat.persona.select_none')}</option>
+                                {Object.keys(personaConfig.gender ?? {}).map(key => {
+                                    const m = PERSONA_ITEM_META[key] ?? { emoji: '', zh: key }
+                                    return <option key={key} value={key}>{m.emoji} {m.zh}</option>
+                                })}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        <label className="text-xs text-[#94a3b8]">{t('chat.persona.keywords_label')}</label>
+                        <textarea
+                            rows={3}
+                            value={keywords}
+                            onChange={e => setKeywords(e.target.value)}
+                            placeholder={t('chat.persona.keywords_placeholder')}
+                            className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-2.5 text-sm text-[#e2e8f0] placeholder-[#475569] resize-none focus:outline-none focus:border-[#475569]"
+                        />
+                        <div className="flex items-center gap-3">
+                            <Btn
+                                variant="blue"
+                                onClick={() => {
+                                    if (!keywords.trim()) return
+                                    setSavedMsg('')
+                                    generateMut.mutate()
+                                }}
+                                disabled={generateMut.isPending || !keywords.trim()}
+                            >
+                                {generateMut.isPending ? t('chat.persona.generating') : t('chat.persona.btn_generate')}
+                            </Btn>
+                            {generateMut.isError && (
+                                <span className="text-xs text-[#fca5a5]">
+                                    {(generateMut.error as Error)?.message ?? '生成失败'}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {generatedPrompt && (
+                        <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs text-[#94a3b8]">{t('chat.persona.result_label')}</label>
+                                {genTokens > 0 && (
+                                    <span className="text-[10px] text-[#475569]">{t('chat.persona.tokens')}: {genTokens}</span>
+                                )}
+                            </div>
+                            <textarea
+                                rows={8}
+                                value={generatedPrompt}
+                                onChange={e => setGeneratedPrompt(e.target.value)}
+                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-2.5 text-xs text-[#e2e8f0] font-mono resize-y focus:outline-none focus:border-[#475569]"
+                            />
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <input
+                                    type="text"
+                                    value={promptName}
+                                    onChange={e => setPromptName(e.target.value)}
+                                    placeholder={t('chat.persona.name_placeholder')}
+                                    className="flex-1 min-w-[140px] bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-sm text-[#e2e8f0] placeholder-[#475569] focus:outline-none focus:border-[#475569]"
+                                />
+                                <Btn
+                                    variant="green"
+                                    onClick={() => {
+                                        if (!promptName.trim()) return
+                                        saveMut.mutate()
+                                    }}
+                                    disabled={saveMut.isPending || !promptName.trim()}
+                                >
+                                    {saveMut.isPending ? t('chat.persona.saving') : t('chat.persona.btn_save')}
+                                </Btn>
+                            </div>
+                            {savedMsg && <p className="text-xs text-[#86efac]">{savedMsg}</p>}
+                            {saveMut.isError && (
+                                <p className="text-xs text-[#fca5a5]">{(saveMut.error as Error)?.message ?? '保存失败'}</p>
+                            )}
+                        </div>
+                    )}
+                </Card>
+
+                {/* ── 聊天提示词管理 & Bot 分配 ─────────────── */}
+                <Card title={t('chat.prompts.card_title')}>
+                    {chatPrompts.length === 0 ? (
+                        <p className="text-xs text-[#475569]">{t('chat.prompts.empty')}</p>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {chatPrompts.map((p: DbPrompt) => {
+                                const assignedBots = (myBots as Bot[]).filter(b => b.chat_prompt_id === p.id)
+                                const selBot = selectedBot[p.id] ?? ''
+                                return (
+                                    <div key={p.id} className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 py-3 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-sm font-semibold text-[#e2e8f0]">{p.name}</span>
+                                                {assignedBots.map(b => (
+                                                    <span key={b.id} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1d3461] text-[#93c5fd]">
+                                                        {b.name} · {t('chat.prompts.current')}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <Btn
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    if (!confirm(t('chat.prompts.confirm_delete').replace('{name}', p.name))) return
+                                                    deleteMut.mutate(p.id)
+                                                }}
+                                                disabled={deleteMut.isPending}
+                                            >
+                                                {t('chat.prompts.btn_delete')}
+                                            </Btn>
+                                        </div>
+                                        <details className="group">
+                                            <summary className="text-[11px] text-[#64748b] cursor-pointer select-none hover:text-[#94a3b8]">
+                                                预览提示词 ▾
+                                            </summary>
+                                            <pre className="mt-1.5 text-[10px] text-[#94a3b8] whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto">
+                                                {p.content}
+                                            </pre>
+                                        </details>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <label className="text-xs text-[#64748b]">{t('chat.prompts.assign_to')}:</label>
+                                            <select
+                                                value={selBot}
+                                                onChange={e => setSelectedBot(s => ({ ...s, [p.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                                                className="bg-[#1e2330] border border-[#2d3748] rounded px-2 py-1 text-xs text-[#e2e8f0] focus:outline-none"
+                                            >
+                                                <option value="">{t('chat.prompts.select_bot')}</option>
+                                                {(myBots as Bot[])
+                                                    .filter(b => b.bot_mode === 'all' || b.bot_mode === 'chat')
+                                                    .map(b => (
+                                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                                    ))}
+                                            </select>
+                                            <Btn
+                                                variant="default"
+                                                onClick={() => {
+                                                    if (!selBot) return
+                                                    assignMut.mutate({ botId: Number(selBot), promptId: p.id })
+                                                }}
+                                                disabled={assignMut.isPending || !selBot}
+                                            >
+                                                {t('chat.prompts.btn_assign')}
+                                            </Btn>
+                                            {assignStatus[p.id] && (
+                                                <span className="text-xs text-[#86efac]">{assignStatus[p.id]}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </Card>
             </div>
         </div>

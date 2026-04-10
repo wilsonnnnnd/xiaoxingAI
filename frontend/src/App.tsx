@@ -9,6 +9,7 @@ import Prompts from './pages/Prompts'
 import Debug from './pages/Debug'
 import Login from './pages/Login'
 import Users from './pages/Users'
+import PersonaConfig from './pages/PersonaConfig'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="prompts" element={<Prompts />} />
         <Route path="debug" element={<Debug />} />
         <Route path="users" element={<Users />} />
+        <Route path="persona-config" element={<PersonaConfig />} />
       </Route>
     </Routes>
   )
