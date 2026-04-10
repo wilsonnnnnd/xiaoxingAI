@@ -572,7 +572,22 @@ _DEFAULT_PROMPTS = {
     "user_profile.txt",
 }
 # 系统内部使用的 prompt，不暴露给前端
-_INTERNAL_PROMPTS = {"router.txt"}
+_INTERNAL_PROMPTS = set()
+# 隐藏整个子目录下的 Prompt 文件（相对于 prompts 目录的相对路径前缀）
+_INTERNAL_PROMPT_DIRS = {"tools"}
+
+
+def _is_internal_prompt(rel_path: str) -> bool:
+    """Return True when the relative path should be treated as internal and hidden."""
+    # exact file matches
+    if rel_path in _INTERNAL_PROMPTS:
+        return True
+    # directory prefix matches (e.g. 'tools/...')
+    for d in _INTERNAL_PROMPT_DIRS:
+        prefix = d.rstrip("/") + "/"
+        if rel_path.startswith(prefix):
+            return True
+    return False
 
 
 def _check_prompt_filename(filename: str) -> None:
@@ -593,9 +608,11 @@ def _check_prompt_filename(filename: str) -> None:
 def prompts_list(user: dict = Depends(auth_mod.current_user)):
     """列出所有可用 Prompt 文件：磁盘内置 + 用户在 DB 中创建的自定义文件。"""
     disk_files = sorted(
-        str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/")
+        rel
         for p in _PROMPTS_DIR.rglob("*.txt")
-        if p.is_file() and str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/") not in _INTERNAL_PROMPTS
+        if p.is_file()
+        for rel in [str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/")]
+        if not _is_internal_prompt(rel)
     )
     user_names = db.list_user_prompt_names(user["id"])
     disk_set = set(disk_files)
