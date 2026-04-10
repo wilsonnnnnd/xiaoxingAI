@@ -16,6 +16,7 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 | `/prompts` | Prompt Editor | View and edit all system prompts |
 | `/settings` | Settings | Google OAuth, bot configuration, environment variables |
 | `/users` | User Management | Admin-only: create/manage users |
+| `/persona-config` | Persona Config | Admin-only: configure zodiac/gender personality style prompts for the AI persona generator |
 | `/debug` | Debug Tools | Manual triggers for profile update, cache flush, etc. |
 
 ## Internationalisation (i18n)

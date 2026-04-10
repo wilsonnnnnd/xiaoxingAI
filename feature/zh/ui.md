@@ -16,6 +16,7 @@ Xiaoxing 提供深色主题单页应用（React + TypeScript + Vite + Tailwind C
 | `/prompts` | Prompt 编辑器 | 查看和编辑所有系统 Prompt |
 | `/settings` | 设置 | Google OAuth 授权、Bot 配置、环境变量 |
 | `/users` | 用户管理 | 仅管理员：创建和管理用户 |
+| `/persona-config` | 人设配置 | 仅管理员：为星座/属相/性别配置人格风格提示词，供人格生成器参考 |
 | `/debug` | 调试工具 | 手动触发画像更新、缓存清理等 |
 
 ## 国际化（i18n）

@@ -124,6 +124,7 @@ function _parsePersona(raw: string): _PSection[] {
 const _SEC_COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#fb923c']
 
 function PersonaDisplay({ text, onEdit }: { text: string; onEdit: () => void }) {
+    const { t } = useI18n()
     const [copied, setCopied] = useState(false)
     const sections = _parsePersona(text)
 
@@ -136,19 +137,19 @@ function PersonaDisplay({ text, onEdit }: { text: string; onEdit: () => void }) 
     return (
         <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
-                <span className="text-xs text-[#64748b]">角色人设画像</span>
+                <span className="text-xs text-[#64748b]">{t('chat.persona.display_title')}</span>
                 <div className="flex items-center gap-1.5">
                     <button
                         onClick={handleCopy}
                         className="text-xs px-2.5 py-1 rounded-lg bg-[#1e2a3d] hover:bg-[#273347] text-[#93c5fd] transition-colors"
                     >
-                        {copied ? '✓ 已复制' : '📋 复制'}
+                        {copied ? t('chat.persona.copied') : t('chat.persona.btn_copy')}
                     </button>
                     <button
                         onClick={onEdit}
                         className="text-xs px-2.5 py-1 rounded-lg bg-[#2d3748] hover:bg-[#334155] text-[#94a3b8] transition-colors"
                     >
-                        ✏️ 编辑
+                        {t('chat.persona.btn_edit')}
                     </button>
                 </div>
             </div>
@@ -181,7 +182,7 @@ function PersonaDisplay({ text, onEdit }: { text: string; onEdit: () => void }) 
                 if (s.kind === 'notes') {
                     return (
                         <div key={i} className="rounded-xl bg-[#12100a] border border-[#2d2a1a] px-3 py-2.5">
-                            <p className="text-[11px] text-[#92704a] font-medium mb-1.5">注意事项</p>
+                            <p className="text-[11px] text-[#92704a] font-medium mb-1.5">{t('chat.persona.notes_title')}</p>
                             <ul className="flex flex-col gap-1">
                                 {s.items.map((item, ii) => (
                                     <li key={ii} className="flex gap-1.5 text-[11px] text-[#6b5a3e] leading-snug">
@@ -222,6 +223,7 @@ export default function Chat() {
         queryKey: ['personaConfig'],
         queryFn: getPersonaConfig,
         staleTime: 60_000,
+        enabled: me?.role === 'admin',
     })
 
     // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
@@ -487,17 +489,17 @@ export default function Chat() {
                             </select>
                         </div>
                         <div className="flex flex-col gap-1">
-                            <label className="text-xs text-[#94a3b8]">年龄感</label>
+                            <label className="text-xs text-[#94a3b8]">{t('chat.persona.age_label')}</label>
                             <select
                                 value={age}
                                 onChange={e => setAge(e.target.value)}
                                 className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2 py-1.5 text-sm text-[#e2e8f0] focus:outline-none focus:border-[#475569]"
                             >
                                 <option value="">{t('chat.persona.select_none')}</option>
-                                <option value="少年感">🌱 少年感</option>
-                                <option value="年轻成年人">✨ 年轻成年人</option>
-                                <option value="成熟">🌿 成熟</option>
-                                <option value="中年感">🍂 中年感</option>
+                                <option value="少年感">{t('chat.persona.age_opt.youthful')}</option>
+                                <option value="年轻成年人">{t('chat.persona.age_opt.young_adult')}</option>
+                                <option value="成熟">{t('chat.persona.age_opt.mature')}</option>
+                                <option value="中年感">{t('chat.persona.age_opt.middle_aged')}</option>
                             </select>
                         </div>
                     </div>
@@ -546,12 +548,12 @@ export default function Chat() {
                             {editMode ? (
                                 <div className="flex flex-col gap-2">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-xs text-[#94a3b8]">编辑提示词</span>
+                                        <span className="text-xs text-[#94a3b8]">{t('chat.persona.edit_label')}</span>
                                         <button
                                             onClick={() => setEditMode(false)}
                                             className="text-xs px-2.5 py-1 rounded-lg bg-[#1e2a3d] hover:bg-[#273347] text-[#93c5fd] transition-colors"
                                         >
-                                            ← 返回预览
+                                            {t('chat.persona.btn_back_preview')}
                                         </button>
                                     </div>
                                     <textarea

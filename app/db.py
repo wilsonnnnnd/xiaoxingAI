@@ -279,7 +279,8 @@ def _migrate_prompts_split() -> None:
         cur.execute("""
             SELECT setval(
                 pg_get_serial_sequence('system_prompts', 'id'),
-                COALESCE((SELECT MAX(id) FROM system_prompts), 1)
+                COALESCE((SELECT MAX(id) FROM system_prompts), 0),
+                false
             )
         """)
 
@@ -293,7 +294,8 @@ def _migrate_prompts_split() -> None:
         cur.execute("""
             SELECT setval(
                 pg_get_serial_sequence('user_prompts', 'id'),
-                COALESCE((SELECT MAX(id) FROM user_prompts), 1)
+                COALESCE((SELECT MAX(id) FROM user_prompts), 0),
+                false
             )
         """)
 

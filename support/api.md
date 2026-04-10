@@ -45,7 +45,7 @@ Interactive docs: http://127.0.0.1:8000/docs
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/db/prompts` | List prompts (system built-ins + own) |
+| GET | `/db/prompts` | List prompts owned by the current user |
 | POST | `/db/prompts` | Create custom prompt |
 | PUT | `/db/prompts/{id}` | Update prompt |
 | DELETE | `/db/prompts/{id}` | Delete prompt |

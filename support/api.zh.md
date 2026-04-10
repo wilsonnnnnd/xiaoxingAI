@@ -45,7 +45,7 @@ Base URL：`http://127.0.0.1:8000`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/db/prompts` | 列出 Prompt（系统内置 + 本人创建） |
+| GET | `/db/prompts` | 列出当前用户创建的 Prompt |
 | POST | `/db/prompts` | 创建自定义 Prompt |
 | PUT | `/db/prompts/{id}` | 更新 Prompt |
 | DELETE | `/db/prompts/{id}` | 删除 Prompt |

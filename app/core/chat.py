@@ -50,13 +50,11 @@ def _filter_memories(profile: str, message: str) -> str:
         msg_bigrams = {message[i:i+2] for i in range(len(message) - 1)}
         relevant_events = [
             item for item in sections["近期事件"]
-            if msg_bigrams & {item[i:i+2] for i in range(len(item) - 1)}
+            if msg_bigrams & {item.lstrip('- ')[i:i+2] for i in range(len(item.lstrip('- ')) - 1)}
         ]
         if relevant_events:
             result_parts.append("[近期事件]\n" + "\n".join(relevant_events))
-        else:
-            # 无相关事件时也保留（保持上下文感知）
-            result_parts.append("[近期事件]\n" + "\n".join(sections["近期事件"]))
+        # 无相关事件时跳过，避免注入无关内容
 
     return "\n\n".join(result_parts)
 
