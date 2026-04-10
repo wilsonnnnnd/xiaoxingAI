@@ -4,6 +4,10 @@
 
 [中文文档](README.zh.md)
 
+[![GitHub stars](https://img.shields.io/github/stars/wilsonnnnnd/xiaoxingAI?style=social)](https://github.com/wilsonnnnnd/xiaoxingAI)
+
+If you find this project useful, please give it a star on GitHub — it helps others discover the project and supports continued development. Thank you!
+
 ---
 
 ## Features
