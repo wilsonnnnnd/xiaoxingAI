@@ -167,18 +167,19 @@ def _handle_message(token: str, bot_id: int, chat_id: str, text: str,
     tool_context, tool_tokens = route_and_execute(text, user_id=user_id)
     db_context = tool_context
 
-    # 如果 bot 绑定了特定 prompt，注入 system 覆盖
+    # 如果 bot 绑定了特定 prompt，加载人格提示词
+    persona_prompt = ""
     if chat_prompt_id:
         try:
             prompt_row = db.get_prompt(chat_prompt_id)
             if prompt_row:
-                db_context = f"[系统提示补充]\n{prompt_row['content']}\n\n{db_context}".strip()
+                persona_prompt = prompt_row["content"]
         except Exception:
             pass
 
     _wlog(f"💬 [bot#{bot_id}] {_sender_label(from_user)}: {text[:80]}")
     try:
-        reply, tokens = chat_reply(text, history, profile=profile, db_context=db_context)
+        reply, tokens = chat_reply(text, history, profile=profile, db_context=db_context, persona_prompt=persona_prompt)
     except Exception as e:
         logger.error(f"[tg_bot] AI 回复失败 [bot#{bot_id}]: {e}")
         _wlog(f"❌ AI 回复失败 [bot#{bot_id}]: {e}", level="error")

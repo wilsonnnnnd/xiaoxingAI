@@ -222,8 +222,6 @@ export const setDefaultBot = (userId: number, botId: number) =>
 
 // ── DB Prompts ────────────────────────────────────────────────────
 
-export const listDbPrompts = () => api.get<DbPrompt[]>('/db/prompts').then(r => r.data)
-
 export const createDbPrompt = (data: { name: string; type: string; content: string }) =>
   api.post<DbPrompt>('/db/prompts', data).then(r => r.data)
 

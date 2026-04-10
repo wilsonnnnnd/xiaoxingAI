@@ -80,6 +80,125 @@ function LogRow({ entry, usersMap }: { entry: LogEntry; usersMap: Map<number, st
     )
 }
 
+// ── Persona display (structured card view) ──────────────────────
+type _PField = { label: string; value: string }
+type _PSection =
+    | { kind: 'intro'; text: string }
+    | { kind: 'numbered'; num: number; title: string; fields: _PField[] }
+    | { kind: 'notes'; items: string[] }
+
+function _parsePersona(raw: string): _PSection[] {
+    const out: _PSection[] = []
+    let introBuf: string[] = []
+    let cur: Extract<_PSection, { kind: 'numbered' }> | Extract<_PSection, { kind: 'notes' }> | null = null
+
+    const flush = () => {
+        if (cur) { out.push(cur); cur = null }
+        const t = introBuf.join('\n').trim()
+        if (t) out.push({ kind: 'intro', text: t })
+        introBuf = []
+    }
+
+    for (const ln of raw.split('\n')) {
+        const numM   = ln.match(/^(\d+)\.\s+(.+)/)
+        const noteM  = ln.match(/^请注意[：:]?/)
+        const fieldM = ln.match(/^[-•]\s+([^：:]+)[：:](.+)/)
+        const bulletM = ln.match(/^[-•]\s+(.+)/)
+
+        if (noteM) {
+            flush(); cur = { kind: 'notes', items: [] }
+        } else if (numM) {
+            flush(); cur = { kind: 'numbered', num: parseInt(numM[1]), title: numM[2].trim(), fields: [] }
+        } else if (fieldM && cur?.kind === 'numbered') {
+            cur.fields.push({ label: fieldM[1].trim(), value: fieldM[2].trim() })
+        } else if (bulletM && cur?.kind === 'notes') {
+            cur.items.push(bulletM[1].trim())
+        } else if (!cur && ln.trim()) {
+            introBuf.push(ln)
+        }
+    }
+    flush()
+    return out
+}
+
+const _SEC_COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#fb923c']
+
+function PersonaDisplay({ text, onEdit }: { text: string; onEdit: () => void }) {
+    const [copied, setCopied] = useState(false)
+    const sections = _parsePersona(text)
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+
+    return (
+        <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+                <span className="text-xs text-[#64748b]">角色人设画像</span>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={handleCopy}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-[#1e2a3d] hover:bg-[#273347] text-[#93c5fd] transition-colors"
+                    >
+                        {copied ? '✓ 已复制' : '📋 复制'}
+                    </button>
+                    <button
+                        onClick={onEdit}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-[#2d3748] hover:bg-[#334155] text-[#94a3b8] transition-colors"
+                    >
+                        ✏️ 编辑
+                    </button>
+                </div>
+            </div>
+
+            {sections.map((s, i) => {
+                if (s.kind === 'intro') {
+                    return (
+                        <p key={i} className="text-sm text-[#94a3b8] leading-relaxed">{s.text}</p>
+                    )
+                }
+                if (s.kind === 'numbered') {
+                    const color = _SEC_COLORS[(s.num - 1) % _SEC_COLORS.length]
+                    return (
+                        <div key={i} className="rounded-xl overflow-hidden border border-[#1e2a3a]">
+                            <div className="flex items-center gap-2 px-3 py-2 bg-[#111827]">
+                                <div className="w-1 h-4 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                <span className="text-xs font-semibold" style={{ color }}>{s.num}. {s.title}</span>
+                            </div>
+                            <div className="bg-[#0b0e14] px-4 py-2.5 flex flex-col gap-1.5">
+                                {s.fields.map((f, fi) => (
+                                    <div key={fi} className="grid gap-2 items-baseline" style={{ gridTemplateColumns: '90px 1fr' }}>
+                                        <span className="text-[11px] text-[#475569]">{f.label}</span>
+                                        <span className="text-[12px] text-[#cbd5e1] leading-snug">{f.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )
+                }
+                if (s.kind === 'notes') {
+                    return (
+                        <div key={i} className="rounded-xl bg-[#12100a] border border-[#2d2a1a] px-3 py-2.5">
+                            <p className="text-[11px] text-[#92704a] font-medium mb-1.5">注意事项</p>
+                            <ul className="flex flex-col gap-1">
+                                {s.items.map((item, ii) => (
+                                    <li key={ii} className="flex gap-1.5 text-[11px] text-[#6b5a3e] leading-snug">
+                                        <span className="text-[#7d6040] shrink-0 mt-0.5">·</span>
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )
+                }
+                return null
+            })}
+        </div>
+    )
+}
+
 export default function Chat() {
     const { t } = useI18n()
     const qc = useQueryClient()
@@ -96,6 +215,7 @@ export default function Chat() {
     const [savedMsg, setSavedMsg] = useState('')
     const [assignStatus, setAssignStatus] = useState<Record<number, string>>({})  // promptId → msg
     const [selectedBot, setSelectedBot] = useState<Record<number, number | ''>>({})  // promptId → botId
+    const [editMode, setEditMode] = useState(false)
 
     const { data: personaConfig = {} as Record<string, Record<string, string>> } = useQuery({
         queryKey: ['personaConfig'],
@@ -145,6 +265,7 @@ export default function Chat() {
             setGeneratedPrompt(data.prompt)
             setGenTokens(data.tokens)
             setSavedMsg('')
+            setEditMode(false)
         },
     })
 
@@ -171,7 +292,11 @@ export default function Chat() {
 
     const deleteMut = useMutation({
         mutationFn: (id: number) => deleteDbPrompt(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['dbPrompts', 'chat', me?.id] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['dbPrompts', 'chat', me?.id] })
+            // ON DELETE SET NULL clears bot.chat_prompt_id in DB; sync frontend cache
+            qc.invalidateQueries({ queryKey: ['bots', me?.id] })
+        },
     })
 
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
@@ -372,20 +497,41 @@ export default function Chat() {
                     </div>
 
                     {generatedPrompt && (
-                        <div className="flex flex-col gap-2 mt-1">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-[#94a3b8]">{t('chat.persona.result_label')}</label>
-                                {genTokens > 0 && (
-                                    <span className="text-[10px] text-[#475569]">{t('chat.persona.tokens')}: {genTokens}</span>
-                                )}
-                            </div>
-                            <textarea
-                                rows={8}
-                                value={generatedPrompt}
-                                onChange={e => setGeneratedPrompt(e.target.value)}
-                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-2.5 text-xs text-[#e2e8f0] font-mono resize-y focus:outline-none focus:border-[#475569]"
-                            />
-                            <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-col gap-3 mt-1">
+                            {/* Token count */}
+                            {genTokens > 0 && (
+                                <div className="flex justify-end">
+                                    <span className="text-[10px] bg-[#1c2a1c] text-[#86efac] px-2 py-0.5 rounded-full">
+                                        {t('chat.persona.tokens')}: {genTokens}
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Display mode / Edit mode */}
+                            {editMode ? (
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-[#94a3b8]">编辑提示词</span>
+                                        <button
+                                            onClick={() => setEditMode(false)}
+                                            className="text-xs px-2.5 py-1 rounded-lg bg-[#1e2a3d] hover:bg-[#273347] text-[#93c5fd] transition-colors"
+                                        >
+                                            ← 返回预览
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        rows={12}
+                                        value={generatedPrompt}
+                                        onChange={e => setGeneratedPrompt(e.target.value)}
+                                        className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-3 text-xs text-[#e2e8f0] font-mono resize-y focus:outline-none focus:border-[#475569]"
+                                    />
+                                </div>
+                            ) : (
+                                <PersonaDisplay text={generatedPrompt} onEdit={() => setEditMode(true)} />
+                            )}
+
+                            {/* Save row */}
+                            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-[#1e2a3a]">
                                 <input
                                     type="text"
                                     value={promptName}

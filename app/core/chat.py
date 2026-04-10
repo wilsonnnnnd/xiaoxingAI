@@ -19,12 +19,14 @@ def chat_reply(
     history: List[Dict[str, str]] | None = None,
     profile: str = "",
     db_context: str = "",
+    persona_prompt: str = "",
 ) -> tuple:
     """
     使用 chat.txt prompt 与用户进行对话。
     history: 形如 [{"role": "user", ...}, {"role": "assistant", ...}]
     profile: 用户画像文本，注入 prompt 让 AI 个性化回复。
     db_context: 数据库查询结果文本，供 AI 回答数据相关问题。
+    persona_prompt: Bot 绑定的自定义聊天人格提示词，设定后覆盖默认 Xiaoxing 风格。
     返回 (reply_str, token_count)。
     """
     if history is None:
@@ -48,12 +50,18 @@ def chat_reply(
     if db_context and db_context.strip():
         db_context_section = f"【系统实时数据（以下内容由系统工具实时获取，必须以此为准，不要用自己的判断覆盖）】\n{db_context.strip()}\n\n"
 
+    # 自定义聊天人格（Bot 绑定的提示词）
+    persona_section = ""
+    if persona_prompt and persona_prompt.strip():
+        persona_section = f"{persona_prompt.strip()}\n\n"
+
     template = load_prompt(config.PROMPT_CHAT)
     prompt = template.format(
         history=history_text,
         message=message,
         profile_section=profile_section,
         db_context_section=db_context_section,
+        persona_section=persona_section,
     )
 
     raw, tokens = call_llm(prompt, max_tokens=400)
