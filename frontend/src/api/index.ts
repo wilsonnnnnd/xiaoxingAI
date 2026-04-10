@@ -222,8 +222,6 @@ export const setDefaultBot = (userId: number, botId: number) =>
 
 // ── DB Prompts ────────────────────────────────────────────────────
 
-export const listDbPrompts = () => api.get<DbPrompt[]>('/db/prompts').then(r => r.data)
-
 export const createDbPrompt = (data: { name: string; type: string; content: string }) =>
   api.post<DbPrompt>('/db/prompts', data).then(r => r.data)
 
@@ -232,3 +230,38 @@ export const updateDbPrompt = (id: number, data: { name?: string; content?: stri
 
 export const deleteDbPrompt = (id: number) =>
   api.delete(`/db/prompts/${id}`).then(r => r.data)
+
+// ── Chat Persona Generator ────────────────────────────────────────
+
+export interface PersonaGenerateResult {
+  prompt: string
+  tokens: number
+}
+
+export const generateChatPersona = (
+  keywords: string,
+  zodiac?: string,
+  chinese_zodiac?: string,
+  gender?: string,
+  age?: string,
+) =>
+  api.post<PersonaGenerateResult>('/chat/generate_persona_prompt', {
+    keywords,
+    zodiac: zodiac || undefined,
+    chinese_zodiac: chinese_zodiac || undefined,
+    gender: gender || undefined,
+    age: age || undefined,
+  }).then(r => r.data)
+
+export const getDbPrompts = () =>
+  api.get<{ prompts: DbPrompt[] }>('/db/prompts').then(r => r.data.prompts)
+
+// ── Admin Persona Config ──────────────────────────────────────────
+
+export type PersonaConfigData = Record<string, Record<string, string>>
+
+export const getPersonaConfig = () =>
+  api.get<PersonaConfigData>('/admin/persona-config').then(r => r.data)
+
+export const savePersonaConfigItem = (category: string, key: string, content: string) =>
+  api.put<{ ok: boolean }>('/admin/persona-config', { category, key, content }).then(r => r.data)

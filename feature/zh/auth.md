@@ -1,0 +1,62 @@
+# 身份认证与用户管理
+
+## 概述
+
+Xiaoxing 采用 JWT 身份认证，密码使用 bcrypt 哈希存储。首次启动时自动创建管理员账号。管理员可创建额外用户，每个用户拥有独立隔离的资源。
+
+## 认证流程
+
+```
+POST /auth/login
+  → 验证 bcrypt 密码
+  → 签发 JWT（HS256，有效期可配置）
+  → 在 Redis 中存储 Token 版本号
+```
+
+每个已认证请求均会验证：
+1. JWT 签名和过期时间
+2. Token 版本号与 Redis 中的记录对比（支持即时吊销）
+
+Redis 不可达时跳过版本号检查（自动降级）。
+
+## JWT 配置
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `JWT_SECRET` | _（必填）_ | 签名密钥 — **生产环境必须修改** |
+| `JWT_EXPIRE_MINUTES` | `60` | Token 有效期（分钟） |
+
+## 用户角色
+
+| 角色 | 权限 |
+|------|------|
+| `admin` | 完全访问：管理所有用户、查看所有日志、编辑所有设置 |
+| `user` | 仅管理自己的资源：Gmail Worker、Bot、Prompt、OAuth Token |
+
+## 资源隔离
+
+每个用户独立拥有：
+- Gmail OAuth Token（`oauth_tokens` 表，按 `user_id` 隔离）
+- Gmail Worker 状态和邮件记录
+- Telegram Bot（`bot` 表，`user_id` 外键）
+- 自定义 Prompt（`user_prompts`，`user_id` 外键）
+- Bot 对话历史和记忆（`user_profile`，`bot_id` 外键）
+
+## 密码管理
+
+- 密码使用 **bcrypt** 哈希（cost factor 12）
+- 管理员密码通过 `.env` 中的 `ADMIN_PASSWORD` 在首次启动时设置
+- 普通用户密码由管理员在用户管理页面设置
+- 无自助找回密码流程，由管理员在 UI 中直接重置
+
+## 登录审计
+
+每次登录尝试（成功或失败）均记录到 `log` 表，含时间戳和 IP 地址。
+
+## Token 吊销
+
+修改密码或注销登录时，Redis 中该用户的 Token 版本号自增，所有已签发的旧 Token 立即失效。
+
+## 相关文档
+
+- [Web 界面 →](ui.md)

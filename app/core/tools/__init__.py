@@ -79,7 +79,7 @@ from app.core.tools import fetch_email_tool  # noqa: E402, F401
 def _load_router_prompt() -> str:
     try:
         from app.utils.prompt_loader import load_prompt
-        text = load_prompt("router.txt")
+        text = load_prompt("tools/router.txt")
         logger.debug("[tools] router.txt 加载成功（%d 字符）", len(text))
         return text
     except Exception as e:
