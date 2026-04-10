@@ -1,0 +1,41 @@
+name: Deploy to Server
+
+on:
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  deploy:
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            set -e
+            export PATH="/home/ubuntu/.nvm/versions/node/v22.22.2/bin:$PATH"
+            cd ~/xiaoxingAI
+
+            echo "📥 Pull latest code"
+            git pull origin main
+
+            echo "🐍 Install Python dependencies"
+            .venv/bin/pip install -r requirements.txt --quiet
+
+            echo "🏗 Build frontend"
+            cd frontend
+            npm ci --silent
+            npm run build
+            cd ..
+
+            echo "🔄 Restart backend"
+            sudo systemctl restart xiaoxingai
+
+            echo "✅ Deploy complete"
+            sudo systemctl status xiaoxingai --no-pager | tail -5
