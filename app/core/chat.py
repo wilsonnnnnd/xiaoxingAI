@@ -48,12 +48,41 @@ def chat_reply(
     # 工具调用结果注入段
     db_context_section = ""
     if db_context and db_context.strip():
-        db_context_section = f"【系统实时数据（以下内容由系统工具实时获取，必须以此为准，不要用自己的判断覆盖）】\n{db_context.strip()}\n\n"
+        db_context_section = (
+            f"【系统实时数据 — 下方信息由工具实时获取，必须以此为准，禁止用自己的知识或猜测覆盖】\n"
+            f"{db_context.strip()}\n"
+            f"【以上数据来自系统工具，请直接基于此数据回答用户问题】\n\n"
+        )
 
-    # 自定义聊天人格（Bot 绑定的提示词）
-    persona_section = ""
+    # 自定义聊天人格（Bot 绑定的提示词）；无设置时用默认 Xiaoxing 描述
     if persona_prompt and persona_prompt.strip():
-        persona_section = f"{persona_prompt.strip()}\n\n"
+        # 解析 [身份设定] 行，生成强制直接陈述句让小模型更好遵守
+        identity_header = ""
+        first_line = persona_prompt.strip().split("\n")[0]
+        if first_line.startswith("[身份设定]"):
+            attrs_str = first_line.replace("[身份设定]", "").strip()
+            # 只取第一个句号前的属性部分，避免把后续说明文字混进去
+            if "。" in attrs_str:
+                attrs_str = attrs_str.split("。")[0].strip()
+            parts = [p.strip() for p in attrs_str.replace("、", "，").split("，") if "：" in p]
+            if parts:
+                attr_parts = []
+                for p in parts:
+                    if "：" in p:
+                        k, v = p.split("：", 1)
+                        attr_parts.append(f"你的{k}是{v}")
+                attr_sentence = "，".join(attr_parts)
+                identity_header = (
+                    "【强制身份设定，最高优先级】\n"
+                    f"{attr_sentence}。\n"
+                    "这是你的真实身份，不是\"设定\"或\"角色扮演\"，就是你自己。\n"
+                    "当用户问你星座、属相、性别、年龄时，直接回答，例如\"我是双鱼座\"。\n"
+                    "禁止说\"我没有星座\"\"我没有具体的星座\"\"我只是AI所以没有星座\"等任何否定自身属性的话。\n"
+                    "即使之前的对话历史里有错误的回答，也必须按照此设定如实作答。\n\n"
+                )
+        persona_section = identity_header + persona_prompt.strip() + "\n\n"
+    else:
+        persona_section = "你是一位名叫 Xiaoxing（小星 AI）的 AI 助手，性格活泼、温暖、有点俏皮，说话口语化但不失礼貌。\n"
 
     template = load_prompt(config.PROMPT_CHAT)
     prompt = template.format(

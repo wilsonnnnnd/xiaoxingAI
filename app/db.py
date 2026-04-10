@@ -243,6 +243,12 @@ def init_db() -> None:
     # 从旧 prompts 单表拆分到 system_prompts + user_prompts（幂等）
     _migrate_prompts_split()
 
+    # 新增列：幂等 ALTER TABLE（旧数据库升级）
+    with _cur() as cur:
+        cur.execute(
+            "ALTER TABLE user_prompts ADD COLUMN IF NOT EXISTS meta TEXT"
+        )
+
     # 导入系统内置 Prompt（幂等）
     _init_system_prompts()
 
@@ -761,7 +767,7 @@ def get_prompts(user_id: Optional[int] = None, ptype: Optional[str] = None) -> L
             params.append(ptype)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         cur.execute(
-            f"SELECT id, user_id, name, type, content, is_default, created_at, updated_at"
+            f"SELECT id, user_id, name, type, content, is_default, created_at, updated_at, meta"
             f" FROM user_prompts {where} ORDER BY id",
             params,
         )
@@ -772,7 +778,7 @@ def get_prompt(prompt_id: int) -> Optional[Dict[str, Any]]:
     """按 ID 查找 Prompt：先查 user_prompts，再查 system_prompts。"""
     with _cur() as cur:
         cur.execute(
-            "SELECT id, user_id, name, type, content, is_default, created_at, updated_at"
+            "SELECT id, user_id, name, type, content, is_default, created_at, updated_at, meta"
             " FROM user_prompts WHERE id = %s",
             (prompt_id,),
         )
@@ -841,6 +847,7 @@ def create_prompt(
     ptype: str,
     content: str,
     is_default: bool = False,
+    meta: Optional[str] = None,
 ) -> Dict[str, Any]:
     with _cur() as cur:
         if is_default:
@@ -849,10 +856,10 @@ def create_prompt(
                 (user_id, ptype),
             )
         cur.execute(
-            """INSERT INTO user_prompts (user_id, name, type, content, is_default)
-               VALUES (%s, %s, %s, %s, %s)
-               RETURNING id, user_id, name, type, content, is_default, created_at, updated_at""",
-            (user_id, name, ptype, content, is_default),
+            """INSERT INTO user_prompts (user_id, name, type, content, is_default, meta)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               RETURNING id, user_id, name, type, content, is_default, created_at, updated_at, meta""",
+            (user_id, name, ptype, content, is_default, meta),
         )
         return _row_to_prompt(cur.fetchone())
 
@@ -894,6 +901,7 @@ def _row_to_prompt(r: tuple) -> Dict[str, Any]:
         "id": r[0], "user_id": r[1], "name": r[2], "type": r[3],
         "content": r[4], "is_default": r[5],
         "created_at": str(r[6]), "updated_at": str(r[7]),
+        "meta": r[8] if len(r) > 8 else None,
     }
 
 

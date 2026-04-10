@@ -209,6 +209,7 @@ export default function Chat() {
     const [zodiac, setZodiac] = useState('')
     const [chineseZodiac, setChineseZodiac] = useState('')
     const [gender, setGender] = useState('')
+    const [age, setAge] = useState('')
     const [generatedPrompt, setGeneratedPrompt] = useState('')
     const [genTokens, setGenTokens] = useState(0)
     const [promptName, setPromptName] = useState('')
@@ -260,6 +261,7 @@ export default function Chat() {
             zodiac || undefined,
             chineseZodiac || undefined,
             gender || undefined,
+            age || undefined,
         ),
         onSuccess: (data) => {
             setGeneratedPrompt(data.prompt)
@@ -270,7 +272,26 @@ export default function Chat() {
     })
 
     const saveMut = useMutation({
-        mutationFn: () => createDbPrompt({ name: promptName.trim(), type: 'chat', content: generatedPrompt }),
+        mutationFn: () => {
+            // 将选择的身份信息直接内嵌到内容最前面
+            const _LABEL: Record<string, string> = {
+                aries: '白羊座', taurus: '金牛座', gemini: '双子座', cancer: '巨蟹座',
+                leo: '狮子座', virgo: '处女座', libra: '天秤座', scorpio: '天蝎座',
+                sagittarius: '射手座', capricorn: '摩羯座', aquarius: '水瓶座', pisces: '双鱼座',
+                rat: '鼠', ox: '牛', tiger: '虎', rabbit: '兔', dragon: '龙', snake: '蛇',
+                horse: '马', goat: '羊', monkey: '猴', rooster: '鸡', dog: '狗', pig: '猪',
+                male: '男性', female: '女性', other: '其他',
+            }
+            const parts: string[] = []
+            if (zodiac) parts.push(`星座：${_LABEL[zodiac] ?? zodiac}`)
+            if (chineseZodiac) parts.push(`属相：${_LABEL[chineseZodiac] ?? chineseZodiac}`)
+            if (gender) parts.push(`性别：${_LABEL[gender] ?? gender}`)
+            if (age) parts.push(`年龄感：${age}`)
+            const header = parts.length > 0
+                ? `[身份设定] ${parts.join('、')}。如果用户问你的星座、属相、性别、年龄等个人特征，直接如实回答。\n\n`
+                : ''
+            return createDbPrompt({ name: promptName.trim(), type: 'chat', content: header + generatedPrompt })
+        },
         onSuccess: () => {
             setSavedMsg(t('chat.persona.saved'))
             setPromptName('')
@@ -422,7 +443,7 @@ export default function Chat() {
                     <p className="text-xs text-[#64748b]">{t('chat.persona.desc')}</p>
 
                     {/* 星座 / 属相 / 性别 选择器 */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-[#94a3b8]">{t('chat.persona.zodiac_label')}</label>
                             <select
@@ -463,6 +484,20 @@ export default function Chat() {
                                     const m = PERSONA_ITEM_META[key] ?? { emoji: '', zh: key }
                                     return <option key={key} value={key}>{m.emoji} {m.zh}</option>
                                 })}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-[#94a3b8]">年龄感</label>
+                            <select
+                                value={age}
+                                onChange={e => setAge(e.target.value)}
+                                className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2 py-1.5 text-sm text-[#e2e8f0] focus:outline-none focus:border-[#475569]"
+                            >
+                                <option value="">{t('chat.persona.select_none')}</option>
+                                <option value="少年感">🌱 少年感</option>
+                                <option value="年轻成年人">✨ 年轻成年人</option>
+                                <option value="成熟">🌿 成熟</option>
+                                <option value="中年感">🍂 中年感</option>
                             </select>
                         </div>
                     </div>

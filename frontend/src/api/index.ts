@@ -243,12 +243,14 @@ export const generateChatPersona = (
   zodiac?: string,
   chinese_zodiac?: string,
   gender?: string,
+  age?: string,
 ) =>
   api.post<PersonaGenerateResult>('/chat/generate_persona_prompt', {
     keywords,
     zodiac: zodiac || undefined,
     chinese_zodiac: chinese_zodiac || undefined,
     gender: gender || undefined,
+    age: age || undefined,
   }).then(r => r.data)
 
 export const getDbPrompts = () =>

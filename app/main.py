@@ -452,6 +452,7 @@ class ChatPersonaRequest(BaseModel):
     zodiac: Optional[str] = None
     chinese_zodiac: Optional[str] = None
     gender: Optional[str] = None
+    age: Optional[str] = None
 
 
 @app.post("/chat/generate_persona_prompt")
@@ -511,6 +512,10 @@ def chat_generate_persona_prompt(payload: ChatPersonaRequest, user: dict = Depen
             content = persona_configs.get(cat_key, {}).get(selection, "").strip()
             if content:
                 supplements.append(f"[{_LABEL_MAP[cat_key]}]\n{content}")
+
+    # age 直接追加到 keywords，无需 DB 配置
+    if payload.age and payload.age.strip():
+        supplements.append(f"[年龄感参考]\n目标年龄感：{payload.age.strip()}")
 
     enriched_keywords = keywords
     if supplements:
