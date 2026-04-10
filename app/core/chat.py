@@ -1,7 +1,7 @@
 """
 聊天核心模块 — 主要功能
 - chat_reply(): 与用户实时对话（Xiaoxing 人格）
-- build_user_profile(): 根据聊天历史生成/更新用户画像
+- build_user_profile(): 根据聊天历史生成/更新用户记忆摘要
 """
 import re
 from typing import Dict, List
@@ -12,6 +12,53 @@ from app.utils.prompt_loader import load_prompt
 
 
 CHAT_HISTORY_MAX = 20   # 最多保留最近 N 条对话历史（每条 = 用户+助手一轮）
+
+
+def _filter_memories(profile: str, message: str) -> str:
+    """
+    解析分类记忆文本，按相关性筛选后返回注入段。
+    - [事实] [偏好] [性格观察]：始终注入
+    - [近期事件]：仅当消息与事件有字符级交集时注入
+    """
+    if not profile or not profile.strip():
+        return ""
+
+    # 解析 [分类] 下的条目
+    sections: Dict[str, List[str]] = {}
+    current: str | None = None
+    for line in profile.strip().split("\n"):
+        sec_m = re.match(r"^\[(.+)\]$", line.strip())
+        if sec_m:
+            current = sec_m.group(1)
+            sections[current] = []
+        elif line.strip().startswith("-") and current is not None:
+            sections[current].append(line.strip())
+
+    if not sections:
+        # 旧格式（非结构化），直接全量返回
+        return profile.strip()
+
+    result_parts: List[str] = []
+
+    # 始终包含的分类
+    for key in ("事实", "偏好", "性格观察"):
+        if key in sections and sections[key]:
+            result_parts.append(f"[{key}]\n" + "\n".join(sections[key]))
+
+    # 近期事件：检查消息与事件文本是否有 2 字符以上的公共 n-gram
+    if "近期事件" in sections and sections["近期事件"]:
+        msg_bigrams = {message[i:i+2] for i in range(len(message) - 1)}
+        relevant_events = [
+            item for item in sections["近期事件"]
+            if msg_bigrams & {item[i:i+2] for i in range(len(item) - 1)}
+        ]
+        if relevant_events:
+            result_parts.append("[近期事件]\n" + "\n".join(relevant_events))
+        else:
+            # 无相关事件时也保留（保持上下文感知）
+            result_parts.append("[近期事件]\n" + "\n".join(sections["近期事件"]))
+
+    return "\n\n".join(result_parts)
 
 
 def chat_reply(
@@ -40,10 +87,12 @@ def chat_reply(
         else:
             history_text += f"Xiaoxing：{turn['content']}\n"
 
-    # 用户画像注入段
+    # 记忆注入段（按相关性筛选）
     profile_section = ""
     if profile and profile.strip():
-        profile_section = f"【用户画像参考（请据此调整回复风格和内容）】\n{profile.strip()}\n\n"
+        filtered = _filter_memories(profile, message)
+        if filtered:
+            profile_section = f"【长期记忆 — 你记得关于这位用户的信息】\n{filtered}\n\n"
 
     # 工具调用结果注入段
     db_context_section = ""
@@ -105,10 +154,10 @@ def build_user_profile(
     existing_profile: str = "",
 ) -> tuple:
     """
-    根据今日聊天记录和已有画像，生成/更新用户画像文本。
+    根据今日聊天记录，提炼并更新用户记忆摘要（分类结构化存储）。
     chat_history: 完整的对话历史列表（user/assistant 交替）
-    existing_profile: 数据库中已有的画像文本
-    返回 (profile_str, token_count)。
+    existing_profile: 数据库中已有的记忆文本
+    返回 (memory_str, token_count)。
     """
     if not chat_history:
         return existing_profile, 0
