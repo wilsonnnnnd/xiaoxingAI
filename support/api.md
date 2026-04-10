@@ -1,4 +1,6 @@
-﻿# Xiaoxing AI — API Reference
+# Xiaoxing AI — API Reference
+
+[中文文档](api.zh.md)
 
 Base URL: `http://127.0.0.1:8000`
 
