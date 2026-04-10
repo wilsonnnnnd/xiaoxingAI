@@ -219,6 +219,11 @@ export default function Chat() {
     const [selectedBot, setSelectedBot] = useState<Record<number, number | ''>>({})  // promptId → botId
     const [editMode, setEditMode] = useState(false)
 
+    // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
+    const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
+    const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 8000 })
+    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
+
     const { data: personaConfig = {} as Record<string, Record<string, string>> } = useQuery({
         queryKey: ['personaConfig'],
         queryFn: getPersonaConfig,
@@ -226,10 +231,6 @@ export default function Chat() {
         enabled: me?.role === 'admin',
     })
 
-    // Avoid continuous polling; fetch bot status on demand before user-triggered actions.
-    const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
-    const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 8000 })
-    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
     const { data: allUsers = [] } = useQuery({
         queryKey: ['users'],
         queryFn: async () => { try { return await listUsers() } catch { return [] } },
