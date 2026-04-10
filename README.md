@@ -10,15 +10,15 @@
 
 | Feature | Description |
 |---------|-------------|
-| 📥 [Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 4-stage AI pipeline (classify → summarise → push); priority filter and deduplication |
-| 📱 [Telegram Push](feature/telegram-push.md) | Each user binds their own bot; AI-written HTML notifications delivered after email processing |
-| 💬 [Telegram Chat](feature/telegram-chat.md) | Multi-bot concurrent chat; per-bot history, persona, and tool access; thread-safe |
-| 🧠 [Memory System](feature/memory.md) | Structured long-term memory (`[Facts]` `[Preferences]` `[Events]` `[Personality]`); relevance-filtered injection |
-| 🛠️ [Tool System](feature/tool-system.md) | `get_time`, `get_emails`, `fetch_email`; Router LLM dispatch with keyword fallback |
-| 🎭 [Persona Generator](feature/persona.md) | 4-stage AI persona pipeline; identity attributes (zodiac, gender, age) embedded in prompt content |
-| 🔐 [Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
-| ✏️ [Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
-| 🖥️ [Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
+|[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 4-stage AI pipeline (classify → summarise → push); priority filter and deduplication |
+|[Telegram Push](feature/telegram-push.md) | Each user binds their own bot; AI-written HTML notifications delivered after email processing |
+|[Telegram Chat](feature/telegram-chat.md) | Multi-bot concurrent chat; per-bot history, persona, and tool access; thread-safe |
+|[Memory System](feature/memory.md) | Structured long-term memory (`[Facts]` `[Preferences]` `[Events]` `[Personality]`); relevance-filtered injection |
+|[Tool System](feature/tool-system.md) | `get_time`, `get_emails`, `fetch_email`; Router LLM dispatch with keyword fallback |
+|[Persona Generator](feature/persona.md) | 4-stage AI persona pipeline; identity attributes (zodiac, gender, age) embedded in prompt content |
+|[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
+|[Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
+|[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
 
 ---
 

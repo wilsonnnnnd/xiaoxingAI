@@ -10,15 +10,15 @@
 
 | 功能 | 简介 |
 |------|------|
-| 📥 [Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，4 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重 |
-| 📱 [Telegram 推送](feature/zh/telegram-push.md) | 每用户绑定自己的 Bot，AI 自动撰写 HTML 通知，邮件处理后即时推送 |
-| 💬 [Telegram 聊天](feature/zh/telegram-chat.md) | 多 Bot 并发对话，各自维护对话历史、人格提示词和工具访问权限，线程安全 |
-| 🧠 [记忆系统](feature/zh/memory.md) | 结构化长期记忆（`[事实]` `[偏好]` `[近期事件]` `[性格观察]`），按相关性筛选注入 |
-| 🛠️ [工具系统](feature/zh/tool-system.md) | `get_time`、`get_emails`、`fetch_email`；Router LLM 调度，关键词降级兜底 |
-| 🎭 [人格生成器](feature/zh/persona.md) | 4 阶段 AI 人格生成流水线，身份属性（星座/性别/年龄感）内嵌到 Prompt 内容 |
-| 🔐 [认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
-| ✏️ [Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
-| 🖥️ [Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
+|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，4 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重 |
+|[Telegram 推送](feature/zh/telegram-push.md) | 每用户绑定自己的 Bot，AI 自动撰写 HTML 通知，邮件处理后即时推送 |
+|[Telegram 聊天](feature/zh/telegram-chat.md) | 多 Bot 并发对话，各自维护对话历史、人格提示词和工具访问权限，线程安全 |
+|[记忆系统](feature/zh/memory.md) | 结构化长期记忆（`[事实]` `[偏好]` `[近期事件]` `[性格观察]`），按相关性筛选注入 |
+|[工具系统](feature/zh/tool-system.md) | `get_time`、`get_emails`、`fetch_email`；Router LLM 调度，关键词降级兜底 |
+|[人格生成器](feature/zh/persona.md) | 4 阶段 AI 人格生成流水线，身份属性（星座/性别/年龄感）内嵌到 Prompt 内容 |
+|[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
+|[Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
+|[Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
 
 ---
 
