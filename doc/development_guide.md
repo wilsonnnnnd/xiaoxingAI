@@ -279,9 +279,10 @@ async def create_item(body: MyFeatureCreate, user=Depends(current_user)):
 | `llm.py` | `call_llm(prompt)` / `call_router(prompt)` → `(text, tokens)`，带 3 次退避重试 + Redis 缓存（1h） |
 | `chat.py` | `chat_reply(message, history, profile, ...)` → `(reply, tokens)`；`build_user_profile(history)` |
 | `redis_client.py` | LLM 缓存、对话历史（TTL 7天）、去重、任务队列；Redis 不可用时降级处理 |
-| `telegram.py` | `send_message()`, `test_connection()`, `get_latest_chat_id()` |
+| `telegram/client.py` | Telegram API 封装：`send_message()` / `edit_message_text()` / `test_connection()` / `get_latest_chat_id()` |
 | `bot_worker.py` | Telegram Bot 多实例管理，长轮询 + 任务队列消费，每日自动生成用户画像 |
-| `ws.py` | WebSocket 订阅/发布：`subscribe_worker()` / `publish_worker_status()` / `subscribe_bot()` / `publish_bot_status()` |
+| `realtime/ws.py` | WebSocket 订阅/发布：`subscribe_worker()` / `publish_worker_status()` / `subscribe_bot()` / `publish_bot_status()` |
+| `debug/*` | 内存调试事件缓冲：Telegram 事件与 Outgoing Trace |
 | `constants.py` | 业务常量 |
 
 ### 2.9 Tools 系统 (`app/core/tools/`)

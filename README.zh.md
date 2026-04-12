@@ -1,4 +1,4 @@
-﻿# Xiaoxing AI (小星 AI)
+# Xiaoxing AI (小星 AI)
 
 > 多用户 Gmail 自动化 + Telegram AI 聊天机器人平台
 
@@ -23,6 +23,8 @@
 |[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
 |[Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
 |[Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
+|邮件发送（草稿+确认） | 生成发信/回复草稿，通过 Telegram 预览确认/取消；发送幂等；草稿正文加密存储 |
+|回复格式设置 | Web 页面 `/settings/reply-format` 配置每用户回复模板与署名；生成回复草稿时自动套用 |
 
 ---
 
@@ -34,7 +36,7 @@
 - PostgreSQL 16+（推荐使用 Docker）
 - Redis 7+（推荐使用 Docker，可选 — 不可达时自动降级）
 - **LLM 后端**，二选一：
-  - 本地：llama.cpp llama-server（监听 127.0.0.2:8001）
+  - 本地：llama.cpp llama-server（监听 127.0.0.1:8001）
   - 云端：OpenAI API Key
 - **Router LLM（可选）** — 第二个 llama-server，端口 8002（推荐 Qwen2.5-1.5B），用于 AI 工具调度；不可该地址时自动降级为关键词匹配
 
@@ -109,6 +111,9 @@ copy .env.example .env        # Windows
 | `ROUTER_MODEL` | Router 模型名称（默认 local-router） |
 | `FRONTEND_URL` | 前端来源地址，用于 OAuth 回调和 CORS（默认 http://localhost:5173） |
 | `UI_LANG` | 默认 UI 语言，`en` 或 `zh`（默认 en） |
+| `TELEGRAM_CALLBACK_SECRET` | Telegram callback_data 签名密钥（按钮确认/取消等操作防伪造） |
+| `OUTGOING_EMAIL_ENCRYPTION_KEY` | 发信草稿正文加密密钥：base64(32 bytes) |
+| `OUTGOING_DRAFT_TTL_MINUTES` | 发信草稿有效期（分钟，默认 30） |
 
 ### 6. 放置 Google OAuth 凭据
 
@@ -121,7 +126,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 首次启动会自动执行：
-- 创建 PostgreSQL 数据库结构（8 张表）
+- 创建 PostgreSQL 数据库结构（用户/机器人/Prompt/邮件、发信草稿、回复格式、日志等表）
 - 将 app/prompts/ 下的文件导入为系统内置 Prompt
 - 根据 ADMIN_USER / ADMIN_PASSWORD 创建管理员账号
 
@@ -171,8 +176,9 @@ xiaoxing/
 │   │   ├── chat.py             # LLM 对话回复 + 用户画像生成
 │   │   ├── llm.py              # LLM 客户端（本地 / OpenAI）；3 次退避重试 + Redis 缓存
 │   │   ├── redis_client.py     # Redis 工具（历史、队列、去重、LLM 缓存）
-│   │   ├── telegram.py         # Telegram 消息发送 + MarkdownV2 转义
-│   │   ├── ws.py               # WebSocket 订阅/发布（Gmail & Bot 状态）
+│   │   ├── telegram/           # Telegram 客户端（发/改消息、getUpdates 辅助）
+│   │   ├── debug/              # 内存调试事件缓冲
+│   │   ├── realtime/           # WebSocket 订阅/发布（Gmail & Bot 状态）
 │   │   ├── constants.py        # 业务常量
 │   │   └── tools/              # 工具注册表 + Router LLM 调度器
 │   │       ├── __init__.py     # @register 装饰器，route_and_execute()
@@ -180,8 +186,8 @@ xiaoxing/
 │   │       ├── emails_tool.py  # get_emails — 数据库邮件记录查询
 │   │       └── fetch_email_tool.py  # fetch_email — 实时拉取 Gmail + AI 摘要
 │   ├── db/
-│   │   ├── base.py             # SQLAlchemy 模型 + init_db()
-│   │   ├── session.py          # asyncpg 连接池
+│   │   ├── base.py             # DDL + init_db()（psycopg2）
+│   │   ├── session.py          # psycopg2 连接池
 │   │   └── repositories/       # 所有 SQL — 每类资源独立文件
 │   │       ├── user_repo.py
 │   │       ├── bot_repo.py
@@ -252,6 +258,10 @@ xiaoxing/
 | `user_prompts` | 用户自定义 Prompt 覆盖；可绑定到指定 Bot |
 | `oauth_tokens` | Google OAuth token，每用户一行 |
 | `email_records` | 邮件处理记录，包含完整 AI 输出（分析、摘要、Telegram 文案） |
+| `outgoing_email_drafts` | 发信草稿（正文加密）+ 状态机 + Telegram 预览关联 |
+| `outgoing_email_actions` | 发信动作审计/流水；也用于幂等（telegram_update_id 唯一） |
+| `reply_templates` | 每用户回复格式模板 |
+| `reply_format_settings` | 每用户回复格式设置（默认模板 + 署名） |
 | `worker_stats` | Gmail Worker 会话统计，按用户记录 |
 | `user_profile` | AI 生成的对话用户画像，每个 Bot 一行 |
 | `log` | Worker 和对话日志，含级别、类型和 token 数 |
@@ -269,7 +279,7 @@ xiaoxing/
 | | 本地 llama-server | OpenAI API |
 |---|---|---|
 | `LLM_BACKEND` | local | openai |
-| `LLM_API_URL` | http://127.0.0.2:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
+| `LLM_API_URL` | http://127.0.0.1:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
 | `LLM_MODEL` | local-model | gpt-4o-mini、gpt-4o 等 |
 | `OPENAI_API_KEY` | 不需要 | sk-... |
 | 需要 GPU | 是 | 否 |
@@ -279,11 +289,11 @@ xiaoxing/
 
 1. 安装 [llama.cpp](https://github.com/ggerganov/llama.cpp) 并下载 GGUF 模型
    （推荐：Qwen2.5-14B-Instruct-Q4_K_M.gguf）
-2. 在 127.0.0.2:8001 启动 llama-server
+2. 在 127.0.0.1:8001 启动 llama-server
 
 ```ini
 LLM_BACKEND=local
-LLM_API_URL=http://127.0.0.2:8001/v1/chat/completions
+LLM_API_URL=http://127.0.0.1:8001/v1/chat/completions
 LLM_MODEL=local-model
 ```
 

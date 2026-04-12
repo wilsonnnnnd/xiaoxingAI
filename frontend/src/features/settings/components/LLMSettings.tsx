@@ -36,7 +36,7 @@ export const LLMSettings: React.FC<LLMSettingsProps> = ({ control }) => {
           control={control}
           label={t('label.LLM_API_URL')}
           className="col-span-full"
-          placeholder="http://127.0.0.2:8001/v1/chat/completions"
+          placeholder="http://127.0.0.1:8001/v1/chat/completions"
         />
         <FormInput
           name="OPENAI_API_KEY"
