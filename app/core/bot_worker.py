@@ -19,7 +19,7 @@ from app import db
 from app.core import config
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
 from app.core.tools import route_and_execute, route_and_execute_debug, route_and_execute_debug_allowlist
-from app.core.telegram import TELEGRAM_API
+from app.core.telegram.client import TELEGRAM_API
 from app.core import ws as ws_pub
 from app.core import redis_client as rc
 from app.core.telegram_debug import record as record_tg_event
