@@ -289,4 +289,13 @@ export const en: Record<string, string> = {
     "persona_config.saving": "Saving…",
     "persona_config.saved": "✅ Saved",
     "persona_config.save_error": "❌ Save failed",
+    "error.bad_request": "Invalid request (400)",
+    "error.unauthorized": "Please sign in to continue (401)",
+    "error.forbidden": "Access denied (403)",
+    "error.not_found": "Resource not found (404)",
+    "error.server_error": "Internal server error (500)",
+    "error.timeout": "Request timed out",
+    "error.network": "Network connection error",
+    "error.cancelled": "Request cancelled",
+    "error.unknown": "An unexpected error occurred",
 }

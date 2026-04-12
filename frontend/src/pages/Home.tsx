@@ -1,59 +1,24 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useI18n } from '../i18n/useI18n'
-import { useQueryClient, useQuery } from '@tanstack/react-query'
-import { getHealth, getGmailWorkStatus, getChatWorkStatus } from '../api'
+import { useQueryClient } from '@tanstack/react-query'
+import { getGmailWorkStatus } from '../features/gmail/api'
+import { getChatWorkStatus } from '../features/chat/api'
+import { useHealthCheck } from '../hooks/useHealthCheck'
+import { useWorkerStatus } from '../hooks/useWorkerStatus'
+import { Badge } from '../components/common/Badge'
 
 export default function Home() {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const [apiOk, setApiOk] = useState<boolean | null>(null)
+    const apiOk = useHealthCheck()
+    const { gmailWorker, chatBot } = useWorkerStatus()
 
     // Initial fetch to populate caches
     useEffect(() => {
         qc.fetchQuery({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus }).catch(() => {})
         qc.fetchQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus }).catch(() => {})
     }, [qc])
-
-    // Health check polling
-    useEffect(() => {
-        const check = () => getHealth().then(() => setApiOk(true)).catch(() => setApiOk(false))
-        check()
-        const id = setInterval(check, 15_000)
-        return () => clearInterval(id)
-    }, [])
-
-    // WebSocket subscriptions for worker and bot statuses
-    useEffect(() => {
-        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-        const wWorker = new WebSocket(`${proto}://${window.location.host}/api/ws/worker/status`)
-        const wBot = new WebSocket(`${proto}://${window.location.host}/api/ws/bot/status`)
-
-        wWorker.onmessage = (e) => {
-            try { qc.setQueryData(['gmailworkstatus'], JSON.parse(e.data)) } catch 
-            {
-                /* ignore */
-            }
-        }
-        wBot.onmessage = (e) => {
-            try { qc.setQueryData(['chatworkstatus'], JSON.parse(e.data)) } catch {
-                /* ignore */
-            }
-        }
-
-        return () => {
-            try { wWorker.close() } catch {
-                /* ignore */
-            }
-            try { wBot.close() } catch {
-                /* ignore */
-            }
-        }
-    }, [qc])
-
-    // react-query hooks to read status (will react to cache updates)
-    const { data: worker } = useQuery({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus, enabled: false })
-    const { data: bot } = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
 
     return (
         <div className="flex items-center justify-center h-full p-8">
@@ -70,13 +35,13 @@ export default function Home() {
                         <span>{apiOk === true ? t('home.status.ok') : apiOk === false ? t('home.status.err') : t('home.status.checking')}</span>
                     </div>
 
-                    <div className={`px-3 py-1.5 rounded-lg text-xs border ${worker?.running ? 'bg-[#052e16] border-[#166534] text-[#86efac]' : 'bg-[#0b0e14] border-[#2d3748] text-[#64748b]'}`}>
-                        {'Gmail: ' + (worker?.running ? t('home.worker.running') : t('home.worker.stopped'))}
-                    </div>
+                    <Badge variant={gmailWorker?.running ? 'success' : 'neutral'}>
+                        {'Gmail: ' + (gmailWorker?.running ? t('home.worker.running') : t('home.worker.stopped'))}
+                    </Badge>
 
-                    <div className={`px-3 py-1.5 rounded-lg text-xs border ${bot?.running ? 'bg-[#052e16] border-[#166534] text-[#86efac]' : 'bg-[#0b0e14] border-[#2d3748] text-[#64748b]'}`}>
-                        {'Bot: ' + (bot?.running ? t('home.worker.running') : t('home.worker.stopped'))}
-                    </div>
+                    <Badge variant={chatBot?.running ? 'success' : 'neutral'}>
+                        {'Bot: ' + (chatBot?.running ? t('home.worker.running') : t('home.worker.stopped'))}
+                    </Badge>
                 </div>
             </div>
         </div>

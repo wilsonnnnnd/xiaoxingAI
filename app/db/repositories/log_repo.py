@@ -18,7 +18,7 @@ def insert_log(
         )
 
 def get_recent_logs(
-    limit: int = 100,
+    limit: int = 20,
     log_type: Optional[LogType] = None,
     user_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:

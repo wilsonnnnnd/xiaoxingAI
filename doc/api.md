@@ -1,7 +1,5 @@
 # Xiaoxing AI — API 接口文档
 
-[English](api.md)
-
 Base URL：`http://127.0.0.1:8000`
 
 除 `/auth/login` 外，所有接口均需在请求头中携带 JWT：`Authorization: Bearer <token>`。
