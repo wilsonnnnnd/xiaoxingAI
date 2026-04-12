@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.core import config as app_config
-from app.core.telegram import test_connection, get_latest_chat_id
+from app.core.telegram.client import test_connection, get_latest_chat_id
 from app.core import auth as auth_mod
 from app.services.telegram_service import TelegramService
 

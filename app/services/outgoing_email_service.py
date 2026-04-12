@@ -10,7 +10,7 @@ from app import db
 from app.core import config
 from app.core.llm import call_llm
 from app.schemas import OutgoingComposeRequest
-from app.core.telegram import send_message
+from app.core.telegram.client import send_message
 from app.utils.callback_signer import build_callback_data
 from app.utils.crypto import decrypt_draft_body, encrypt_draft_body
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name

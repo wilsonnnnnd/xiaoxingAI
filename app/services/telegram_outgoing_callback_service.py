@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app import db
-from app.core.telegram import send_message
+from app.core.telegram.client import send_message
 from app.skills.gmail.client import send_email_raw
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
 from app.utils.email_mime import build_gmail_raw_message

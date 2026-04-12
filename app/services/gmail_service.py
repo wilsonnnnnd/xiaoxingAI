@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from app import db
 from app.skills.gmail.schemas import GmailFetchRequest, GmailProcessRequest
 from app.skills.gmail.pipeline import process_email
-from app.core.telegram import send_message
+from app.core.telegram.client import send_message
 from app.skills.gmail.client import fetch_emails, mark_as_read
 
 class GmailService:

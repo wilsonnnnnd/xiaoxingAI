@@ -5,8 +5,6 @@ from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-import os
-
 
 @dataclass(frozen=True)
 class EncryptedBlob:

@@ -15,7 +15,7 @@ from app.core import config
 from app import db
 from app.skills.gmail.client import fetch_emails, mark_as_read
 from app.skills.gmail.pipeline import process_email
-from app.core.telegram import send_message
+from app.core.telegram.client import send_message
 from app.core import redis_client as rc
 
 logger = logging.getLogger("worker")

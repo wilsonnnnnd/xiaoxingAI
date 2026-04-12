@@ -203,7 +203,7 @@ async def worker_poll():
 @app.websocket("/ws/worker/status")
 async def ws_worker_status(websocket: WebSocket):
     await websocket.accept()
-    from app.core import ws as ws_pub
+    from app.core.realtime import ws as ws_pub
     q = ws_pub.subscribe_worker()
     try:
         # send current status immediately
@@ -222,7 +222,7 @@ async def ws_worker_status(websocket: WebSocket):
 @app.websocket("/ws/bot/status")
 async def ws_bot_status(websocket: WebSocket):
     await websocket.accept()
-    from app.core import ws as ws_pub
+    from app.core.realtime import ws as ws_pub
     q = ws_pub.subscribe_bot()
     try:
         # send current bot status immediately

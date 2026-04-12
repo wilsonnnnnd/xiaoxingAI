@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app import db
 from app.core import config
-from app.core.telegram import edit_message_text, send_message
+from app.core.telegram.client import edit_message_text, send_message
 from app.skills.gmail.client import send_email_raw
 from app.utils.callback_signer import build_callback_data
 from app.utils.crypto import decrypt_draft_body, encrypt_draft_body
