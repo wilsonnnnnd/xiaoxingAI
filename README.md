@@ -162,56 +162,78 @@ See [support/help.md](support/help.md) for Telegram Bot Token, Chat ID, and Goog
 ```
 xiaoxing/
 ├── app/
-│   ├── main.py                 # FastAPI entry point, all API routes
-│   ├── config.py               # Environment variable loader (hot-reloadable)
-│   ├── db.py                   # PostgreSQL layer — 8-table multi-user schema
+│   ├── main.py                 # FastAPI entry point, middleware, lifespan
+│   ├── api/
+│   │   └── routes/             # One file per resource group (auth, users, bots, …)
 │   ├── core/
-│   │   ├── auth.py             # JWT auth, bcrypt hashing, FastAPI deps
+│   │   ├── auth.py             # JWT sign/verify, bcrypt, FastAPI deps
 │   │   ├── bot_worker.py       # Multi-bot Telegram long-poll workers
-│   │   ├── chat.py             # LLM chat reply logic
-│   │   ├── llm.py              # LLM client (local / OpenAI)
-│   │   ├── redis_client.py     # Redis helpers (history, queue, dedup)
-│   │   ├── telegram.py         # Telegram sender + HTML sanitiser
-│   │   ├── ws.py               # WebSocket publisher (status push)
+│   │   ├── chat.py             # LLM chat reply + user profiling
+│   │   ├── llm.py              # LLM client (local / OpenAI); 3-retry + Redis cache
+│   │   ├── redis_client.py     # Redis helpers (history, queue, dedup, LLM cache)
+│   │   ├── telegram.py         # Telegram sender + MarkdownV2 escaping
+│   │   ├── ws.py               # WebSocket pub/sub (Gmail & bot status)
+│   │   ├── constants.py        # Business constants
 │   │   └── tools/              # Tool registry + Router LLM dispatcher
-│   │       ├── __init__.py     # Registry, route_and_execute()
+│   │       ├── __init__.py     # @register decorator, route_and_execute()
 │   │       ├── time_tool.py    # get_time — server timestamp
-│   │       ├── emails_tool.py  # get_emails — DB records per user
+│   │       ├── emails_tool.py  # get_emails — local DB records per user
 │   │       └── fetch_email_tool.py  # fetch_email — live Gmail pull + AI summary
+│   ├── db/
+│   │   ├── base.py             # SQLAlchemy models + init_db()
+│   │   ├── session.py          # asyncpg connection pool
+│   │   └── repositories/       # All SQL — one file per table group
+│   │       ├── user_repo.py
+│   │       ├── bot_repo.py
+│   │       ├── prompt_repo.py
+│   │       ├── email_repo.py
+│   │       ├── log_repo.py
+│   │       ├── stats_repo.py
+│   │       ├── oauth_repo.py
+│   │       ├── profile_repo.py
+│   │       └── persona_repo.py
+│   ├── schemas/                # Pydantic request / response models
+│   ├── services/               # Business logic (GmailService, TelegramService, …)
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 flow (per-user token storage)
 │   │       ├── client.py       # Gmail fetch / parse / mark-as-read (per-user)
-│   │       ├── pipeline.py     # Email analysis → summary → Telegram message
-│   │       ├── schemas.py      # Pydantic request models
+│   │       ├── pipeline.py     # analyze → summarise → Telegram message
+│   │       ├── schemas.py      # Skill-specific Pydantic models
 │   │       └── worker.py       # Multi-user Gmail poll worker
 │   ├── utils/
 │   │   ├── json_parser.py      # Extract JSON from LLM output
 │   │   └── prompt_loader.py    # Load prompt files from app/prompts/
 │   └── prompts/
 │       ├── chat.txt
-│       ├── router.txt          # Tool dispatch prompt (internal, not shown in UI)
 │       ├── user_profile.txt
-│       └── gmail/
-│           ├── email_analysis.txt
-│           ├── email_summary.txt
-│           └── telegram_notify.txt
+│       ├── gmail/
+│       │   ├── email_analysis.txt
+│       │   ├── email_summary.txt
+│       │   └── telegram_notify.txt
+│       └── tools/              # Persona generation prompts
 ├── frontend/
 │   └── src/
-│       ├── api/                # Axios client + typed interfaces
-│       ├── components/         # Layout, Sidebar
-│       ├── i18n/               # EN/ZH translations, Zustand language store
-│       └── pages/
-│           ├── Home.tsx        # Dashboard: health status, quick links
-│           ├── Skill.tsx       # Skills hub index (Gmail / Chat)
-│           ├── Settings.tsx    # Config editor + connection tests
-│           ├── Prompts.tsx     # Prompt file editor
-│           ├── Debug.tsx       # Manual AI/Gmail debug tools
-│           ├── Users.tsx       # User & bot management (admin)
-│           ├── Login.tsx       # JWT login page
-│           └── skills/
-│               ├── Gmail.tsx   # Gmail worker controls + live log
-│               └── Chat.tsx    # Telegram bot controls + live log
+│       ├── api/
+│       │   └── client.ts       # Axios instance with auth + error interceptors
+│       ├── components/common/  # Button, Card, Modal, InputField, Select, Switch, Badge
+│       │   └── form/           # FormInput, FormSelect, FormSwitch (react-hook-form)
+│       ├── features/           # Feature-based modules (each has api/, components/, index.ts)
+│       │   ├── auth/           # Login, getMe
+│       │   ├── gmail/          # GmailPage, worker controls, log viewer
+│       │   ├── chat/           # ChatPage, bot controls
+│       │   ├── settings/       # SettingsPage, LLM/Gmail/Bot sub-forms
+│       │   ├── prompts/        # PromptsPage, prompt editor
+│       │   ├── users/          # UsersPage, user & bot CRUD
+│       │   ├── persona/        # PersonaConfigPage (admin)
+│       │   ├── debug/          # DebugPage (admin)
+│       │   └── system/         # Health check, DB stats
+│       ├── hooks/              # useHealthCheck, useWorkerStatus, useConfirmDiscard
+│       ├── i18n/               # EN/ZH catalogs, Zustand language store
+│       ├── types/
+│       │   └── index.ts        # Shared TypeScript types
+│       └── utils/
+│           └── formatLog.ts    # Log message i18n interpolation
 ├── credentials.json            # Google OAuth2 credentials (not in git)
 ├── .env                        # Runtime config (not in git)
 ├── .env.example
@@ -224,14 +246,15 @@ xiaoxing/
 
 | Table | Description |
 |-------|-------------|
-| `user` | Registered users; stores per-user worker settings and role |
-| `bot` | Telegram Bots; each belongs to one user, optional custom chat prompt |
-| `prompts` | Prompt templates; user_id IS NULL = system built-in, otherwise per-user |
+| `user` | Registered users; stores per-user worker settings (`min_priority`, `poll_interval`, …) and role |
+| `bot` | Telegram Bots; each belongs to one user; supports `bot_mode`: `all` / `notify` / `chat` |
+| `system_prompts` | Built-in prompt templates (immutable, seeded from `app/prompts/` on startup) |
+| `user_prompts` | Per-user custom prompt overrides; can be bound to a specific bot |
 | `oauth_tokens` | Google OAuth tokens, one row per user |
-| `email_records` | Processed emails, isolated per user_id |
+| `email_records` | Processed emails with full AI output (analysis, summary, Telegram message) |
 | `worker_stats` | Gmail worker session stats, per user |
-| `user_profile` | AI-generated chat profile, one row per bot_id |
-| `log` | Worker and chat logs, per user |
+| `user_profile` | AI-generated chat user profile, one row per bot |
+| `log` | Worker and chat logs with level, log_type, and token count |
 
 ---
 

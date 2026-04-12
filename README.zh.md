@@ -162,56 +162,78 @@ Telegram Bot Token、Chat ID 和 Google OAuth2 凭据的获取方式见 [support
 ```
 xiaoxing/
 ├── app/
-│   ├── main.py                 # FastAPI 入口，所有 API 路由
-│   ├── config.py               # 环境变量读取（支持热重载）
-│   ├── db.py                   # PostgreSQL 持久层（8 表多用户架构）
+│   ├── main.py                 # FastAPI 入口、中间件、lifespan
+│   ├── api/
+│   │   └── routes/             # 每类资源独立文件（auth、users、bots…）
 │   ├── core/
-│   │   ├── auth.py             # JWT 认证、bcrypt 密码、FastAPI 依赖注入
+│   │   ├── auth.py             # JWT 签发/验证、bcrypt、FastAPI 依赖项
 │   │   ├── bot_worker.py       # 多 Bot Telegram 长轮询 Worker
-│   │   ├── chat.py             # LLM 对话回复逻辑
-│   │   ├── llm.py              # LLM 客户端（本地 / OpenAI）
-│   │   ├── redis_client.py     # Redis 工具（历史、队列、去重）
-│   │   ├── telegram.py         # Telegram 消息发送 + HTML 清洗
-│   │   ├── ws.py               # WebSocket 推送（Worker / Bot 状态）
+│   │   ├── chat.py             # LLM 对话回复 + 用户画像生成
+│   │   ├── llm.py              # LLM 客户端（本地 / OpenAI）；3 次退避重试 + Redis 缓存
+│   │   ├── redis_client.py     # Redis 工具（历史、队列、去重、LLM 缓存）
+│   │   ├── telegram.py         # Telegram 消息发送 + MarkdownV2 转义
+│   │   ├── ws.py               # WebSocket 订阅/发布（Gmail & Bot 状态）
+│   │   ├── constants.py        # 业务常量
 │   │   └── tools/              # 工具注册表 + Router LLM 调度器
-│   │       ├── __init__.py     # 工具注册表、route_and_execute()
+│   │       ├── __init__.py     # @register 装饰器，route_and_execute()
 │   │       ├── time_tool.py    # get_time — 当前服务器时间
 │   │       ├── emails_tool.py  # get_emails — 数据库邮件记录查询
 │   │       └── fetch_email_tool.py  # fetch_email — 实时拉取 Gmail + AI 摘要
+│   ├── db/
+│   │   ├── base.py             # SQLAlchemy 模型 + init_db()
+│   │   ├── session.py          # asyncpg 连接池
+│   │   └── repositories/       # 所有 SQL — 每类资源独立文件
+│   │       ├── user_repo.py
+│   │       ├── bot_repo.py
+│   │       ├── prompt_repo.py
+│   │       ├── email_repo.py
+│   │       ├── log_repo.py
+│   │       ├── stats_repo.py
+│   │       ├── oauth_repo.py
+│   │       ├── profile_repo.py
+│   │       └── persona_repo.py
+│   ├── schemas/                # Pydantic 请求/响应模型
+│   ├── services/               # 业务逻辑层（GmailService、TelegramService…）
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 授权流程（按用户存储 token）
 │   │       ├── client.py       # Gmail 拉取/解析/标记已读（按用户）
-│   │       ├── pipeline.py     # 邮件分析 → 摘要 → Telegram 文案
-│   │       ├── schemas.py      # Pydantic 请求模型
+│   │       ├── pipeline.py     # 分析 → 摘要 → Telegram 文案
+│   │       ├── schemas.py      # Skill 专用 Pydantic 模型
 │   │       └── worker.py       # 多用户 Gmail 轮询 Worker
 │   ├── utils/
 │   │   ├── json_parser.py      # 从 LLM 输出提取 JSON
 │   │   └── prompt_loader.py    # 加载 app/prompts/ 下的文件
 │   └── prompts/
 │       ├── chat.txt
-│       ├── router.txt          # 工具调度 Prompt（内部使用，不在 UI 中显示）
 │       ├── user_profile.txt
-│       └── gmail/
-│           ├── email_analysis.txt
-│           ├── email_summary.txt
-│           └── telegram_notify.txt
+│       ├── gmail/
+│       │   ├── email_analysis.txt
+│       │   ├── email_summary.txt
+│       │   └── telegram_notify.txt
+│       └── tools/              # 人格生成相关 Prompt
 ├── frontend/
 │   └── src/
-│       ├── api/                # Axios 客户端 + 类型定义
-│       ├── components/         # Layout、Sidebar
-│       ├── i18n/               # 中英文翻译，Zustand 语言状态
-│       └── pages/
-│           ├── Home.tsx        # 主页：服务健康状态、快速入口
-│           ├── Skill.tsx       # 技能中心首页（Gmail / Chat）
-│           ├── Settings.tsx    # 配置编辑器 + 连接测试
-│           ├── Prompts.tsx     # Prompt 文件编辑器
-│           ├── Debug.tsx       # 手动 AI/Gmail 调试工具
-│           ├── Users.tsx       # 用户与 Bot 管理（管理员）
-│           ├── Login.tsx       # JWT 登录页
-│           └── skills/
-│               ├── Gmail.tsx   # Gmail Worker 控制面板 + 实时日志
-│               └── Chat.tsx    # Telegram Bot 控制面板 + 实时日志
+│       ├── api/
+│       │   └── client.ts       # Axios 实例，含鉴权 + 错误拦截器
+│       ├── components/common/  # Button、Card、Modal、InputField、Select、Switch、Badge
+│       │   └── form/           # FormInput、FormSelect、FormSwitch（react-hook-form 集成）
+│       ├── features/           # 基于功能模块的组织结构（各含 api/、components/、index.ts）
+│       │   ├── auth/           # 登录、getMe
+│       │   ├── gmail/          # GmailPage、Worker 控制、日志查看
+│       │   ├── chat/           # ChatPage、Bot 控制
+│       │   ├── settings/       # SettingsPage、LLM/Gmail/Bot 子表单
+│       │   ├── prompts/        # PromptsPage、Prompt 编辑器
+│       │   ├── users/          # UsersPage、用户 & Bot CRUD
+│       │   ├── persona/        # PersonaConfigPage（管理员）
+│       │   ├── debug/          # DebugPage（管理员）
+│       │   └── system/         # 健康检查、DB 统计
+│       ├── hooks/              # useHealthCheck、useWorkerStatus、useConfirmDiscard
+│       ├── i18n/               # 中英文翻译、Zustand 语言状态
+│       ├── types/
+│       │   └── index.ts        # 全局共享 TypeScript 类型
+│       └── utils/
+│           └── formatLog.ts    # 日志消息 i18n 插值格式化
 ├── credentials.json            # Google OAuth2 凭据（不入 git）
 ├── .env                        # 运行时配置（不入 git）
 ├── .env.example
@@ -224,14 +246,15 @@ xiaoxing/
 
 | 表名 | 说明 |
 |------|------|
-| `user` | 注册用户（管理员 + 普通用户）；存储每用户的 Worker 配置和角色 |
-| `bot` | Telegram Bot；每个 Bot 归属一个用户，可绑定自定义对话 Prompt |
-| `prompts` | Prompt 模板；user_id IS NULL = 系统内置，否则为用户私有 |
+| `user` | 注册用户（管理员 + 普通用户）；存储每用户的 Worker 配置（`min_priority`、`poll_interval`…）和角色 |
+| `bot` | Telegram Bot；每个 Bot 归属一个用户；`bot_mode` 支持 `all` / `notify` / `chat` |
+| `system_prompts` | 系统内置 Prompt 模板（只读，启动时从 `app/prompts/` 自动导入） |
+| `user_prompts` | 用户自定义 Prompt 覆盖；可绑定到指定 Bot |
 | `oauth_tokens` | Google OAuth token，每用户一行 |
-| `email_records` | 邮件处理记录，按 user_id 隔离 |
+| `email_records` | 邮件处理记录，包含完整 AI 输出（分析、摘要、Telegram 文案） |
 | `worker_stats` | Gmail Worker 会话统计，按用户记录 |
-| `user_profile` | AI 生成的对话用户画像，每 bot_id 一行 |
-| `log` | Worker 和对话日志，按用户记录 |
+| `user_profile` | AI 生成的对话用户画像，每个 Bot 一行 |
+| `log` | Worker 和对话日志，含级别、类型和 token 数 |
 
 ---
 
