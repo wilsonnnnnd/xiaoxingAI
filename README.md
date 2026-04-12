@@ -1,4 +1,4 @@
-﻿# Xiaoxing AI (小星 AI)
+# Xiaoxing AI (小星 AI)
 
 > Multi-user Gmail automation + Telegram AI chatbot platform
 
@@ -23,6 +23,8 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 |[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
 |[Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
 |[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
+|Outgoing Email (Draft + Confirm) | Generate email drafts (compose/reply) and confirm/cancel via Telegram; idempotent send; encrypted draft body |
+|Reply Format Settings | Per-user reply templates + signature in Web UI (`/settings/reply-format`); applied to generated reply drafts |
 
 ---
 
@@ -34,7 +36,7 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 - PostgreSQL 16+ (Docker recommended)
 - Redis 7+ (Docker recommended, optional — app degrades gracefully)
 - **LLM backend** — either:
-  - Local: llama.cpp llama-server (listening on 127.0.0.2:8001)
+  - Local: llama.cpp llama-server (listening on 127.0.0.1:8001)
   - Cloud: OpenAI API key
 - **Router LLM (optional)** — second llama-server on port 8002 (Qwen2.5-1.5B recommended) for AI-driven tool dispatch; falls back to keyword matching if unavailable
 
@@ -109,6 +111,9 @@ Edit `.env`:
 | `ROUTER_MODEL` | Router model name (default: local-router) |
 | `FRONTEND_URL` | Frontend origin for OAuth callback and CORS (default: http://localhost:5173) |
 | `UI_LANG` | Default UI language — `en` or `zh` (default: en) |
+| `TELEGRAM_CALLBACK_SECRET` | Secret for signing Telegram callback_data (required for inline confirm/cancel buttons) |
+| `OUTGOING_EMAIL_ENCRYPTION_KEY` | Base64(32 bytes) key to encrypt outgoing draft bodies |
+| `OUTGOING_DRAFT_TTL_MINUTES` | Outgoing draft TTL minutes (default: 30) |
 
 ### 6. Place Google Credentials
 
@@ -121,7 +126,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 On first startup the server automatically:
-- Creates the PostgreSQL schema (8 tables)
+- Creates the PostgreSQL schema (tables for users/bots/prompts/email, outgoing drafts, reply format, logs, etc.)
 - Imports built-in prompts from app/prompts/
 - Creates the admin account from ADMIN_USER / ADMIN_PASSWORD
 
@@ -171,8 +176,9 @@ xiaoxing/
 │   │   ├── chat.py             # LLM chat reply + user profiling
 │   │   ├── llm.py              # LLM client (local / OpenAI); 3-retry + Redis cache
 │   │   ├── redis_client.py     # Redis helpers (history, queue, dedup, LLM cache)
-│   │   ├── telegram.py         # Telegram sender + MarkdownV2 escaping
-│   │   ├── ws.py               # WebSocket pub/sub (Gmail & bot status)
+│   │   ├── telegram/           # Telegram client (send/edit message, getUpdates helper)
+│   │   ├── debug/              # In-memory debug event buffers
+│   │   ├── realtime/           # WebSocket pub/sub (Gmail & bot status)
 │   │   ├── constants.py        # Business constants
 │   │   └── tools/              # Tool registry + Router LLM dispatcher
 │   │       ├── __init__.py     # @register decorator, route_and_execute()
@@ -180,8 +186,8 @@ xiaoxing/
 │   │       ├── emails_tool.py  # get_emails — local DB records per user
 │   │       └── fetch_email_tool.py  # fetch_email — live Gmail pull + AI summary
 │   ├── db/
-│   │   ├── base.py             # SQLAlchemy models + init_db()
-│   │   ├── session.py          # asyncpg connection pool
+│   │   ├── base.py             # DDL + init_db() (psycopg2)
+│   │   ├── session.py          # psycopg2 connection pool
 │   │   └── repositories/       # All SQL — one file per table group
 │   │       ├── user_repo.py
 │   │       ├── bot_repo.py
@@ -252,6 +258,10 @@ xiaoxing/
 | `user_prompts` | Per-user custom prompt overrides; can be bound to a specific bot |
 | `oauth_tokens` | Google OAuth tokens, one row per user |
 | `email_records` | Processed emails with full AI output (analysis, summary, Telegram message) |
+| `outgoing_email_drafts` | Outgoing email drafts (encrypted body) + status machine + Telegram preview binding |
+| `outgoing_email_actions` | Outgoing audit/actions log; also used for idempotency (unique telegram_update_id) |
+| `reply_templates` | Per-user reply format templates |
+| `reply_format_settings` | Per-user reply format settings (default template + signature) |
 | `worker_stats` | Gmail worker session stats, per user |
 | `user_profile` | AI-generated chat user profile, one row per bot |
 | `log` | Worker and chat logs with level, log_type, and token count |
@@ -269,7 +279,7 @@ See [support/api.md](support/api.md) for the full endpoint reference.
 | | Local llama-server | OpenAI API |
 |---|---|---|
 | `LLM_BACKEND` | local | openai |
-| `LLM_API_URL` | http://127.0.0.2:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
+| `LLM_API_URL` | http://127.0.0.1:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
 | `LLM_MODEL` | local-model | gpt-4o-mini, gpt-4o, etc. |
 | `OPENAI_API_KEY` | not needed | sk-... |
 | Requires GPU | Yes | No |
@@ -279,11 +289,11 @@ See [support/api.md](support/api.md) for the full endpoint reference.
 
 1. Install [llama.cpp](https://github.com/ggerganov/llama.cpp) and download a GGUF model
    (recommended: Qwen2.5-14B-Instruct-Q4_K_M.gguf)
-2. Start llama-server on 127.0.0.2:8001
+2. Start llama-server on 127.0.0.1:8001
 
 ```ini
 LLM_BACKEND=local
-LLM_API_URL=http://127.0.0.2:8001/v1/chat/completions
+LLM_API_URL=http://127.0.0.1:8001/v1/chat/completions
 LLM_MODEL=local-model
 ```
 
