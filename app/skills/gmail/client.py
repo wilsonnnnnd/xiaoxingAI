@@ -108,6 +108,15 @@ def fetch_emails(query: str = "in:inbox", max_results: int = 10,
     return result
 
 
+def fetch_email_by_id(message_id: str, user_id: int) -> Dict[str, Any]:
+    """按 message id 拉取单封邮件（format=full）。必须指定 user_id 以隔离 token。"""
+    if user_id is None:
+        raise ValueError("user_id is required")
+    service = _get_service(user_id)
+    msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    return _parse_message(msg)
+
+
 def mark_as_read(message_id: str, user_id: Optional[int] = None) -> None:
     """将指定邮件标记为已读"""
     service = _get_service(user_id)
@@ -116,3 +125,11 @@ def mark_as_read(message_id: str, user_id: Optional[int] = None) -> None:
         id=message_id,
         body={"removeLabelIds": ["UNREAD"]}
     ).execute()
+
+
+def send_email_raw(*, raw: str, user_id: int) -> Dict[str, Any]:
+    """发送邮件（Gmail users.messages.send）。必须指定 user_id 以隔离 token。"""
+    if user_id is None:
+        raise ValueError("user_id is required")
+    service = _get_service(user_id)
+    return service.users().messages().send(userId="me", body={"raw": raw}).execute()

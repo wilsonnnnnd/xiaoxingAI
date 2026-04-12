@@ -10,6 +10,7 @@
 
 - **后端 (Backend)**: 基于 Python FastAPI，采用领域驱动设计 (DDD) 的简化版，分为 API 层、Service/Skill 层、Repository 层和 DB 模型层。
 - **前端 (Frontend)**: 基于 React 19 + TypeScript + Vite，采用 **Feature-based** 的组织结构，使用 TanStack Query 管理服务器状态，Zustand 管理客户端状态。
+- **新增页面示例**: 邮件回复格式配置页 `/settings/reply-format`（`frontend/src/features/replyFormat/`），用于编辑回复模板与署名。
 
 ```
 请求链路 (后端):
@@ -94,6 +95,8 @@ app/
 | `user_prompts` | `id`, `user_id`, `name`, `type`, `content`, `is_default`, `meta` | 用户自定义 Prompt |
 | `oauth_tokens` | `id`, `user_id`, `token_json` | Gmail OAuth Token |
 | `email_records` | `id`, `user_id`, `email_id`, `subject`, `sender`, `analysis_json`, `summary_json`, `telegram_msg`, `priority`, `sent_telegram` | 已处理邮件存档 |
+| `reply_templates` | `id`, `user_id`, `name`, `body_template`, `closing`, `is_default` | 用户邮件回复模板 |
+| `reply_format_settings` | `user_id`, `default_template_id`, `signature` | 用户回复格式设置（默认模板/署名） |
 | `worker_stats` | `id`, `user_id`, `total_sent`, `total_fetched`, `total_errors`, `total_tokens`, `last_poll` | Gmail Worker 统计 |
 | `user_profile` | `bot_id` (PK), `profile` | 每个 Bot 对话用户画像（文本） |
 | `log` | `id`, `user_id`, `ts`, `level`, `log_type`, `tokens`, `msg` | 系统日志 |
@@ -247,6 +250,7 @@ app/skills/gmail/
 | `telegram_tools.py` | `POST /telegram/test`, `GET /telegram/chat_id`, `POST /telegram/bot/clear_history`, `GET/DELETE/POST /telegram/bot/profile` |
 | `stats_logs.py` | `GET/DELETE /worker/logs`, `GET /db/stats` |
 | `chat.py` | `POST /chat/generate_persona_prompt` |
+| `reply_format.py` | `GET/PUT /reply-format`, `/reply-templates` CRUD |
 
 **新增路由模板：**
 ```python

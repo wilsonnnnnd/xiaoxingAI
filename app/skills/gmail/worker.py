@@ -16,6 +16,7 @@ from app import db
 from app.skills.gmail.client import fetch_emails, mark_as_read
 from app.skills.gmail.pipeline import process_email
 from app.core.telegram import send_message
+from app.core import redis_client as rc
 
 logger = logging.getLogger("worker")
 
@@ -191,13 +192,37 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 else:
                     _wlog(f"✈️ 发送 Telegram：{subj}", user_id=user_id)
                     for n_bot in notify_bots:
-                        await asyncio.to_thread(
+                        resp = await asyncio.to_thread(
                             send_message,
                             result["telegram_message"],
                             n_bot["chat_id"],
                             "HTML",
                             n_bot["token"],
                         )
+                        try:
+                            msg_id = int(resp.get("result", {}).get("message_id") or 0)
+                            if msg_id:
+                                rc.set_email_notify_ref(
+                                    bot_id=int(n_bot["id"]),
+                                    message_id=msg_id,
+                                    user_id=int(user_id),
+                                    email_id=str(email["id"]),
+                                )
+                                rc.set_tg_message_cache(
+                                    bot_id=int(n_bot["id"]),
+                                    chat_id=str(n_bot["chat_id"]),
+                                    message_id=msg_id,
+                                    payload={
+                                        "type": "sent",
+                                        "bot_id": int(n_bot["id"]),
+                                        "chat_id": str(n_bot["chat_id"]),
+                                        "message_id": msg_id,
+                                        "email_id": str(email["id"]),
+                                        "text": str(result.get("telegram_message") or "")[:2000],
+                                    },
+                                )
+                        except Exception:
+                            pass
                     state.stats["total_sent"] += 1
                     _wlog(f"✅ 已发送：{subj}",
                           tokens=result.get("tokens", 0), user_id=user_id)

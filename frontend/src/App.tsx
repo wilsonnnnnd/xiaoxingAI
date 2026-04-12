@@ -7,6 +7,7 @@ import { GmailPage } from './features/gmail'
 import { ChatPage } from './features/chat'
 import { LoginPage } from './features/auth'
 import { SettingsPage } from './features/settings'
+import { ReplyFormatPage } from './features/replyFormat'
 import { PersonaConfigPage } from './features/persona'
 import { PromptsPage } from './features/prompts'
 import { UsersPage } from './features/users'
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="skill/gmail" element={<GmailPage />} />
         <Route path="skill/chat" element={<ChatPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/reply-format" element={<ReplyFormatPage />} />
         <Route path="prompts" element={<PromptsPage />} />
         <Route path="debug" element={<DebugPage />} />
         <Route path="users" element={<UsersPage />} />

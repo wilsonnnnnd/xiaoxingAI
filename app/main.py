@@ -32,7 +32,7 @@ from app.core.auth import get_current_user_or_none
 from app.api.routes import (
     health, ai, email_records, auth as auth_routes, users, bots, 
     db_prompts, admin_persona, config as config_routes, 
-    prompts, stats_logs, gmail_actions, telegram_tools, chat
+    prompts, stats_logs, gmail_actions, gmail_compose, telegram_tools, chat, debug_outgoing, reply_format
 )
 
 
@@ -99,8 +99,11 @@ app.include_router(config_routes.router)
 app.include_router(prompts.router)
 app.include_router(stats_logs.router)
 app.include_router(gmail_actions.router)
+app.include_router(gmail_compose.router)
 app.include_router(telegram_tools.router)
 app.include_router(chat.router)
+app.include_router(debug_outgoing.router)
+app.include_router(reply_format.router)
 
 
 # ─────────────────────────────────────────

@@ -109,6 +109,86 @@ def init_db() -> None:
             )
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS outgoing_email_drafts (
+                id                BIGSERIAL PRIMARY KEY,
+                user_id           BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                status            VARCHAR(16) NOT NULL DEFAULT 'pending',
+                to_email          TEXT NOT NULL,
+                cc_emails         JSONB,
+                bcc_emails        JSONB,
+                subject           TEXT NOT NULL DEFAULT '',
+                body_format       VARCHAR(8) NOT NULL DEFAULT 'plain',
+                body_ciphertext   BYTEA,
+                body_nonce        BYTEA,
+                body_key_id       VARCHAR(32) NOT NULL DEFAULT 'v1',
+                body_sha256       BYTEA,
+                prompt_snapshot   JSONB,
+                llm_tokens        INTEGER NOT NULL DEFAULT 0,
+                idempotency_key   VARCHAR(64) NOT NULL,
+                expires_at        TIMESTAMPTZ NOT NULL,
+                telegram_bot_id   BIGINT REFERENCES bot(id) ON DELETE SET NULL,
+                telegram_chat_id  TEXT,
+                telegram_message_id BIGINT,
+                callback_nonce    VARCHAR(32),
+                send_attempt_count INTEGER NOT NULL DEFAULT 0,
+                last_error_code    VARCHAR(64),
+                last_error_message TEXT,
+                gmail_message_id   TEXT,
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(user_id, idempotency_key)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS outgoing_email_actions (
+                id               BIGSERIAL PRIMARY KEY,
+                draft_id         BIGINT NOT NULL REFERENCES outgoing_email_drafts(id) ON DELETE CASCADE,
+                user_id          BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                action           VARCHAR(24) NOT NULL,
+                actor_type       VARCHAR(8) NOT NULL,
+                source           VARCHAR(24) NOT NULL,
+                result           VARCHAR(8) NOT NULL DEFAULT 'ok',
+                error_code       VARCHAR(64),
+                error_message    TEXT,
+                idempotency_key  VARCHAR(64),
+                telegram_update_id TEXT UNIQUE,
+                meta             JSONB,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_drafts_user_status ON outgoing_email_drafts(user_id, status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_drafts_user_created ON outgoing_email_drafts(user_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_drafts_expires ON outgoing_email_drafts(expires_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_actions_draft_time ON outgoing_email_actions(draft_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_actions_user_time ON outgoing_email_actions(user_id, created_at DESC)")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS reply_templates (
+                id         BIGSERIAL PRIMARY KEY,
+                user_id    BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                name       VARCHAR(80) NOT NULL,
+                body_template TEXT NOT NULL,
+                closing    TEXT,
+                is_default BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reply_templates_user_id ON reply_templates(user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_reply_templates_user_default ON reply_templates(user_id) WHERE is_default = TRUE")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS reply_format_settings (
+                user_id            BIGINT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+                default_template_id BIGINT REFERENCES reply_templates(id) ON DELETE SET NULL,
+                signature          TEXT NOT NULL DEFAULT '',
+                updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
         # ── email_records ─────────────────────────────────────────
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS email_records (

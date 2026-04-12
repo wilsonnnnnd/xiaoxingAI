@@ -72,6 +72,8 @@ def register(name: str, description: str,
 from app.core.tools import time_tool    # noqa: E402, F401
 from app.core.tools import emails_tool  # noqa: E402, F401
 from app.core.tools import fetch_email_tool  # noqa: E402, F401
+from app.core.tools import outgoing_email_tools  # noqa: E402, F401
+from app.core.tools import reply_to_classifier  # noqa: E402, F401
 
 
 # ── Router ────────────────────────────────────────────────────────
@@ -149,3 +151,91 @@ def route_and_execute(message: str, user_id: int | None = None) -> tuple[str, in
             results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
 
     return "\n\n".join(results), tokens
+
+
+def route_and_execute_debug(message: str, user_id: int | None = None) -> tuple[str, int, dict]:
+    if not _registry:
+        return "", 0, {"tool_names": [], "router_tokens": 0, "used_fallback": False, "tool_results": []}
+
+    tool_names, router_tokens = _llm_route(message)
+    used_fallback = False
+    if not tool_names:
+        tool_names = _keyword_match(message)
+        used_fallback = True
+
+    results: list[str] = []
+    tool_results: list[dict] = []
+
+    for name in tool_names:
+        try:
+            tool = _registry[name]
+            kwargs = {}
+            if tool.takes_user_id:
+                kwargs["user_id"] = user_id
+            result = tool.fn(message, **kwargs) if tool.takes_message else tool.fn(**kwargs)
+            results.append(result)
+            tool_results.append({"name": name, "ok": True, "preview": str(result)[:160]})
+        except Exception as e:
+            results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
+            tool_results.append({"name": name, "ok": False, "error": str(e)[:200]})
+
+    return "\n\n".join(results), router_tokens, {
+        "tool_names": tool_names,
+        "router_tokens": router_tokens,
+        "used_fallback": used_fallback,
+        "tool_results": tool_results,
+    }
+
+
+def route_and_execute_debug_allowlist(
+    message: str,
+    *,
+    allowed_tools: list[str],
+    user_id: int | None = None,
+) -> tuple[str, int, dict]:
+    allowed = [t for t in allowed_tools if t in _registry]
+    if not allowed:
+        return "", 0, {"tool_names": [], "router_tokens": 0, "used_fallback": False, "tool_results": [], "allowlist": allowed_tools}
+
+    prompt_template = _load_router_prompt()
+    tools_desc = "\n".join(f"- {_registry[n].name}: {_registry[n].description}" for n in allowed)
+    prompt = prompt_template.format(tools=tools_desc, message=message)
+
+    router_tokens = 0
+    used_fallback = False
+    tool_names: list[str] = []
+    try:
+        raw, router_tokens = call_router(prompt)
+        m = re.search(r"\[.*?\]", raw, re.DOTALL)
+        names: list[str] = json.loads(m.group()) if m else []
+        tool_names = [n for n in names if n in allowed]
+    except Exception:
+        tool_names = []
+
+    if not tool_names:
+        lower = message.lower()
+        tool_names = [n for n in allowed if any(kw in lower for kw in _registry[n].keywords)]
+        used_fallback = True
+
+    results: list[str] = []
+    tool_results: list[dict] = []
+    for name in tool_names:
+        try:
+            tool = _registry[name]
+            kwargs = {}
+            if tool.takes_user_id:
+                kwargs["user_id"] = user_id
+            result = tool.fn(message, **kwargs) if tool.takes_message else tool.fn(**kwargs)
+            results.append(result)
+            tool_results.append({"name": name, "ok": True, "preview": str(result)[:160]})
+        except Exception as e:
+            results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
+            tool_results.append({"name": name, "ok": False, "error": str(e)[:200]})
+
+    return "\n\n".join(results), router_tokens, {
+        "tool_names": tool_names,
+        "router_tokens": router_tokens,
+        "used_fallback": used_fallback,
+        "tool_results": tool_results,
+        "allowlist": allowed_tools,
+    }

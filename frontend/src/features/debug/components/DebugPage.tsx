@@ -10,6 +10,7 @@ import { gmailFetch, gmailProcess } from '../../gmail/api'
 import { generateBotProfile } from '../../chat/api'
 import { getMe } from '../../users/api'
 import { useHealthCheck } from '../../../hooks/useHealthCheck'
+import { clearDebugCache, getOutgoingTrace, getTelegramEvents } from '../api/outgoing'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
 import { InputField } from '../../../components/common/InputField'
@@ -119,6 +120,34 @@ export const DebugPage: React.FC = () => {
     const [profileText, setProfileText] = useState('')
     const [profileBusy, setProfileBusy] = useState(false)
     const [profileResult, setProfileResult] = useState<{ ok: true; tokens: number } | { ok: false; msg: string } | null>(null)
+
+    const { data: tgEvents } = useQuery({ queryKey: ['debug-tg-events'], queryFn: () => getTelegramEvents(200), refetchInterval: 2000 })
+    const { data: outgoingTrace } = useQuery({ queryKey: ['debug-outgoing-trace'], queryFn: () => getOutgoingTrace(200), refetchInterval: 2000 })
+
+    const [clearBusy, setClearBusy] = useState(false)
+    const [clearRes, setClearRes] = useState<ResultState>(IDLE)
+
+    async function runClearCache() {
+        setClearBusy(true); setClearRes({ state: 'requesting', text: '' })
+        try {
+            const d = await clearDebugCache({ clear_traces: true })
+            toast.success('已清理缓存')
+            setClearRes({ state: 'ok', text: JSON.stringify(d, null, 2) })
+        } catch (err) {
+            setClearRes({ state: 'err', text: String(err) })
+        } finally {
+            setClearBusy(false)
+        }
+    }
+
+    const traceByUpdateId = new Map<number, any[]>()
+    for (const ev of (outgoingTrace?.events || []) as any[]) {
+        const uid = typeof ev?.update_id === 'number' ? ev.update_id : null
+        if (uid === null) continue
+        const arr = traceByUpdateId.get(uid) || []
+        arr.push(ev)
+        traceByUpdateId.set(uid, arr)
+    }
 
     async function generateProfile() {
         setProfileBusy(true); setProfileResult(null); setProfileText('')
@@ -273,6 +302,42 @@ export const DebugPage: React.FC = () => {
                     </div>
                     <div className="bg-[#0b0e14] border border-[#2d3748] rounded-xl p-4 text-xs font-mono whitespace-pre-wrap break-all min-h-[120px] max-h-[400px] overflow-y-auto text-[#e2e8f0] leading-relaxed mt-2">
                         {profileText || <span className="text-[#475569] italic">{t('debug.profile.empty')}</span>}
+                    </div>
+                </Card>
+
+                <Card title="Outgoing/Reply Debug" full>
+                    <div className="flex items-center gap-2 mb-2">
+                        <Button variant="primary" onClick={runClearCache} loading={clearBusy} className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe]">清理缓存</Button>
+                    </div>
+                    {clearRes.state !== 'idle' && (
+                        <div className={`mb-3 ${resCls(clearRes.state)}`}>{clearRes.state === 'requesting' ? t('debug.requesting') : clearRes.text}</div>
+                    )}
+
+                    <div className="text-xs font-semibold text-[#94a3b8] mb-2">Telegram 最近 reply/callback 事件（内存 200 条，2s 刷新）</div>
+                    <div className="flex flex-col gap-3">
+                        {((tgEvents?.events || []) as any[]).slice().reverse().map((ev, idx) => {
+                            const uid = typeof ev?.update_id === 'number' ? ev.update_id : null
+                            const steps = uid !== null ? (traceByUpdateId.get(uid) || []) : []
+                            const routerSteps = steps.filter(s => s?.type === 'router_routing')
+                            const sentToRouter = routerSteps.length > 0
+                            const selectedTools = routerSteps.flatMap(s => Array.isArray(s?.tool_names) ? s.tool_names : [])
+                            const summary = {
+                                update_id: uid,
+                                type: ev?.type,
+                                reply_to_message_id: ev?.reply_to_message_id ?? null,
+                                sent_to_router: sentToRouter,
+                                tools: Array.from(new Set(selectedTools)),
+                            }
+                            return (
+                                <div key={idx} className="border border-[#2d3748] rounded-xl p-3 bg-[#0b0e14]">
+                                    <div className="text-xs text-[#94a3b8] mb-2">update_id={uid ?? '-'} | type={String(ev?.type || '')}</div>
+                                    <div className="text-xs font-mono whitespace-pre-wrap break-all text-[#86efac] mb-2">{JSON.stringify(summary, null, 2)}</div>
+                                    <div className="text-xs font-mono whitespace-pre-wrap break-all text-[#e2e8f0]">{JSON.stringify(ev, null, 2)}</div>
+                                    <div className="text-xs font-semibold text-[#94a3b8] mt-3 mb-1">Steps（是否送 Router、选了哪些工具、关键字段）</div>
+                                    <div className="text-xs font-mono whitespace-pre-wrap break-all text-[#cbd5e1]">{JSON.stringify(steps, null, 2)}</div>
+                                </div>
+                            )
+                        })}
                     </div>
                 </Card>
             </div>

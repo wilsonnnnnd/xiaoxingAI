@@ -8,7 +8,7 @@ from app.core import config
 
 from .repositories import (
     user_repo, bot_repo, prompt_repo, log_repo,
-    email_repo, stats_repo, oauth_repo, profile_repo, persona_repo
+    email_repo, stats_repo, oauth_repo, profile_repo, persona_repo, outgoing_email_repo, reply_format_repo
 )
 
 # User
@@ -48,6 +48,38 @@ from .repositories.stats_repo import (
 # OAuth
 from .repositories.oauth_repo import (
     load_token_json, save_token_json
+)
+
+# Outgoing Email
+from .repositories.outgoing_email_repo import (
+    create_draft_stub,
+    set_draft_body_encrypted,
+    get_draft,
+    get_draft_any,
+    get_draft_by_preview_message,
+    update_draft_status,
+    confirm_draft,
+    cancel_draft,
+    start_sending,
+    expire_pending,
+    set_preview_message,
+    set_preview_delivery,
+    update_draft_recipient,
+    set_send_result_success,
+    set_send_result_failed,
+    insert_action,
+    list_outgoing_actions,
+    list_outgoing_drafts,
+)
+
+from .repositories.reply_format_repo import (
+    list_reply_templates,
+    get_reply_template,
+    create_reply_template,
+    update_reply_template,
+    delete_reply_template,
+    get_reply_format_settings,
+    upsert_reply_format_settings,
 )
 
 # Profile

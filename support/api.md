@@ -94,6 +94,7 @@ Interactive docs: http://127.0.0.1:8000/docs
 | GET | `/gmail/auth/url` | Get Google OAuth URL |
 | GET | `/gmail/auth` | Redirect to Google OAuth consent |
 | GET | `/gmail/callback` | OAuth callback, save token |
+| POST | `/gmail/compose` | Generate an outgoing email draft |
 | POST | `/gmail/fetch` | Manually fetch Gmail |
 | POST | `/gmail/process` | Process fetched Gmail |
 | GET | `/gmail/workstatus` | Gmail processing status |

@@ -94,6 +94,7 @@ Base URL：`http://127.0.0.1:8000`
 | GET | `/gmail/auth/url` | 获取 Google OAuth 授权 URL |
 | GET | `/gmail/auth` | 跳转 Google OAuth 授权页 |
 | GET | `/gmail/callback` | OAuth 回调，保存 Token |
+| POST | `/gmail/compose` | 生成发件邮件草稿 |
 | POST | `/gmail/fetch` | 主动拉取 Gmail 邮件 |
 | POST | `/gmail/process` | 触发处理获取到的 Gmail 邮件 |
 | GET | `/gmail/workstatus` | 获取 Gmail 处理工作状态 |

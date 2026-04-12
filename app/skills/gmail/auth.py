@@ -6,8 +6,11 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 
-# 需要 modify 权限才能标记已读
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+# 收件处理需要 gmail.modify；发件需要 gmail.send
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 # 文件路径（放在项目根目录，不提交到 git）
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent

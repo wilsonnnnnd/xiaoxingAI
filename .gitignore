@@ -8,6 +8,9 @@ sent_ids.json
 **/__pycache__/
 *.py[cod]
 .venv/
+.trae/
+.vercel/
+.vercelignore
 frontend/package-lock.json
 frontend/node_modules/
 frontend/dist/
@@ -16,3 +19,4 @@ frontend/.env.local
 # API.md
 # /doc
 /test
+vercel.json

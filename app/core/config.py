@@ -66,6 +66,10 @@ UI_LANG:          str = _get("UI_LANG", "en").lower()
 # In production:  your deployed frontend origin
 FRONTEND_URL:     str = _get("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
+OUTGOING_EMAIL_ENCRYPTION_KEY: str = _get("OUTGOING_EMAIL_ENCRYPTION_KEY", "")
+TELEGRAM_CALLBACK_SECRET:      str = _get("TELEGRAM_CALLBACK_SECRET", "")
+OUTGOING_DRAFT_TTL_MINUTES:    int = int(_get("OUTGOING_DRAFT_TTL_MINUTES", "30"))
+
 # Prompts directory
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 

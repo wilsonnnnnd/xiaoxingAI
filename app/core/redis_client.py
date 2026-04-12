@@ -229,6 +229,90 @@ def mark_update(update_id: int) -> bool:
 _QUEUE_KEY = "queue:chat"
 
 
+_EMAIL_REF_TTL = 2 * 24 * 3600
+
+_TG_MSG_TTL = 2 * 24 * 3600
+
+
+def set_email_notify_ref(*, bot_id: int, message_id: int, user_id: int, email_id: str) -> None:
+    r = _sync()
+    if r is None:
+        return
+    try:
+        r.setex(
+            f"email:notify:{bot_id}:{message_id}",
+            _EMAIL_REF_TTL,
+            json.dumps({"user_id": int(user_id), "email_id": str(email_id)}, ensure_ascii=False),
+        )
+    except Exception:
+        return
+
+
+def get_email_notify_ref(*, bot_id: int, message_id: int) -> Optional[dict]:
+    r = _sync()
+    if r is None:
+        return None
+    try:
+        raw = r.get(f"email:notify:{int(bot_id)}:{int(message_id)}")
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
+def set_tg_message_cache(*, bot_id: int, chat_id: str, message_id: int, payload: dict) -> None:
+    r = _sync()
+    if r is None:
+        return
+    try:
+        r.setex(
+            f"tg:msg:{bot_id}:{chat_id}:{message_id}",
+            _TG_MSG_TTL,
+            json.dumps(payload, ensure_ascii=False),
+        )
+    except Exception:
+        return
+
+
+def get_tg_message_cache(*, bot_id: int, chat_id: str, message_id: int) -> Optional[dict]:
+    r = _sync()
+    if r is None:
+        return None
+    try:
+        raw = r.get(f"tg:msg:{bot_id}:{chat_id}:{message_id}")
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
+def clear_debug_cache(*, bot_id: int | None = None, chat_id: str | None = None) -> dict:
+    r = _sync()
+    if r is None:
+        return {"ok": False, "deleted": 0}
+
+    patterns: list[str] = [
+        "dedup:tg:*",
+        "email:notify:*",
+        "tg:msg:*",
+    ]
+    if bot_id is not None and chat_id is not None:
+        patterns.append(f"tg:msg:{int(bot_id)}:{chat_id}:*")
+        patterns.append(f"email:notify:{int(bot_id)}:*")
+
+    deleted = 0
+    for pat in patterns:
+        try:
+            for k in r.scan_iter(match=pat, count=500):
+                try:
+                    r.delete(k)
+                    deleted += 1
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return {"ok": True, "deleted": deleted}
+
+
 def enqueue(update_id: int, bot_id: int, chat_id: str, text: str,
             from_user: Optional[dict] = None) -> bool:
     """

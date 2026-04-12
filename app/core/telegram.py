@@ -24,8 +24,13 @@ def escape_markdown(text: str) -> str:
     )
 
 
-def send_message(text: str, chat_id: str = None, parse_mode: str = "MarkdownV2",
-                  token: str = None) -> dict:
+def send_message(
+    text: str,
+    chat_id: str = None,
+    parse_mode: str = "MarkdownV2",
+    token: str = None,
+    reply_markup: dict | None = None,
+) -> dict:
     """
     发送消息到 Telegram。
     token   不传则使用 .env 中的 TELEGRAM_BOT_TOKEN（兼容旧调用）。
@@ -42,6 +47,8 @@ def send_message(text: str, chat_id: str = None, parse_mode: str = "MarkdownV2",
     payload = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
 
     resp = requests.post(url, json=payload, timeout=15)
     data = resp.json()
@@ -49,6 +56,31 @@ def send_message(text: str, chat_id: str = None, parse_mode: str = "MarkdownV2",
     if not data.get("ok"):
         raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
 
+    return data
+
+
+def edit_message_text(
+    *,
+    chat_id: str,
+    message_id: int,
+    text: str,
+    token: str,
+    parse_mode: str = "MarkdownV2",
+    reply_markup: dict | None = None,
+) -> dict:
+    if not token or not chat_id:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未配置，请检查 .env 文件")
+    url = TELEGRAM_API.format(token=token, method="editMessageText")
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    resp = requests.post(url, json=payload, timeout=15)
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
     return data
 
 

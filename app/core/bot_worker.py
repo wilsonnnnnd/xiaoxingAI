@@ -18,10 +18,12 @@ import requests
 from app import db
 from app.core import config
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
-from app.core.tools import route_and_execute
+from app.core.tools import route_and_execute, route_and_execute_debug, route_and_execute_debug_allowlist
 from app.core.telegram import TELEGRAM_API
 from app.core import ws as ws_pub
 from app.core import redis_client as rc
+from app.core.telegram_debug import record as record_tg_event
+from app.core.outgoing_debug import record as record_outgoing_event
 
 logger = logging.getLogger("tg_bot")
 
@@ -56,9 +58,9 @@ _histories_today: Dict[int, List[Dict[str, str]]] = {}
 _history_locks:   Dict[int, threading.Lock] = {}
 
 
-def _wlog(msg: str, level: str = "info", tokens: int = 0) -> None:
+def _wlog(msg: str, level: str = "info", tokens: int = 0, user_id: int | None = None) -> None:
     ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    db.insert_log(ts, level, msg, db.LogType.CHAT, tokens)
+    db.insert_log(ts, level, msg, db.LogType.CHAT, tokens, user_id=user_id)
     if level == "error":
         logger.error(msg)
     elif level == "warn":
@@ -84,7 +86,7 @@ def _get_updates(token: str, offset: int, timeout: int = 30) -> list:
     try:
         resp = requests.get(
             url,
-            params={"offset": offset, "timeout": timeout, "allowed_updates": '["message"]'},
+            params={"offset": offset, "timeout": timeout, "allowed_updates": '["message","edited_message","callback_query"]'},
             timeout=timeout + 5,
         )
         data = resp.json()
@@ -212,15 +214,91 @@ async def _bot_loop(state: _BotState) -> None:
         updates = await asyncio.to_thread(_get_updates, state.token, offset)
         for upd in updates:
             offset = upd["update_id"] + 1
+            update_id = upd["update_id"]
+
+            cb = upd.get("callback_query")
+            if cb is not None:
+                chat_id = str((cb.get("message") or {}).get("chat", {}).get("id", ""))
+                record_tg_event({
+                    "type": "callback_query",
+                    "update_id": update_id,
+                    "bot_id": state.bot_id,
+                    "chat_id": chat_id,
+                    "callback_query_id": str(cb.get("id", "")),
+                    "data": str(cb.get("data", ""))[:200],
+                })
+                if state.chat_id and chat_id != state.chat_id:
+                    logger.debug(f"[tg_bot] bot#{state.bot_id} 忽略未授权 chat_id={chat_id}")
+                    continue
+                if not rc.mark_update(update_id):
+                    logger.debug(f"[tg_bot] bot#{state.bot_id} 跳过重复 update_id={update_id}")
+                    continue
+                try:
+                    from app.services.telegram_outgoing_callback_service import TelegramOutgoingCallbackService
+
+                    svc = TelegramOutgoingCallbackService()
+                    msg_text = svc.handle(
+                        bot_id=state.bot_id,
+                        chat_id=chat_id,
+                        callback_query_id=str(cb.get("id", "")),
+                        data=str(cb.get("data", "")),
+                    )
+                    await asyncio.to_thread(_send_reply, state.token, chat_id, msg_text)
+                except Exception as e:
+                    logger.warning(f"[tg_bot] callback_query 处理失败: {e}")
+                    await asyncio.to_thread(_send_reply, state.token, chat_id, "⚠️ 操作处理失败，请稍后再试。")
+                continue
+
             msg = upd.get("message") or upd.get("edited_message")
             if not msg:
                 continue
-            chat_id   = str(msg.get("chat", {}).get("id", ""))
+            chat_id = str(msg.get("chat", {}).get("id", ""))
             from_user = msg.get("from", {})
-            text      = msg.get("text", "").strip()
-            update_id = upd["update_id"]
+            text = msg.get("text", "").strip()
+            reply_to_message_id = int((msg.get("reply_to_message") or {}).get("message_id") or 0)
             if not text:
                 continue
+
+            reply_to_payload = None
+            if reply_to_message_id:
+                try:
+                    reply_to_payload = rc.get_tg_message_cache(
+                        bot_id=state.bot_id,
+                        chat_id=chat_id,
+                        message_id=reply_to_message_id,
+                    )
+                except Exception:
+                    reply_to_payload = None
+
+            record_tg_event({
+                "type": "message",
+                "update_id": update_id,
+                "bot_id": state.bot_id,
+                "chat_id": chat_id,
+                "message_id": int(msg.get("message_id") or 0),
+                "reply_to_message_id": reply_to_message_id or None,
+                "text": text[:500],
+                "reply_to": reply_to_payload,
+            })
+
+            try:
+                rc.set_tg_message_cache(
+                    bot_id=state.bot_id,
+                    chat_id=chat_id,
+                    message_id=int(msg.get("message_id") or 0),
+                    payload={
+                        "type": "message",
+                        "update_id": update_id,
+                        "bot_id": state.bot_id,
+                        "chat_id": chat_id,
+                        "message_id": int(msg.get("message_id") or 0),
+                        "reply_to_message_id": reply_to_message_id or None,
+                        "text": text[:2000],
+                        "from_user": from_user,
+                    },
+                )
+            except Exception:
+                pass
 
             # 安全过滤：只响应已注册的 chat_id
             if state.chat_id and chat_id != state.chat_id:
@@ -233,6 +311,212 @@ async def _bot_loop(state: _BotState) -> None:
                 continue
 
             logger.info(f"[tg_bot] bot#{state.bot_id} 收到消息 [{chat_id}]: {text[:60]}")
+
+            if reply_to_message_id:
+                handled = False
+                target_type = ""
+                classified_email_id = ""
+                try:
+                    try:
+                        reply_to_text = str((reply_to_payload or {}).get("text") or "")
+                    except Exception:
+                        reply_to_text = ""
+
+                    classify_msg = (
+                        f"判断回复对象 __tg_update_id__={update_id} __reply_to_message_id__={reply_to_message_id}\n"
+                        f"reply_to_payload: {str(reply_to_payload)[:1200]}\n"
+                        f"reply_to_text: {reply_to_text[:1200]}"
+                    )
+                    classify_res, _rt, classify_dbg = route_and_execute_debug_allowlist(
+                        classify_msg,
+                        allowed_tools=["classify_reply_to"],
+                        user_id=state.user_id,
+                    )
+                    record_outgoing_event({
+                        "type": "router_routing",
+                        "kind": "reply_to_classify",
+                        "update_id": update_id,
+                        "user_id": int(state.user_id or 0),
+                        "reply_to_message_id": reply_to_message_id,
+                        "reply_to": reply_to_payload,
+                        "router_result": str(classify_res)[:300],
+                        **classify_dbg,
+                    })
+
+                    try:
+                        import json as _json
+                        import re as _re
+
+                        m = _re.search(r"\{.*\}", str(classify_res), _re.DOTALL)
+                        parsed = _json.loads(m.group(0)) if m else {}
+                        target_type = str(parsed.get("target_type") or "")
+                        classified_email_id = str(parsed.get("email_id") or "")
+                    except Exception:
+                        target_type = ""
+                        classified_email_id = ""
+
+                    draft = db.get_draft_by_preview_message(
+                        telegram_bot_id=state.bot_id,
+                        telegram_chat_id=chat_id,
+                        telegram_message_id=reply_to_message_id,
+                    )
+                    if draft:
+                        handled = True
+                        user_msg = text.strip()
+                        lower = user_msg.lower()
+                        if any(k in lower for k in ("取消", "cancel")):
+                            tool_msg = f"__draft_id__={draft['id']} __tg_update_id__={update_id} 取消"
+                            _wlog(f"✉️ [outgoing] draft#{draft['id']} reply→cancel", user_id=state.user_id)
+                        elif any(k in lower for k in ("确认", "发送", "confirm", "send")):
+                            tool_msg = f"__draft_id__={draft['id']} __tg_update_id__={update_id} 确认"
+                            _wlog(f"✉️ [outgoing] draft#{draft['id']} reply→confirm", user_id=state.user_id)
+                        else:
+                            tool_msg = f"__draft_id__={draft['id']} __tg_update_id__={update_id} __instruction__={user_msg} 修改"
+                            _wlog(f"✉️ [outgoing] draft#{draft['id']} reply→modify", user_id=state.user_id)
+                        result, router_tokens, dbg = route_and_execute_debug_allowlist(
+                            tool_msg,
+                            allowed_tools=["outgoing_draft_confirm", "outgoing_draft_cancel", "outgoing_draft_modify"],
+                            user_id=state.user_id,
+                        )
+                        record_outgoing_event({
+                            "type": "router_routing",
+                            "kind": "draft_reply",
+                            "update_id": update_id,
+                            "user_id": int(state.user_id or 0),
+                            "draft_id": int(draft["id"]),
+                            **dbg,
+                        })
+                        if result:
+                            await asyncio.to_thread(_send_reply, state.token, chat_id, result)
+                            continue
+
+                        await asyncio.to_thread(
+                            _send_reply,
+                            state.token,
+                            chat_id,
+                            "ℹ️ 已收到你的操作，但草稿状态未发生变化。",
+                        )
+                        continue
+
+                    ref = rc.get_email_notify_ref(bot_id=state.bot_id, message_id=reply_to_message_id)
+                    email_id = None
+                    if classified_email_id:
+                        email_id = classified_email_id
+                    elif reply_to_payload and reply_to_payload.get("email_id"):
+                        email_id = str(reply_to_payload.get("email_id") or "")
+                    elif ref and int(ref.get("user_id") or 0) == int(state.user_id or 0):
+                        email_id = str(ref.get("email_id") or "")
+
+                    if email_id:
+                        handled = True
+                        record = db.get_email_record(email_id, user_id=state.user_id)
+                        _wlog(f"📨 reply-to 邮件通知：email_id={email_id}", user_id=state.user_id)
+                        record_outgoing_event({
+                            "type": "reply_to_email_notify",
+                            "bot_id": state.bot_id,
+                            "chat_id": chat_id,
+                            "reply_to_message_id": reply_to_message_id,
+                            "update_id": update_id,
+                            "user_id": int(state.user_id or 0),
+                            "email_id": email_id,
+                            "reply_to": reply_to_payload,
+                            "reply": text.strip()[:500],
+                            "email": {
+                                "sender": str((record or {}).get("sender") or ""),
+                                "subject": str((record or {}).get("subject") or ""),
+                                "date": str((record or {}).get("date") or ""),
+                                "body_preview": str((record or {}).get("body") or "")[:400],
+                            },
+                        })
+                        ctx = (
+                            f"__bot_id__={state.bot_id} __chat_id__={chat_id} __email_id__={email_id} __tg_update_id__={update_id}\n"
+                            f"原邮件: from={(record or {}).get('sender','')} subject={(record or {}).get('subject','')} date={(record or {}).get('date','')}\n"
+                            f"用户回复意图: {text.strip()}"
+                        )
+                        result, router_tokens, dbg = route_and_execute_debug_allowlist(
+                            "回复邮件\n" + ctx,
+                            allowed_tools=["reply_email"],
+                            user_id=state.user_id,
+                        )
+                        record_outgoing_event({
+                            "type": "router_routing",
+                            "kind": "email_reply",
+                            "update_id": update_id,
+                            "user_id": int(state.user_id or 0),
+                            "email_id": email_id,
+                            **dbg,
+                        })
+                        if not result:
+                            from app.core.tools.outgoing_email_tools import reply_email
+
+                            result = reply_email("回复邮件\n" + ctx, user_id=state.user_id)
+                        if result:
+                            await asyncio.to_thread(_send_reply, state.token, chat_id, result)
+                            continue
+
+                        await asyncio.to_thread(
+                            _send_reply,
+                            state.token,
+                            chat_id,
+                            "⚠️ 已识别为邮件通知，但生成回复草稿失败。",
+                        )
+                        continue
+                except Exception as e:
+                    logger.warning(f"[tg_bot] reply-to 处理失败: {e}")
+
+                if not handled:
+                    lower = text.strip().lower()
+                    if target_type == "email_notify":
+                        record_outgoing_event({
+                            "type": "reply_to_email_notify_failed",
+                            "update_id": update_id,
+                            "bot_id": state.bot_id,
+                            "chat_id": chat_id,
+                            "reply_to_message_id": reply_to_message_id,
+                            "reply_to": reply_to_payload,
+                        })
+                        await asyncio.to_thread(
+                            _send_reply,
+                            state.token,
+                            chat_id,
+                            "⚠️ 已识别为邮件通知，但未能生成回复草稿。\n"
+                            "可能原因：邮件记录尚未落库且 Gmail 拉取失败（授权/网络/权限）。\n"
+                            "你可以先重新授权 Gmail 或稍后重试。",
+                        )
+                        continue
+
+                    if any(k in lower for k in ("确认", "取消", "发送", "回复", "confirm", "cancel", "send", "reply")):
+                        record_outgoing_event({
+                            "type": "reply_to_unresolved",
+                            "update_id": update_id,
+                            "bot_id": state.bot_id,
+                            "chat_id": chat_id,
+                            "message_id": int(msg.get("message_id") or 0),
+                            "reply_to_message_id": reply_to_message_id,
+                            "reply": text.strip()[:500],
+                            "reply_to": reply_to_payload,
+                        })
+                        await asyncio.to_thread(
+                            _send_reply,
+                            state.token,
+                            chat_id,
+                            "⚠️ 我找不到你回复的那条消息对应的邮件/草稿上下文。\n"
+                            "请确保你是在回复：\n"
+                            "1) Gmail 邮件通知消息（由系统推送的那条）\n"
+                            "或 2) 草稿预览消息（带 Confirm/Cancel 的那条）\n"
+                            "然后再输入你的回复内容。",
+                        )
+                        continue
+
+                    await asyncio.to_thread(
+                        _send_reply,
+                        state.token,
+                        chat_id,
+                        "⚠️ 已收到你的回复，但我无法识别这条 reply-to 对应的上下文（不是草稿预览也不是邮件通知）。",
+                    )
+                    continue
+
+                continue
 
             # 入队或直接处理
             if not rc.enqueue(update_id, state.bot_id, chat_id, text, from_user):
@@ -442,10 +726,10 @@ def generate_profile_now(bot_id: int) -> tuple[str, int]:
     return new_profile or existing or "", tokens
 
 
-def _wlog(msg: str, level: str = "info", tokens: int = 0) -> None:
+def _wlog(msg: str, level: str = "info", tokens: int = 0, user_id: int | None = None) -> None:
     """写 logger 和持久化日志数据库（log_type=chat）"""
     ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    db.insert_log(ts, level, msg, db.LogType.CHAT, tokens)
+    db.insert_log(ts, level, msg, db.LogType.CHAT, tokens, user_id=user_id)
     if level == "error":
         logger.error(msg)
     elif level == "warn":
@@ -476,7 +760,7 @@ def _get_updates(token: str, offset: int, timeout: int = 30) -> list:
     try:
         resp = requests.get(
             url,
-            params={"offset": offset, "timeout": timeout, "allowed_updates": '["message"]'},
+            params={"offset": offset, "timeout": timeout, "allowed_updates": '["message","edited_message","callback_query"]'},
             timeout=timeout + 5,
         )
         data = resp.json()
