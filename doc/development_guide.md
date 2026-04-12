@@ -1,4 +1,4 @@
-﻿# 小星项目开发与扩展指南 (Development & Extension Guide)
+﻿﻿# 小星项目开发与扩展指南 (Development & Extension Guide)
 
 本文档旨在指导开发者如何在"小星"项目中添加新功能，并明确各功能模块的存放位置。
 

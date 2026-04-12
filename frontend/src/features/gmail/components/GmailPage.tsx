@@ -85,7 +85,23 @@ export const GmailPage: React.FC = () => {
     const startMut = useMutation({
         mutationFn: startWorker,
         onSuccess: (data) => {
-            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => ({ ...(old ?? {}), ...(data?.status ?? {}) }))
+            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => {
+                const merged = { ...(old ?? {}), ...(data?.status ?? {}) }
+                return {
+                    running: merged.running ?? false,
+                    interval: merged.interval ?? 60,
+                    query: merged.query ?? '',
+                    priorities: merged.priorities ?? [],
+                    started_at: merged.started_at ?? null,
+                    last_poll: merged.last_poll ?? null,
+                    total_fetched: merged.total_fetched ?? 0,
+                    total_sent: merged.total_sent ?? 0,
+                    total_errors: merged.total_errors ?? 0,
+                    total_tokens: merged.total_tokens ?? 0,
+                    total_runtime_hours: merged.total_runtime_hours ?? 0,
+                    last_error: merged.last_error ?? null,
+                }
+            })
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
             toast.success(t('home.worker.running'))
         }
@@ -94,7 +110,23 @@ export const GmailPage: React.FC = () => {
     const stopMut = useMutation({
         mutationFn: stopWorker,
         onSuccess: (data) => {
-            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => ({ ...(old ?? {}), ...(data?.status ?? {}) }))
+            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => {
+                const merged = { ...(old ?? {}), ...(data?.status ?? {}) }
+                return {
+                    running: merged.running ?? false,
+                    interval: merged.interval ?? 60,
+                    query: merged.query ?? '',
+                    priorities: merged.priorities ?? [],
+                    started_at: merged.started_at ?? null,
+                    last_poll: merged.last_poll ?? null,
+                    total_fetched: merged.total_fetched ?? 0,
+                    total_sent: merged.total_sent ?? 0,
+                    total_errors: merged.total_errors ?? 0,
+                    total_tokens: merged.total_tokens ?? 0,
+                    total_runtime_hours: merged.total_runtime_hours ?? 0,
+                    last_error: merged.last_error ?? null,
+                }
+            })
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
             toast.success(t('home.worker.stopped'))
         }

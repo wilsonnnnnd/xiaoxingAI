@@ -128,7 +128,7 @@ export const DebugPage: React.FC = () => {
                 setProfileText(d.profile)
                 setProfileResult({ ok: true, tokens: d.tokens })
             } else {
-                setProfileResult({ ok: false, msg: d.msg || 'Unknown error' })
+                setProfileResult({ ok: false, msg: (d as { ok: false; msg?: string }).msg || 'Unknown error' })
             }
         } catch (e: any) {
             setProfileResult({ ok: false, msg: String(e) })
@@ -267,7 +267,7 @@ export const DebugPage: React.FC = () => {
                             <Badge variant={profileResult.ok ? 'success' : 'error'}>
                                 {profileResult.ok
                                     ? (profileResult.tokens === 0 ? t('debug.profile.no_chat') : `✅ ${profileResult.tokens} ${t('debug.profile.tokens')}`)
-                                    : `❌ ${profileResult.msg}`}
+                                    : `❌ ${(profileResult as { ok: false; msg: string }).msg}`}
                             </Badge>
                         )}
                     </div>
