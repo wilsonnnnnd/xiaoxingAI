@@ -17,7 +17,7 @@ from typing import Optional
 import redis
 import redis.asyncio as aioredis
 
-from app import config
+from app.core import config
 
 logger = logging.getLogger("redis_client")
 

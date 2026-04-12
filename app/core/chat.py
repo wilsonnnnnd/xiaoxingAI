@@ -6,7 +6,7 @@
 import re
 from typing import Dict, List
 
-from app import config
+from app.core import config as app_config
 from app.core.llm import call_llm
 from app.utils.prompt_loader import load_prompt
 
@@ -131,7 +131,7 @@ def chat_reply(
     else:
         persona_section = "你是一位名叫 Xiaoxing（小星 AI）的 AI 助手，性格活泼、温暖、有点俏皮，说话口语化但不失礼貌。\n"
 
-    template = load_prompt(config.PROMPT_CHAT)
+    template = load_prompt(app_config.PROMPT_CHAT)
     prompt = template.format(
         history=history_text,
         message=message,
@@ -168,7 +168,7 @@ def build_user_profile(
         else:
             history_text += f"Xiaoxing：{turn['content']}\n"
 
-    template = load_prompt(config.PROMPT_PROFILE)
+    template = load_prompt(app_config.PROMPT_PROFILE)
     prompt = template.format(
         existing_profile=existing_profile.strip() if existing_profile else "（暂无）",
         chat_history=history_text,

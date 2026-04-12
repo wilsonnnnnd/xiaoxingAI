@@ -19,7 +19,8 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-from app import config, db
+from app import db
+from app.core import config
 from app.core import redis_client as rc
 
 logger = logging.getLogger("auth")

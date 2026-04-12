@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Dict
 
-from app import config
+from app.core import config
 from app.core.llm import call_llm
 from app.utils.json_parser import extract_json_from_text
 from app.utils.prompt_loader import load_prompt

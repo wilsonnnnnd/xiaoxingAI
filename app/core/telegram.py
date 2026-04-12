@@ -6,7 +6,7 @@ import re
 
 import requests
 
-from app import config
+from app.core import config
 
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"

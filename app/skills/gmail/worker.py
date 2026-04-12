@@ -11,7 +11,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from app.core import ws as ws_pub
 
-from app import config, db
+from app.core import config
+from app import db
 from app.skills.gmail.client import fetch_emails, mark_as_read
 from app.skills.gmail.pipeline import process_email
 from app.core.telegram import send_message

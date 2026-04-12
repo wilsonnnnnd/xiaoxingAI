@@ -8,7 +8,7 @@ import time
 
 import requests
 
-from app import config
+from app.core import config
 
 logger = logging.getLogger("llm")
 MAX_LLM_RETRIES = 3

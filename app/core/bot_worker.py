@@ -15,7 +15,8 @@ from typing import Dict, List, Optional
 
 import requests
 
-from app import config, db
+from app import db
+from app.core import config
 from app.core.chat import build_user_profile, chat_reply, CHAT_HISTORY_MAX
 from app.core.tools import route_and_execute
 from app.core.telegram import TELEGRAM_API

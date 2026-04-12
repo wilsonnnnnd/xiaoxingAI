@@ -11,19 +11,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pathlib import Path
-from pydantic import BaseModel
 
-from app import config as app_config
+from app.core import config as app_config
+from app.core.constants import (
+    ALLOWED_CONFIG_KEYS, DEFAULT_PROMPTS, INTERNAL_PROMPTS, 
+    INTERNAL_PROMPT_DIRS, VALID_BOT_MODES, VALID_PERSONA_CATS,
+    PERSONA_LABEL_MAP
+)
+from app.schemas import (
+    AdminLoginRequest, UserCreate, UserUpdate, 
+    BotCreate, BotUpdate, PromptCreate, PromptUpdate, 
+    PersonaConfigSave, ChatPersonaRequest
+)
 from app import db
 from app.core import auth as auth_mod
-from app.skills.gmail.schemas import EmailRequest, GmailFetchRequest, GmailProcessRequest
-from app.skills.gmail.pipeline import analyze_email, summarize_email, write_telegram_message, process_email
-from app.core.telegram import send_message, test_connection, get_latest_chat_id
 from app.skills.gmail import worker
 from app.core import bot_worker as tg_bot_worker
-from app.skills.gmail.auth import get_oauth_url, exchange_code_for_token
-from app.skills.gmail.client import fetch_emails, fetch_unread_emails, mark_as_read
+from app.skills.gmail.auth import exchange_code_for_token, get_oauth_url
 from app.core.auth import get_current_user_or_none
+from app.api.routes import (
+    health, ai, email_records, auth as auth_routes, users, bots, 
+    db_prompts, admin_persona, config as config_routes, 
+    prompts, stats_logs, gmail_actions, telegram_tools, chat
+)
 
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -77,54 +87,20 @@ async def _log_requests(request: Request, call_next):
     return response
 
 
-@app.get("/")
-def root():
-    return {"status": "ok", "docs": "/docs"}
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.get("/ai/ping")
-def ai_ping():
-    """测试 LLM 连接：发送最小 prompt，验证 API 可达且返回正常"""
-    from app.core.llm import call_llm
-    try:
-        reply, _ = call_llm("Reply with the single word: pong", max_tokens=10)
-        return {"ok": True, "backend": app_config.LLM_BACKEND, "reply": reply.strip()}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-@app.post("/ai/analyze")
-def ai_analyze(payload: EmailRequest):
-    try:
-        result = analyze_email(payload.subject, payload.body)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"analyze failed: {str(e)}")
-
-
-@app.post("/ai/summary")
-def ai_summary(payload: EmailRequest):
-    try:
-        analysis = analyze_email(payload.subject, payload.body)
-        result = summarize_email(payload.subject, payload.body, analysis["result"])
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"summary failed: {str(e)}")
-
-
-@app.post("/ai/process")
-def ai_process(payload: EmailRequest):
-    """完整流程：分析 → 摘要 → 生成 Telegram 通知"""
-    try:
-        result = process_email(payload.subject, payload.body)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"process failed: {str(e)}")
+app.include_router(health.router)
+app.include_router(ai.router)
+app.include_router(email_records.router)
+app.include_router(auth_routes.router)
+app.include_router(users.router)
+app.include_router(bots.router)
+app.include_router(db_prompts.router)
+app.include_router(admin_persona.router)
+app.include_router(config_routes.router)
+app.include_router(prompts.router)
+app.include_router(stats_logs.router)
+app.include_router(gmail_actions.router)
+app.include_router(telegram_tools.router)
+app.include_router(chat.router)
 
 
 # ─────────────────────────────────────────
@@ -159,7 +135,7 @@ def gmail_callback(request: Request, code: str,
                    state: Optional[str] = None,
                    user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
     """返回 Google OAuth 回调，保存 token。优先从 state 参数恢复 user_id。"""
-    # 优先从 OAuth state 参数恢复 user_id（由 /gmail/auth/url 编码进去）
+    # 优先 from OAuth state 参数恢复 user_id（由 /gmail/auth/url 编码进去）
     user_id = None
     if state:
         try:
@@ -175,82 +151,6 @@ def gmail_callback(request: Request, code: str,
         return RedirectResponse(url=f"{app_config.FRONTEND_URL}?auth=success")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth 回调失败: {str(e)}")
-
-
-# ─────────────────────────────────────────
-# Gmail 拉取邮件
-# ─────────────────────────────────────────
-
-@app.post("/gmail/fetch")
-def gmail_fetch(payload: GmailFetchRequest):
-    """从 Gmail 拉取邮件列表（不做 AI 处理）"""
-    try:
-        emails = fetch_emails(query=payload.query, max_results=payload.max_results)
-        return {"count": len(emails), "emails": emails}
-    except RuntimeError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"拉取失败: {str(e)}")
-
-
-@app.post("/gmail/process")
-def gmail_process(payload: GmailProcessRequest):
-    """从 Gmail 拉取邮件并对每封执行完整 AI 处理流程"""
-    try:
-        emails = fetch_emails(query=payload.query, max_results=payload.max_results)
-    except RuntimeError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"拉取失败: {str(e)}")
-
-    results = []
-    for email in emails:
-        try:
-            processed = process_email(
-                email["subject"],
-                email["body"] or email["snippet"],
-                sender=email.get("from", ""),
-                date=email.get("date", ""),
-                email_id=email.get("id", ""),
-            )
-            processed["id"]   = email["id"]
-            processed["from"] = email["from"]
-            processed["date"] = email["date"]
-
-            sent = False
-            if payload.send_telegram:
-                send_message(processed["telegram_message"], parse_mode="HTML")
-                processed["telegram_sent"] = True
-                sent = True
-
-            if payload.mark_read and email["id"]:
-                mark_as_read(email["id"])
-
-            if email.get("id"):
-                db.save_email_record(
-                    email_id=email["id"],
-                    subject=email["subject"],
-                    sender=email.get("from", ""),
-                    date=email.get("date", ""),
-                    body=email.get("body") or email.get("snippet", ""),
-                    analysis=processed.get("analysis", {}),
-                    summary=processed.get("summary", {}),
-                    telegram_msg=processed.get("telegram_message", ""),
-                    tokens=processed.get("tokens", 0),
-                    priority=processed.get("analysis", {}).get("priority", ""),
-                    sent_telegram=sent,
-                )
-
-            results.append({"status": "ok", **processed})
-        except Exception as e:
-            results.append({
-                "status": "error",
-                "id":      email["id"],
-                "subject": email["subject"],
-                "error":   str(e)
-            })
-
-    return {"count": len(results), "results": results}
 
 
 # ─────────────────────────────────────────
@@ -280,47 +180,9 @@ def worker_status():
     return worker.get_status()
 
 
-@app.get("/worker/logs")
-def worker_logs(limit: int = 100, log_type: Optional[str] = None,
-                user: dict = Depends(auth_mod.current_user)):
-    """返回 Worker 最近步骤日志。admin 可见全部，普通用户只见自己的。"""
-    uid = None if user.get("role") == "admin" else user["id"]
-    lt = db.LogType(log_type) if log_type else None
-    return {"logs": db.get_recent_logs(min(limit, 200), lt, user_id=uid)}
-
-
-@app.delete("/worker/logs")
-def worker_logs_clear(log_type: Optional[str] = None,
-                      user: dict = Depends(auth_mod.current_user)):
-    """清空日志。admin 删全部（或按 log_type），普通用户只删自己的。"""
-    uid = None if user.get("role") == "admin" else user["id"]
-    deleted = db.clear_logs(log_type, user_id=uid)
-    return {"ok": True, "deleted": deleted}
-
-
-@app.get("/db/stats")
-def db_stats(user: dict = Depends(auth_mod.current_user)):
-    """返回数据库统计信息，has_token 按当前用户 ID 过滤"""
-    return db.get_stats(user_id=user["id"])
-
-
 # ─────────────────────────────────────────
 # 邮件记录
 # ─────────────────────────────────────────
-
-@app.get("/email/records")
-def email_records_list(limit: int = 50, priority: Optional[str] = None):
-    """返回邮件处理记录列表（按处理时间倒序）"""
-    return {"count": db.count_email_records(), "records": db.get_email_records(limit=limit, priority=priority)}
-
-
-@app.get("/email/records/{email_id}")
-def email_record_detail(email_id: str):
-    """返回单条邮件处理记录详情"""
-    record = db.get_email_record(email_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="邮件记录不存在")
-    return record
 
 
 @app.post("/worker/poll")
@@ -374,40 +236,6 @@ async def ws_bot_status(websocket: WebSocket):
 
 
 # ─────────────────────────────────────────
-# Telegram 配置测试
-# ─────────────────────────────────────────
-
-@app.post("/telegram/test")
-def telegram_test():
-    """发送测试消息验证 Telegram 配置是否正确"""
-    try:
-        ok = test_connection()
-        return {"ok": ok}
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"发送失败: {str(e)}")
-
-
-@app.get("/telegram/chat_id")
-def telegram_get_chat_id(token: str = ""):
-    """
-    使用给定的 Bot Token 调用 getUpdates，返回最新一条消息的 chat_id。
-    前端轮询此接口以自动获取 TELEGRAM_CHAT_ID。
-    """
-    use_token = token.strip() or app_config.TELEGRAM_BOT_TOKEN
-    if not use_token:
-        raise HTTPException(status_code=400, detail="请先填写 TELEGRAM_BOT_TOKEN")
-    try:
-        chat_id = get_latest_chat_id(use_token)
-        return {"chat_id": chat_id}   # None 表示暂无消息
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取失败: {str(e)}")
-
-
-# ─────────────────────────────────────────
 # Telegram Bot 聊天 Worker
 # ─────────────────────────────────────────
 
@@ -447,627 +275,19 @@ def chat_work_status():
     return {"running": tg_bot_worker.is_running()}
 
 
-class ChatPersonaRequest(BaseModel):
-    keywords: str
-    zodiac: Optional[str] = None
-    chinese_zodiac: Optional[str] = None
-    gender: Optional[str] = None
-    age: Optional[str] = None
-
-
-@app.post("/chat/generate_persona_prompt")
-def chat_generate_persona_prompt(payload: ChatPersonaRequest, user: dict = Depends(auth_mod.current_user)):
-    """
-    四阶段 AI 聊天提示词生成流水线：
-    1. tonePersonaGenerator.txt  — 分析语气/风格 → tone JSON
-    2. characterPortraitGeneration.txt — 生成角色画像 → portrait JSON
-    3. chatPrompt.txt — 由画像生成自由叙述型 system prompt（参考用）
-    4. specificChatStyle.txt — 用 JSON 字段程序性填入模板 → 最终结构化 system prompt
-
-    可选：传入 zodiac / chinese_zodiac / gender，自动从 persona_config 中
-    加载对应风格提示作为补充语境，拼入 keywords 一起送给 AI。
-    """
-    import json as _json
-    import re as _re
-    from app.core.llm import call_llm
-
-    def _extract_json(text: str) -> dict:
-        """从 LLM 输出中提取 JSON 对象，兼容 markdown 代码块。"""
-        text = text.strip()
-        text = _re.sub(r"^```(?:json)?\s*", "", text, flags=_re.MULTILINE)
-        text = _re.sub(r"\s*```\s*$", "", text, flags=_re.MULTILINE)
-        text = text.strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            text = text[start:end + 1]
-        try:
-            return _json.loads(text)
-        except Exception:
-            return {}
-
-    def _fmt(val) -> str:
-        if isinstance(val, list):
-            return "、".join(str(v) for v in val) if val else "—"
-        return str(val) if val not in (None, "") else "—"
-
-    keywords = payload.keywords.strip()
-    if not keywords:
-        raise HTTPException(status_code=422, detail="keywords 不能为空")
-
-    # ── 拼入星座 / 属相 / 性别 风格补充 ──────────────────────────
-    persona_configs = db.get_persona_configs()
-    supplements: list[str] = []
-
-    _LABEL_MAP = {
-        "zodiac":         "星座风格参考",
-        "chinese_zodiac": "属相风格参考",
-        "gender":         "性别风格参考",
-    }
-    for cat_key, selection in [
-        ("zodiac",         payload.zodiac),
-        ("chinese_zodiac", payload.chinese_zodiac),
-        ("gender",         payload.gender),
-    ]:
-        if selection:
-            content = persona_configs.get(cat_key, {}).get(selection, "").strip()
-            if content:
-                supplements.append(f"[{_LABEL_MAP[cat_key]}]\n{content}")
-
-    # age 直接追加到 keywords，无需 DB 配置
-    if payload.age and payload.age.strip():
-        supplements.append(f"[年龄感参考]\n目标年龄感：{payload.age.strip()}")
-
-    enriched_keywords = keywords
-    if supplements:
-        enriched_keywords = keywords + "\n\n" + "\n\n".join(supplements)
-
-    tools_dir = _PROMPTS_DIR / "tools"
-    try:
-        tone_tpl     = (tools_dir / "tonePersonaGenerator.txt").read_text(encoding="utf-8")
-        portrait_tpl = (tools_dir / "characterPortraitGeneration.txt").read_text(encoding="utf-8")
-        chat_tpl     = (tools_dir / "chatPrompt.txt").read_text(encoding="utf-8")
-        style_tpl    = (tools_dir / "specificChatStyle.txt").read_text(encoding="utf-8")
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=f"提示词模板缺失: {e}")
-
-    total_tokens = 0
-    try:
-        # Step 1: 语气/风格分析 → tone JSON
-        tone_result, t1 = call_llm(tone_tpl.replace("{{user_input}}", enriched_keywords), max_tokens=512)
-        total_tokens += t1
-        tone_data = _extract_json(tone_result)
-
-        # Step 2: 角色画像 → portrait JSON
-        portrait_prompt = (portrait_tpl
-                           .replace("{{user_input}}", enriched_keywords)
-                           .replace("{{tone_json}}", tone_result.strip()))
-        portrait_result, t2 = call_llm(portrait_prompt, max_tokens=1024)
-        total_tokens += t2
-        portrait_data = _extract_json(portrait_result)
-
-        # Step 3: 自由叙述型 system prompt (chatPrompt.txt)
-        narrative_prompt, t3 = call_llm(
-            chat_tpl.replace("{{persona_json}}", portrait_result.strip()),
-            max_tokens=1024,
-        )
-        total_tokens += t3
-
-        # Step 4: 结构化模板填充 (specificChatStyle.txt) — 无需 LLM
-        final_prompt = (style_tpl
-            .replace("{{personality_traits}}",    _fmt(portrait_data.get("personality_traits")))
-            .replace("{{overall_persona_summary}}", _fmt(portrait_data.get("overall_persona_summary")))
-            .replace("{{social_persona}}",        _fmt(portrait_data.get("social_persona")))
-            .replace("{{role_impression}}",       _fmt(portrait_data.get("role_impression")))
-            .replace("{{tone}}",                  _fmt(tone_data.get("tone")))
-            .replace("{{style}}",                 _fmt(tone_data.get("style")))
-            .replace("{{communication_style}}",   _fmt(portrait_data.get("communication_style")))
-            .replace("{{rhythm}}",                _fmt(tone_data.get("rhythm")))
-            .replace("{{emotional_pattern}}",     _fmt(portrait_data.get("emotional_pattern")))
-            .replace("{{language_features}}",     _fmt(tone_data.get("language_features")))
-            .replace("{{expression_habits}}",     _fmt(portrait_data.get("expression_habits")))
-            .replace("{{humor_style}}",           _fmt(portrait_data.get("humor_style")))
-            .replace("{{age_vibe}}",              _fmt(portrait_data.get("age_vibe")))
-            .replace("{{gender_style}}",          _fmt(portrait_data.get("gender_style")))
-            .replace("{{zodiac_style}}",          _fmt(portrait_data.get("zodiac_style")))
-            .replace("{{zodiac_animal_style}}",   _fmt(portrait_data.get("zodiac_animal_style")))
-            .replace("{{values_vibe}}",           _fmt(portrait_data.get("values_vibe")))
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
-
-    return {"prompt": final_prompt.strip(), "tokens": total_tokens}
-
-
-@app.post("/telegram/bot/clear_history")
-def tg_bot_clear_history(user: dict = Depends(auth_mod.current_user)):
-    """清空对话历史记录（内存 + Redis + 日志DB）"""
-    tg_bot_worker.clear_history()
-    uid = None if user.get("role") == "admin" else user["id"]
-    deleted = db.clear_logs("chat", user_id=uid)
-    return {"ok": True, "deleted": deleted}
-
-
-@app.get("/telegram/bot/profile")
-def tg_bot_profile_get():
-    """获取当前默认 Bot 的用户画像（多账号迁移中：暂用 bot_id=1 查找）"""
-    try:
-        bots = db.get_all_bots()
-        if not bots:
-            return {"chat_id": None, "profile": "", "updated_at": None}
-        first_bot = bots[0]
-        bot_id = first_bot["id"]
-        profile    = db.get_profile(bot_id)
-        updated_at = db.get_profile_updated_at(bot_id)
-        return {"chat_id": first_bot["chat_id"], "profile": profile, "updated_at": updated_at}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/telegram/bot/profile")
-def tg_bot_profile_delete():
-    """删除当前默认 Bot 的用户画像"""
-    try:
-        bots = db.get_all_bots()
-        if not bots:
-            raise HTTPException(status_code=404, detail="暂无已注册的 Bot")
-        db.delete_profile(bots[0]["id"])
-        return {"ok": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/telegram/bot/generate_profile")
-def tg_bot_generate_profile():
-    """手动触发用户画像生成（基于今日聊天记录），生成后清空今日记录，供调试使用"""
-    bots = db.get_all_bots()
-    if not bots:
-        raise HTTPException(status_code=400, detail="暂无已注册的 Bot")
-    bot_id = bots[0]["id"]
-    try:
-        profile, tokens = tg_bot_worker.generate_profile_now(bot_id)
-        return {"ok": True, "bot_id": bot_id, "profile": profile, "tokens": tokens}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"画像生成失败: {str(e)}")
-
-
 # ─────────────────────────────────────────
-# 配置读写
-# ─────────────────────────────────────────
-
-_ALLOWED_CONFIG_KEYS = {
-    "LLM_BACKEND", "LLM_API_URL", "LLM_MODEL", "OPENAI_API_KEY",
-    "GMAIL_POLL_INTERVAL", "GMAIL_POLL_QUERY", "GMAIL_POLL_MAX",
-    "GMAIL_MARK_READ", "NOTIFY_MIN_PRIORITY",
-    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-    "PROMPT_ANALYZE", "PROMPT_SUMMARY", "PROMPT_TELEGRAM", "PROMPT_CHAT", "PROMPT_PROFILE",
-    "UI_LANG",
-}
-
-_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-
-
-@app.get("/config")
-def config_get(user: dict = Depends(auth_mod.require_admin)):
-    """返回当前运行时配置（从内存读取，与 .env 一致）"""
-    return {
-        "LLM_BACKEND":        app_config.LLM_BACKEND,
-        "LLM_API_URL":        app_config.LLM_API_URL,
-        "LLM_MODEL":          app_config.LLM_MODEL,
-        "OPENAI_API_KEY":     app_config.OPENAI_API_KEY,
-        "GMAIL_POLL_INTERVAL": str(app_config.GMAIL_POLL_INTERVAL),
-        "GMAIL_POLL_QUERY":   app_config.GMAIL_POLL_QUERY,
-        "GMAIL_POLL_MAX":     str(app_config.GMAIL_POLL_MAX),
-        "GMAIL_MARK_READ":    str(app_config.GMAIL_MARK_READ).lower(),
-        "NOTIFY_MIN_PRIORITY": ",".join(app_config.NOTIFY_PRIORITIES),
-        "TELEGRAM_BOT_TOKEN": app_config.TELEGRAM_BOT_TOKEN,
-        "TELEGRAM_CHAT_ID":   app_config.TELEGRAM_CHAT_ID,
-        "PROMPT_ANALYZE":     app_config.PROMPT_ANALYZE,
-        "PROMPT_SUMMARY":     app_config.PROMPT_SUMMARY,
-        "PROMPT_TELEGRAM":    app_config.PROMPT_TELEGRAM,
-        "PROMPT_CHAT":        app_config.PROMPT_CHAT,
-        "PROMPT_PROFILE":     app_config.PROMPT_PROFILE,
-        "UI_LANG":            app_config.UI_LANG,
-    }
-
-
-@app.post("/config")
-def config_update(payload: Dict[str, str], user: dict = Depends(auth_mod.require_admin)):
-    """更新 .env 文件并热重载配置，无需重启服务"""
-    if not _ENV_PATH.exists():
-        raise HTTPException(status_code=500, detail=".env 文件不存在，请先创建")
-
-    unknown = set(payload.keys()) - _ALLOWED_CONFIG_KEYS
-    if unknown:
-        raise HTTPException(status_code=422, detail=f"不允许修改的配置项: {unknown}")
-
-    for key, value in payload.items():
-        set_key(str(_ENV_PATH), key, value)
-        os.environ[key] = value
-
-    importlib.reload(app_config)
-    return {"ok": True, "config": config_get()}
-
-
-# ─────────────────────────────────────────
-# Prompt 文件读写
-# ─────────────────────────────────────────
-
-_PROMPTS_DIR    = Path(__file__).resolve().parent / "prompts"
-_DEFAULT_PROMPTS = {
-    "gmail/email_analysis.txt",
-    "gmail/email_summary.txt",
-    "gmail/telegram_notify.txt",
-    "chat.txt",
-    "user_profile.txt",
-}
-# 系统内部使用的 prompt，不暴露给前端
-_INTERNAL_PROMPTS = set()
-# 隐藏整个子目录下的 Prompt 文件（相对于 prompts 目录的相对路径前缀）
-_INTERNAL_PROMPT_DIRS = {"tools"}
-
-
-def _is_internal_prompt(rel_path: str) -> bool:
-    """Return True when the relative path should be treated as internal and hidden."""
-    # exact file matches
-    if rel_path in _INTERNAL_PROMPTS:
-        return True
-    # directory prefix matches (e.g. 'tools/...')
-    for d in _INTERNAL_PROMPT_DIRS:
-        prefix = d.rstrip("/") + "/"
-        if rel_path.startswith(prefix):
-            return True
-    return False
-
-
-def _check_prompt_filename(filename: str) -> None:
-    """拒绝路径穿越或非 .txt 文件名，允许一级子目录（如 gmail/xxx.txt）"""
-    if not filename or filename.strip() != filename:
-        raise HTTPException(status_code=400, detail="文件名不合法")
-    if ".." in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="文件名不合法")
-    if not filename.endswith(".txt"):
-        raise HTTPException(status_code=400, detail="仅支持 .txt 文件")
-    # 防止路径穿越：解析后必须仍在 prompts 目录内
-    resolved = (_PROMPTS_DIR / filename).resolve()
-    if not str(resolved).startswith(str(_PROMPTS_DIR.resolve())):
-        raise HTTPException(status_code=400, detail="文件名不合法")
-
-
-@app.get("/prompts")
-def prompts_list(user: dict = Depends(auth_mod.current_user)):
-    """列出所有可用 Prompt 文件：磁盘内置 + 用户在 DB 中创建的自定义文件。"""
-    disk_files = sorted(
-        rel
-        for p in _PROMPTS_DIR.rglob("*.txt")
-        if p.is_file()
-        for rel in [str(p.relative_to(_PROMPTS_DIR)).replace("\\", "/")]
-        if not _is_internal_prompt(rel)
-    )
-    user_names = db.list_user_prompt_names(user["id"])
-    disk_set = set(disk_files)
-    extra = [n for n in user_names if n not in disk_set]
-    all_files = sorted(disk_set | set(extra))
-    return {
-        "files": all_files,
-        "defaults": sorted(_DEFAULT_PROMPTS),
-        "custom": sorted(user_names),
-    }
-
-
-@app.get("/prompts/{filename:path}")
-def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
-    """读取 Prompt：优先返回用户专属（DB），无则回退到磁盘默认文件。"""
-    _check_prompt_filename(filename)
-    override = db.get_user_prompt(user["id"], filename)
-    if override is not None:
-        return {"filename": filename, "content": override, "is_custom": True}
-    path = _PROMPTS_DIR / filename
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"{filename} 不存在")
-    return {"filename": filename, "content": path.read_text(encoding="utf-8"), "is_custom": False}
-
-
-@app.post("/prompts/{filename:path}")
-def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(auth_mod.current_user)):
-    """保存用户专属 Prompt 到 DB（不修改磁盘文件）。"""
-    _check_prompt_filename(filename)
-    content = payload.get("content")
-    if content is None:
-        raise HTTPException(status_code=422, detail="缺少 content 字段")
-    db.save_user_prompt(user["id"], filename, content)
-    return {"ok": True, "filename": filename}
-
-
-@app.delete("/prompts/{filename:path}")
-def prompt_delete(filename: str, user: dict = Depends(auth_mod.current_user)):
-    """删除用户专属 Prompt：默认文件则清除覆盖（恢复默认），自定义文件则彻底删除。"""
-    _check_prompt_filename(filename)
-    deleted = db.delete_user_prompt(user["id"], filename)
-    if not deleted:
-        detail = "该文件没有个人修改记录" if filename in _DEFAULT_PROMPTS else f"{filename} 不存在"
-        raise HTTPException(status_code=404, detail=detail)
-    return {"ok": True, "filename": filename}
-
-
-# ─────────────────────────────────────────
-# Pydantic models
-# ─────────────────────────────────────────
-
-class AdminLoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    display_name: Optional[str] = None
-
-
-class UserUpdate(BaseModel):
-    worker_enabled: Optional[bool] = None
-    min_priority: Optional[str] = None
-    max_emails_per_run: Optional[int] = None
-    poll_interval: Optional[int] = None
-
-
-class BotCreate(BaseModel):
-    name: str
-    token: str
-    chat_id: str
-    is_default: bool = False
-    chat_prompt_id: Optional[int] = None
-    bot_mode: str = "all"
-
-
-class BotUpdate(BaseModel):
-    name: Optional[str] = None
-    token: Optional[str] = None
-    chat_id: Optional[str] = None
-    is_default: Optional[bool] = None
-    chat_prompt_id: Optional[int] = None
-    bot_mode: Optional[str] = None
-
-
-_VALID_BOT_MODES = {"all", "notify", "chat"}
-
-
-class PromptCreate(BaseModel):
-    name: str
-    type: str
-    content: str
-    is_default: bool = False
-
-
-class PromptUpdate(BaseModel):
-    name: Optional[str] = None
-    content: Optional[str] = None
-    is_default: Optional[bool] = None
-
-
-class PersonaConfigSave(BaseModel):
-    category: str
-    key: str
-    content: str
-
-
-_VALID_PERSONA_CATS = {"zodiac", "chinese_zodiac", "gender"}
-
-
-# ─────────────────────────────────────────
-# Admin — Persona Config
-# ─────────────────────────────────────────
-
-@app.get("/admin/persona-config")
-def admin_persona_config_get(user: dict = Depends(auth_mod.require_admin)):
-    """返回所有人设配置 Prompt（星座 / 属相 / 性别），按分类分组。"""
-    return db.get_persona_configs()
-
-
-@app.put("/admin/persona-config")
-def admin_persona_config_save(payload: PersonaConfigSave, user: dict = Depends(auth_mod.require_admin)):
-    """保存单条人设配置 Prompt（管理员专用）。"""
-    if payload.category not in _VALID_PERSONA_CATS:
-        raise HTTPException(status_code=422, detail=f"无效的分类：{payload.category}")
-    db.upsert_persona_config(payload.category, payload.key, payload.content)
-    return {"ok": True}
 
 
 # ─────────────────────────────────────────
 # Auth
 # ─────────────────────────────────────────
 
-@app.post("/auth/login")
-def admin_login(payload: AdminLoginRequest):
-    """账号密码登录，返回 JWT（admin 和普通用户均可登录）"""
-    user = db.get_user_by_email(payload.email)
-    if not user or not user.get("password_hash"):
-        logger.warning("[auth] 登录失败 (user not found): %s", payload.email)
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    if not auth_mod.verify_password(payload.password, user["password_hash"]):
-        logger.warning("[auth] 登录失败 (wrong password): %s", payload.email)
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    token = auth_mod.create_access_token(user)
-    logger.info("[auth] 登录成功: %s (role=%s)", payload.email, user["role"])
-    return {"access_token": token, "token_type": "bearer"}
-
-
-@app.get("/auth/me")
-def auth_me(user: dict = Depends(auth_mod.current_user)):
-    """返回当前登录用户信息"""
-    safe = {k: v for k, v in user.items() if k != "password_hash"}
-    return safe
-
 
 # ─────────────────────────────────────────
 # User 管理
 # ─────────────────────────────────────────
 
-@app.get("/users")
-def users_list(user: dict = Depends(auth_mod.require_admin)):
-    """列出所有用户（仅限管理员）"""
-    rows = db.list_users()
-    return {"users": [{k: v for k, v in r.items() if k != "password_hash"} for r in rows]}
-
-
-@app.post("/users", status_code=201)
-def user_create(payload: UserCreate, user: dict = Depends(auth_mod.require_admin)):
-    """创建普通用户（仅限管理员）"""
-    if db.get_user_by_email(payload.email):
-        raise HTTPException(status_code=409, detail="该邮箱已被注册")
-    new_user = db.create_user(
-        email=payload.email,
-        display_name=payload.display_name,
-        role="user",
-        password_hash=auth_mod.hash_password(payload.password),
-    )
-    return {k: v for k, v in new_user.items() if k != "password_hash"}
-
-
-@app.get("/users/{user_id}")
-def user_get(user_id: int, user: dict = Depends(auth_mod.current_user)):
-    """获取用户详情（本人或管理员）"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    row = db.get_user_by_id(user_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    return {k: v for k, v in row.items() if k != "password_hash"}
-
-
-@app.put("/users/{user_id}")
-def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod.current_user)):
-    """更新用户设置（本人或管理员）"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    if not db.get_user_by_id(user_id):
-        raise HTTPException(status_code=404, detail="用户不存在")
-    updates = payload.model_dump(exclude_unset=True)
-    if updates:
-        db.update_user(user_id, **updates)
-    row = db.get_user_by_id(user_id)
-    return {k: v for k, v in row.items() if k != "password_hash"}
-
-
-# ─────────────────────────────────────────
-# Bot 管理
-# ─────────────────────────────────────────
-
-@app.get("/users/{user_id}/bots")
-def bots_list(user_id: int, user: dict = Depends(auth_mod.current_user)):
-    """列出某用户的所有 Bot"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    return {"bots": db.get_bots_by_user(user_id)}
-
-
-@app.post("/users/{user_id}/bots", status_code=201)
-def bot_create(user_id: int, payload: BotCreate, user: dict = Depends(auth_mod.current_user)):
-    """为某用户创建 Bot"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    if not db.get_user_by_id(user_id):
-        raise HTTPException(status_code=404, detail="用户不存在")
-    if payload.bot_mode not in _VALID_BOT_MODES:
-        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all'、'notify' 或 'chat'")
-    bot = db.create_bot(
-        user_id=user_id,
-        name=payload.name,
-        token=payload.token,
-        chat_id=payload.chat_id,
-        is_default=payload.is_default,
-        chat_prompt_id=payload.chat_prompt_id,
-        bot_mode=payload.bot_mode,
-    )
-    return bot
-
-
-@app.put("/users/{user_id}/bots/{bot_id}")
-def bot_update(user_id: int, bot_id: int, payload: BotUpdate, user: dict = Depends(auth_mod.current_user)):
-    """更新 Bot 配置"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    existing = db.get_bot(bot_id)
-    if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
-    updates = payload.model_dump(exclude_unset=True)
-    if "bot_mode" in updates and updates["bot_mode"] not in _VALID_BOT_MODES:
-        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all'、'notify' 或 'chat'")
-    if updates:
-        db.update_bot(bot_id, user_id, **updates)
-    return db.get_bot(bot_id)
-
-
-@app.delete("/users/{user_id}/bots/{bot_id}")
-def bot_delete(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_user)):
-    """删除 Bot"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    existing = db.get_bot(bot_id)
-    if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
-    db.delete_bot(bot_id)
-    return {"ok": True}
-
-
-@app.post("/users/{user_id}/bots/{bot_id}/set-default")
-def bot_set_default(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_user)):
-    """将指定 Bot 设为该用户的默认 Bot"""
-    auth_mod.assert_self_or_admin(user, user_id)
-    existing = db.get_bot(bot_id)
-    if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
-    db.set_default_bot(user_id, bot_id)
-    return {"ok": True}
-
 
 # ─────────────────────────────────────────
 # Prompt 管理（数据库版）
 # ─────────────────────────────────────────
-
-@app.get("/db/prompts")
-def db_prompts_list(user: dict = Depends(auth_mod.current_user)):
-    """列出当前用户可见的所有 Prompt（系统级 + 本人创建）"""
-    rows = db.get_prompts(user_id=user["id"])
-    return {"prompts": rows}
-
-
-@app.post("/db/prompts", status_code=201)
-def db_prompt_create(payload: PromptCreate, user: dict = Depends(auth_mod.current_user)):
-    """为当前用户创建自定义 Prompt"""
-    row = db.create_prompt(
-        user_id=user["id"],
-        name=payload.name,
-        ptype=payload.type,
-        content=payload.content,
-        is_default=payload.is_default,
-    )
-    return row
-
-
-@app.put("/db/prompts/{prompt_id}")
-def db_prompt_update(prompt_id: int, payload: PromptUpdate, user: dict = Depends(auth_mod.current_user)):
-    """更新 Prompt（本人创建的 or 管理员）"""
-    existing = db.get_prompt(prompt_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Prompt 不存在")
-    owner_id = existing.get("user_id")
-    if owner_id is None and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可修改")
-    if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="无权修改")
-    updates = payload.model_dump(exclude_unset=True)
-    if updates:
-        db.update_prompt(prompt_id, **updates)
-    return db.get_prompt(prompt_id)
-
-
-@app.delete("/db/prompts/{prompt_id}")
-def db_prompt_delete(prompt_id: int, user: dict = Depends(auth_mod.current_user)):
-    """删除 Prompt（本人创建的 or 管理员）"""
-    existing = db.get_prompt(prompt_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Prompt 不存在")
-    owner_id = existing.get("user_id")
-    if owner_id is None and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可删除")
-    if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="无权删除")
-    db.delete_prompt(prompt_id)
-    return {"ok": True}
