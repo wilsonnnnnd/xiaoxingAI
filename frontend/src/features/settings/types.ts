@@ -12,8 +12,10 @@ export const settingsSchema = z.object({
   
   // User Personal Settings
   min_priority: z.enum(['high', 'medium', 'low']),
-  max_emails_per_run: z.number().min(1).max(100),
-  poll_interval: z.number().min(60, 'Minimum 60 seconds'),
+  max_emails_per_run: z.coerce.number().int().min(1).max(100),
+  poll_interval: z.coerce.number().int().min(60, 'Minimum 60 seconds'),
 })
 
-export type SettingsFormValues = z.infer<typeof settingsSchema>
+export type SettingsFormInput = z.input<typeof settingsSchema>
+
+export type SettingsFormValues = z.output<typeof settingsSchema>

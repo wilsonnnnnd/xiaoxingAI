@@ -8,7 +8,7 @@ import { useConfirmDiscard } from '../../../hooks/useConfirmDiscard'
 import { getConfig, saveConfig } from '../api'
 import { getMe, getUser, updateUser } from '../../users'
 import { settingsSchema } from '../types'
-import type { SettingsFormValues } from '../types'
+import type { SettingsFormInput, SettingsFormValues } from '../types'
 import { ConnectionTests } from './ConnectionTests'
 import { LLMSettings } from './LLMSettings'
 import { GmailSettings } from './GmailSettings'
@@ -27,7 +27,7 @@ export const SettingsPage: React.FC = () => {
     formState: { isDirty, isSubmitting },
     setValue,
     watch
-  } = useForm<SettingsFormValues>({
+  } = useForm<SettingsFormInput>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       LLM_BACKEND: 'local',
@@ -54,9 +54,9 @@ export const SettingsPage: React.FC = () => {
         setMyId(me.id)
         const user = await getUser(me.id)
 
-        // Build a properly typed SettingsFormValues object from config + user
+        // Build a properly typed SettingsFormInput object from config + user
         const cfgRaw = config as unknown as Partial<Record<string, string>>
-        const values: SettingsFormValues = {
+        const values: SettingsFormInput = {
           LLM_BACKEND: cfgRaw.LLM_BACKEND ?? 'local',
           LLM_MODEL: cfgRaw.LLM_MODEL ?? '',
           LLM_API_URL: cfgRaw.LLM_API_URL ?? '',
@@ -65,7 +65,7 @@ export const SettingsPage: React.FC = () => {
           GMAIL_POLL_QUERY: cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox',
           UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : 'en',
 
-          min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormValues['min_priority']) : 'medium',
+          min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormInput['min_priority']) : 'medium',
           max_emails_per_run: user.max_emails_per_run ?? 10,
           poll_interval: user.poll_interval ?? 300,
         }
@@ -80,9 +80,10 @@ export const SettingsPage: React.FC = () => {
     loadData()
   }, [reset, lang])
 
-  const onSave = async (data: SettingsFormValues) => {
+  const onSave = async (data: SettingsFormInput) => {
     try {
-      const { min_priority, max_emails_per_run, poll_interval, ...globalConfig } = data
+      const parsed: SettingsFormValues = settingsSchema.parse(data)
+      const { min_priority, max_emails_per_run, poll_interval, ...globalConfig } = parsed
 
       await Promise.all([
         saveConfig(globalConfig),
@@ -90,10 +91,10 @@ export const SettingsPage: React.FC = () => {
       ])
 
       toast.success(t('result.saved'))
-      if (data.UI_LANG !== lang) {
-        setLang(data.UI_LANG)
+      if (parsed.UI_LANG !== lang) {
+        setLang(parsed.UI_LANG)
       }
-      reset(data)
+      reset(parsed)
     } catch {
       /* handled globally */
     }
@@ -170,4 +171,3 @@ export const SettingsPage: React.FC = () => {
     </div>
   )
 }
-

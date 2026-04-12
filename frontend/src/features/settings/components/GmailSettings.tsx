@@ -4,10 +4,10 @@ import { Card } from '../../../components/common/Card'
 import { FormInput } from '../../../components/common/form/FormInput'
 import { FormSelect } from '../../../components/common/form/FormSelect'
 import { useI18n } from '../../../i18n/useI18n'
-import type { SettingsFormValues } from '../types'
+import type { SettingsFormInput } from '../types'
 
 interface GmailSettingsProps {
-  control: Control<SettingsFormValues>
+  control: Control<SettingsFormInput>
 }
 
 const POLL_QUERIES: [string, string][] = [
@@ -70,4 +70,3 @@ export const GmailSettings: React.FC<GmailSettingsProps> = ({ control }) => {
     </Card>
   )
 }
-

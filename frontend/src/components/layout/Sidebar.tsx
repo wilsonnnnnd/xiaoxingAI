@@ -80,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
 
       {/* Nav */}
       <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3">
-        {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ to, key }) => {
+        {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ to, key, end }) => {
           if (key === 'nav.skill') {
             return (
               <div key="skill" className="relative" ref={skillRef}>
@@ -114,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
               </div>
             )
           }
-          return <NavItem key={to} to={to} translationKey={key} />
+          return <NavItem key={to} to={to} translationKey={key} end={end} />
         })}
       </nav>
 

@@ -4,10 +4,10 @@ import { Card } from '../../../components/common/Card'
 import { FormInput } from '../../../components/common/form/FormInput'
 import { FormSelect } from '../../../components/common/form/FormSelect'
 import { useI18n } from '../../../i18n/useI18n'
-import type { SettingsFormValues } from '../types'
+import type { SettingsFormInput } from '../types'
 
 interface LLMSettingsProps {
-  control: Control<SettingsFormValues>
+  control: Control<SettingsFormInput>
 }
 
 export const LLMSettings: React.FC<LLMSettingsProps> = ({ control }) => {
@@ -51,4 +51,3 @@ export const LLMSettings: React.FC<LLMSettingsProps> = ({ control }) => {
     </Card>
   )
 }
-
