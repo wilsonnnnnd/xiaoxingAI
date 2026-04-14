@@ -52,5 +52,5 @@ When injected into the chat system prompt, this header is expanded into explicit
 
 ## Related
 
-- [Telegram Chat →](telegram-chat.md)
+- [Telegram →](telegram.md)
 - [Prompt Editor →](prompts.md)

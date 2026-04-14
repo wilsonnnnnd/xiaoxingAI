@@ -9,12 +9,13 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 | Route | Page | Description |
 |-------|------|-------------|
 | `/login` | Login | Email + password authentication |
-| `/` | Home / Dashboard | System overview, quick-start checklist |
+| `/home` | Home / Dashboard | System overview, quick-start checklist |
 | `/skill` | Skills Hub | Entry point for Gmail and Chat sub-skills |
 | `/skill/gmail` | Gmail | Worker control, live email log, per-user settings |
 | `/skill/chat` | Chat | Bot worker control, persona generator, prompt management, live chat log |
 | `/prompts` | Prompt Editor | View and edit all system prompts |
 | `/settings` | Settings | Google OAuth, bot configuration, environment variables |
+| `/settings/reply-format` | Reply Format | Configure per-user reply templates and signature |
 | `/users` | User Management | Admin-only: create/manage users |
 | `/persona-config` | Persona Config | Admin-only: configure zodiac/gender personality style prompts for the AI persona generator |
 | `/debug` | Debug Tools | Manual triggers for profile update, cache flush, etc. |
@@ -46,7 +47,7 @@ Built files go to `frontend/dist/`. The FastAPI app serves them at `http://127.0
 
 | Layer | Library |
 |-------|---------|
-| UI framework | React 18 |
+| UI framework | React 19 |
 | Language | TypeScript |
 | Build tool | Vite |
 | Styling | Tailwind CSS |

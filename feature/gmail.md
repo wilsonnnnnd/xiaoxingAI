@@ -2,7 +2,7 @@
 
 ## Overview
 
-Each registered user runs an independent Gmail polling worker. When new emails arrive they pass through a 4-stage AI pipeline and are pushed to Telegram.
+Each registered user runs an independent Gmail polling worker. When new emails arrive they pass through a 3-stage AI pipeline and are pushed to Telegram.
 
 ```
 Gmail (OAuth2) → AI Analysis → Telegram Push
@@ -19,14 +19,15 @@ Gmail (OAuth2) → AI Analysis → Telegram Push
 
 ### 2. AI Analysis Pipeline
 
-Each email is passed through 4 LLM calls:
+Each email is passed through 3 LLM calls:
 
 | Step | Prompt | Output |
 |------|--------|--------|
 | 1. Classify | `email_analysis.txt` | Priority (urgent/normal/low) + category |
 | 2. Summarise | `email_summary.txt` | Short summary (2–4 sentences) |
 | 3. Telegram message | `telegram_notify.txt` | HTML-formatted Telegram notification |
-| 4. (Router) | `router.txt` | Tool dispatch for bot-side queries |
+
+Tool routing for Telegram chat is a separate subsystem (see Tool System) and is not part of the per-email pipeline.
 
 Results are cached in Redis for 1 hour (keyed by email ID). If Redis is unavailable the pipeline runs without caching.
 
@@ -54,6 +55,53 @@ Configuration: Settings → Gmail → Minimum Priority
 
 Per-user overrides are available in the Settings page.
 
+---
+
+## Outgoing Email (Draft + Confirm)
+
+Outgoing email uses a **draft-first** flow to avoid accidental sends:
+
+1. Generate a draft (compose or reply).
+2. Send a Telegram preview.
+3. User confirms/cancels (inline buttons) or modifies (reply text).
+4. Only after confirmation does the system send via Gmail API.
+
+### Data Model
+
+- `outgoing_email_drafts`: stores the outgoing draft, binds to Telegram preview message, and tracks state.
+- `outgoing_email_actions`: audit log + idempotency (unique `telegram_update_id`) to prevent duplicate sends.
+
+### Security
+
+- Draft body is encrypted (AES-GCM).
+- Telegram inline button callback_data is signed.
+
+### Key Variables
+
+| Variable | Description |
+|---|---|
+| `OUTGOING_EMAIL_ENCRYPTION_KEY` | Base64(32 bytes) key to encrypt outgoing draft bodies |
+| `OUTGOING_DRAFT_TTL_MINUTES` | Draft expiry window; expired drafts cannot be confirmed |
+| `TELEGRAM_CALLBACK_SECRET` | HMAC secret for signing callback_data |
+
+---
+
+## Reply Format Settings
+
+Reply formatting is configurable per user and is applied when generating **reply drafts**.
+
+### Placeholders
+
+- `{{content}}` — AI-generated reply body
+- `{{signature}}` — signature configured by the user
+- `{{closing}}` — optional closing text
+- `{{sender_name}}` — resolved sender name (filled when composing/sending)
+
+### Web UI
+
+- Route: `/settings/reply-format`
+- Supports templates CRUD, default template, signature, and live preview.
+
 ## Prerequisites
 
 - `credentials.json` in project root (Google Cloud Console → OAuth 2.0 Client ID → Desktop app)
@@ -61,5 +109,5 @@ Per-user overrides are available in the Settings page.
 
 ## Related
 
-- [Telegram Push →](telegram-push.md)
+- [Telegram →](telegram.md)
 - [Prompt Editor →](prompts.md)

@@ -11,6 +11,10 @@ The Telegram bot can call built-in tools based on the user's message intent. A l
 | `get_time` | "What time is it?" / "现在几点" | Current local date and time |
 | `get_emails` | "Any new emails?" / "有什么邮件" | List of recent email subjects + senders |
 | `fetch_email` | "Show me that email" / "看看这封邮件" | Full content of a specific email |
+| `reply_email` | Reply to an email notification in Telegram | Generates a reply draft preview (requires email context) |
+| `outgoing_draft_confirm` | Reply “confirm/send” under a draft preview | Confirms and sends the outgoing draft |
+| `outgoing_draft_cancel` | Reply “cancel” under a draft preview | Cancels the outgoing draft |
+| `outgoing_draft_modify` | Reply with instructions under a draft preview | Regenerates the draft body |
 
 Tool results are injected into the LLM context under a clearly labelled section:
 
@@ -41,6 +45,8 @@ If the Router LLM is unreachable, the system falls back to keyword matching:
 | 时间 / 几点 / 日期 / 今天 / what time / date | `get_time` |
 | 邮件 / email / mail / inbox | `get_emails` |
 
+The outgoing-email tools (`reply_email`, `outgoing_draft_*`) are generally routed only when the message contains the required context (draft id / email id) and may also be executed via an allowlist in the Telegram worker.
+
 ### Logging
 
 Every routing decision is logged:
@@ -57,5 +63,6 @@ Every routing decision is logged:
 
 ## Related
 
-- [Telegram Chat →](telegram-chat.md)
+- [Telegram →](telegram.md)
 - [Prompt Editor →](prompts.md)
+- [LLM Configuration →](llm-configuration.md)

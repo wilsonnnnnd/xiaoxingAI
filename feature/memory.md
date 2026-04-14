@@ -46,4 +46,4 @@ For debugging, the profile update can be triggered manually via the Debug page �
 
 ## Related
 
-- [Telegram Chat →](telegram-chat.md)
+- [Telegram →](telegram.md)

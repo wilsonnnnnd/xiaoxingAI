@@ -52,5 +52,5 @@
 
 ## 相关文档
 
-- [Telegram 聊天 →](telegram-chat.md)
+- [Telegram 集成 →](telegram.md)
 - [Prompt 管理 →](prompts.md)

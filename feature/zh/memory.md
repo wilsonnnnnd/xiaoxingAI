@@ -46,4 +46,4 @@ Prompt 强制执行的规则：
 
 ## 相关文档
 
-- [Telegram 聊天 →](telegram-chat.md)
+- [Telegram 集成 →](telegram.md)
