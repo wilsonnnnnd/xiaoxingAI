@@ -22,8 +22,6 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 |[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
 |[Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
 |[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
-|Outgoing Email (Draft + Confirm) | Generate email drafts (compose/reply) and confirm/cancel via Telegram; idempotent send; encrypted draft body |
-|Reply Format Settings | Per-user reply templates + signature in Web UI (`/settings/reply-format`); applied to generated reply drafts |
 
 ---
 
@@ -275,51 +273,7 @@ See [support/api.md](support/api.md) for the full endpoint reference.
 
 ## LLM Configuration
 
-| | Local llama-server | OpenAI API |
-|---|---|---|
-| `LLM_BACKEND` | local | openai |
-| `LLM_API_URL` | http://127.0.0.1:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
-| `LLM_MODEL` | local-model | gpt-4o-mini, gpt-4o, etc. |
-| `OPENAI_API_KEY` | not needed | sk-... |
-| Requires GPU | Yes | No |
-| Cost | Free | Per-token billing |
-
-### Option A — Local llama-server (default)
-
-1. Install [llama.cpp](https://github.com/ggerganov/llama.cpp) and download a GGUF model
-   (recommended: Qwen2.5-14B-Instruct-Q4_K_M.gguf)
-2. Start llama-server on 127.0.0.1:8001
-
-```ini
-LLM_BACKEND=local
-LLM_API_URL=http://127.0.0.1:8001/v1/chat/completions
-LLM_MODEL=local-model
-```
-
-### Option C — Router LLM (optional, for tool dispatch)
-
-A second, lightweight model handles tool intent detection; the main LLM handles chat replies.
-
-1. Start a second llama-server on 127.0.0.1:8002 with a small model (Qwen2.5-1.5B recommended)
-2. Set in `.env`:
-
-```ini
-ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
-ROUTER_MODEL=local-router
-```
-
-If `ROUTER_API_URL` is not set or the endpoint is unreachable, tool dispatch falls back to keyword matching automatically.
-
-### Option B — OpenAI API
-
-```ini
-LLM_BACKEND=openai
-LLM_API_URL=https://api.openai.com/v1/chat/completions
-LLM_MODEL=gpt-4o-mini
-OPENAI_API_KEY=sk-...
-```
-
-> Any OpenAI-compatible API (e.g. Azure OpenAI, Ollama with openai shim) works by adjusting LLM_API_URL and OPENAI_API_KEY.
+See [LLM Configuration →](feature/llm-configuration.md).
 
 ---
 

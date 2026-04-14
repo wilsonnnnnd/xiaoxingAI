@@ -22,8 +22,6 @@
 |[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
 |[Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
 |[Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
-|邮件发送（草稿+确认） | 生成发信/回复草稿，通过 Telegram 预览确认/取消；发送幂等；草稿正文加密存储 |
-|回复格式设置 | Web 页面 `/settings/reply-format` 配置每用户回复模板与署名；生成回复草稿时自动套用 |
 
 ---
 
@@ -275,51 +273,7 @@ xiaoxing/
 
 ## LLM 配置
 
-| | 本地 llama-server | OpenAI API |
-|---|---|---|
-| `LLM_BACKEND` | local | openai |
-| `LLM_API_URL` | http://127.0.0.1:8001/v1/chat/completions | https://api.openai.com/v1/chat/completions |
-| `LLM_MODEL` | local-model | gpt-4o-mini、gpt-4o 等 |
-| `OPENAI_API_KEY` | 不需要 | sk-... |
-| 需要 GPU | 是 | 否 |
-| 费用 | 免费 | 按 token 计费 |
-
-### 方案 A — 本地 llama-server（默认）
-
-1. 安装 [llama.cpp](https://github.com/ggerganov/llama.cpp) 并下载 GGUF 模型
-   （推荐：Qwen2.5-14B-Instruct-Q4_K_M.gguf）
-2. 在 127.0.0.1:8001 启动 llama-server
-
-```ini
-LLM_BACKEND=local
-LLM_API_URL=http://127.0.0.1:8001/v1/chat/completions
-LLM_MODEL=local-model
-```
-
-### 方案 C — Router LLM（可选，用于工具调度）
-
-第二个轻量级模型专门处理工具意图检测，主模型专注于对话回复。
-
-1. 在 127.0.0.1:8002 启动第二个 llama-server，加载轻量级模型（推荐 Qwen2.5-1.5B）
-2. 在 `.env` 中配置：
-
-```ini
-ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
-ROUTER_MODEL=local-router
-```
-
-如果未配置 `ROUTER_API_URL` 或端点不可达，工具调度将自动降级为关键词匹配。
-
-### 方案 B — OpenAI API
-
-```ini
-LLM_BACKEND=openai
-LLM_API_URL=https://api.openai.com/v1/chat/completions
-LLM_MODEL=gpt-4o-mini
-OPENAI_API_KEY=sk-...
-```
-
-> 其他兼容 OpenAI 接口的服务（如 Azure OpenAI、Ollama openai shim）也可正常使用，只需调整 LLM_API_URL 和对应 Key。
+详见 [LLM 配置 →](feature/zh/llm-configuration.md)。
 
 ---
 
