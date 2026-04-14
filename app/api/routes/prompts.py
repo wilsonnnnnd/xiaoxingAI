@@ -9,6 +9,8 @@ from app.core.constants import DEFAULT_PROMPTS, INTERNAL_PROMPTS, INTERNAL_PROMP
 
 router = APIRouter()
 
+USER_EDITABLE_PROMPTS = {"chat.txt"}
+
 
 def _is_internal_prompt(rel_path: str) -> bool:
     """Return True when the relative path should be treated as internal and hidden."""
@@ -51,6 +53,13 @@ def prompts_list(user: dict = Depends(auth_mod.current_user)):
     disk_set = set(disk_files)
     extra = [n for n in user_names if n not in disk_set]
     all_files = sorted(disk_set | set(extra))
+    if user.get("role") != "admin":
+        visible = sorted([f for f in all_files if f in USER_EDITABLE_PROMPTS])
+        return {
+            "files": visible,
+            "defaults": sorted([f for f in DEFAULT_PROMPTS if f in USER_EDITABLE_PROMPTS]),
+            "custom": sorted([f for f in user_names if f in USER_EDITABLE_PROMPTS]),
+        }
     return {
         "files": all_files,
         "defaults": sorted(DEFAULT_PROMPTS),
@@ -61,6 +70,8 @@ def prompts_list(user: dict = Depends(auth_mod.current_user)):
 @router.get("/prompts/{filename:path}")
 def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
     """读取 Prompt：优先返回用户专属（DB），无则回退到磁盘默认文件。"""
+    if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
+        raise HTTPException(status_code=403, detail="无权访问该 Prompt")
     _check_prompt_filename(filename)
     override = db.get_user_prompt(user["id"], filename)
     if override is not None:
@@ -74,6 +85,8 @@ def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
 @router.post("/prompts/{filename:path}")
 def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(auth_mod.current_user)):
     """保存用户专属 Prompt 到 DB（不修改磁盘文件）。"""
+    if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
+        raise HTTPException(status_code=403, detail="无权编辑该 Prompt")
     _check_prompt_filename(filename)
     content = payload.get("content")
     if content is None:
@@ -85,6 +98,8 @@ def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(aut
 @router.delete("/prompts/{filename:path}")
 def prompt_delete(filename: str, user: dict = Depends(auth_mod.current_user)):
     """删除用户专属 Prompt：默认文件则清除覆盖（恢复默认），自定义文件则彻底删除。"""
+    if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
+        raise HTTPException(status_code=403, detail="无权编辑该 Prompt")
     _check_prompt_filename(filename)
     deleted = db.delete_user_prompt(user["id"], filename)
     if not deleted:

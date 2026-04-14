@@ -1,3 +1,4 @@
+
 import { api } from '../../../api/client'
 
 export type TelegramEvent = Record<string, unknown>
@@ -9,13 +10,13 @@ export const getTelegramMessage = (payload: { bot_id: number; chat_id: string; m
   api.get(`/debug/telegram/message?bot_id=${payload.bot_id}&chat_id=${encodeURIComponent(payload.chat_id)}&message_id=${payload.message_id}`).then(r => r.data)
 
 export const getOutgoingDrafts = (limit = 30, includeBody = true) =>
-  api.get<{ drafts: any[] }>(`/debug/outgoing/drafts?limit=${limit}&include_body=${includeBody ? 'true' : 'false'}`).then(r => r.data)
+  api.get<{ drafts: Record<string, unknown>[] }>(`/debug/outgoing/drafts?limit=${limit}&include_body=${includeBody ? 'true' : 'false'}`).then(r => r.data)
 
 export const getOutgoingActions = (limit = 200) =>
-  api.get<{ actions: any[] }>(`/debug/outgoing/actions?limit=${limit}`).then(r => r.data)
+  api.get<{ actions: Record<string, unknown>[] }>(`/debug/outgoing/actions?limit=${limit}`).then(r => r.data)
 
 export const getOutgoingTrace = (limit = 200) =>
-  api.get<{ events: any[] }>(`/debug/outgoing/trace?limit=${limit}`).then(r => r.data)
+  api.get<{ events: TelegramEvent[] }>(`/debug/outgoing/trace?limit=${limit}`).then(r => r.data)
 
 export const simulateReply = (payload: { user_id: number; email_id: string; user_reply: string }) =>
   api.post(`/debug/outgoing/simulate_reply`, payload).then(r => r.data)

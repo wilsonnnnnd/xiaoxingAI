@@ -1,4 +1,5 @@
 import React from 'react'
+import axios from 'axios'
 import { api } from '../../../api/client'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
@@ -20,9 +21,16 @@ const ConnItem: React.FC<ConnItemProps> = ({ label, onTest }) => {
     try {
       const msg = await onTest()
       setStatus({ cls: 'text-[#86efac]', msg })
-    } catch (e: any) {
-      const axiosDetail = e.response?.data?.detail
-      const msg = axiosDetail ?? e.message
+    } catch (e: unknown) {
+      let msg = 'Unknown error'
+      if (axios.isAxiosError(e)) {
+        const axiosDetail = e.response?.data?.detail
+        msg = axiosDetail ?? e.message ?? String(e)
+      } else if (e instanceof Error) {
+        msg = e.message
+      } else {
+        msg = String(e)
+      }
       setStatus({ cls: 'text-[#fca5a5]', msg: `❌ ${msg}` })
     } finally {
       setBusy(false)

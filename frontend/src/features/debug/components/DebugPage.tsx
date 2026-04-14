@@ -10,7 +10,7 @@ import { gmailFetch, gmailProcess } from '../../gmail/api'
 import { generateBotProfile } from '../../chat/api'
 import { getMe } from '../../users/api'
 import { useHealthCheck } from '../../../hooks/useHealthCheck'
-import { clearDebugCache, getOutgoingTrace, getTelegramEvents } from '../api/outgoing'
+import { clearDebugCache, getOutgoingTrace, getTelegramEvents, type TelegramEvent } from '../api/outgoing'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
 import { InputField } from '../../../components/common/InputField'
@@ -32,6 +32,14 @@ const resCls = (state: 'idle' | 'requesting' | 'ok' | 'err') =>
 type ResultState = { state: 'idle' | 'requesting' | 'ok' | 'err'; text: string }
 const IDLE: ResultState = { state: 'idle', text: '' }
 
+type ProcessEmailResult = {
+    subject: string
+    analysis: Record<string, unknown>
+    summary: Record<string, unknown>
+    telegram_message: string
+    tokens: number
+}
+
 const POLL_QUERIES: [string, string][] = [
     ['is:unread in:inbox', 'opt.GMAIL_POLL_QUERY.inbox'],
     ['is:unread in:inbox -category:promotions', 'opt.GMAIL_POLL_QUERY.inbox_no_promo'],
@@ -44,6 +52,7 @@ export const DebugPage: React.FC = () => {
     const { t } = useI18n()
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
     const apiOk = useHealthCheck()
+    const isAdmin = me?.role === 'admin'
 
     // Analyze
     const [aSubject, setASubject] = useState('')
@@ -57,8 +66,9 @@ export const DebugPage: React.FC = () => {
         try {
             const d = await analyzeEmail(aSubject, aBody)
             setARes({ state: 'ok', text: JSON.stringify(d, null, 2) })
-        } catch (err) {
-            setARes({ state: 'err', text: String(err) })
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err)
+            setARes({ state: 'err', text: msg })
         } finally { setABusy(false) }
     }
 
@@ -74,8 +84,9 @@ export const DebugPage: React.FC = () => {
         try {
             const d = await summaryEmail(sSubject, sBody)
             setSRes({ state: 'ok', text: JSON.stringify(d, null, 2) })
-        } catch (err) {
-            setSRes({ state: 'err', text: String(err) })
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err)
+            setSRes({ state: 'err', text: msg })
         } finally { setSBusy(false) }
     }
 
@@ -84,7 +95,7 @@ export const DebugPage: React.FC = () => {
     const [pBody, setPBody] = useState('')
     const [pBusy, setPBusy] = useState(false)
     const [pTab, setPTab] = useState<'tg' | 'analysis' | 'summary' | 'raw'>('tg')
-    const [pData, setPData] = useState<any | null>(null)
+    const [pData, setPData] = useState<ProcessEmailResult | null>(null)
 
     async function runProcess() {
         if (!pSubject.trim() || !pBody.trim()) { toast.error(t('debug.err.fill_required')); return }
@@ -92,7 +103,9 @@ export const DebugPage: React.FC = () => {
         try {
             const d = await processEmail(pSubject, pBody)
             setPData(d); setPTab('tg')
-        } catch (err) { /* handled globally */ } finally { setPBusy(false) }
+        } catch {
+            /* handled globally */
+        } finally { setPBusy(false) }
     }
 
     // Gmail
@@ -111,8 +124,9 @@ export const DebugPage: React.FC = () => {
                 ? await gmailProcess({ ...payload, mark_read: gMarkRead, send_telegram: gSendTg })
                 : await gmailFetch(payload)
             setGRes({ state: 'ok', text: JSON.stringify(d, null, 2) })
-        } catch (err) {
-            setGRes({ state: 'err', text: String(err) })
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err)
+            setGRes({ state: 'err', text: msg })
         } finally { setGBusy(false) }
     }
 
@@ -121,8 +135,18 @@ export const DebugPage: React.FC = () => {
     const [profileBusy, setProfileBusy] = useState(false)
     const [profileResult, setProfileResult] = useState<{ ok: true; tokens: number } | { ok: false; msg: string } | null>(null)
 
-    const { data: tgEvents } = useQuery({ queryKey: ['debug-tg-events'], queryFn: () => getTelegramEvents(200), refetchInterval: 2000 })
-    const { data: outgoingTrace } = useQuery({ queryKey: ['debug-outgoing-trace'], queryFn: () => getOutgoingTrace(200), refetchInterval: 2000 })
+    const { data: tgEvents } = useQuery({
+        queryKey: ['debug-tg-events'],
+        queryFn: () => getTelegramEvents(200),
+        enabled: isAdmin,
+        refetchInterval: isAdmin ? 2000 : false,
+    })
+    const { data: outgoingTrace } = useQuery({
+        queryKey: ['debug-outgoing-trace'],
+        queryFn: () => getOutgoingTrace(200),
+        enabled: isAdmin,
+        refetchInterval: isAdmin ? 2000 : false,
+    })
 
     const [clearBusy, setClearBusy] = useState(false)
     const [clearRes, setClearRes] = useState<ResultState>(IDLE)
@@ -133,18 +157,19 @@ export const DebugPage: React.FC = () => {
             const d = await clearDebugCache({ clear_traces: true })
             toast.success('已清理缓存')
             setClearRes({ state: 'ok', text: JSON.stringify(d, null, 2) })
-        } catch (err) {
-            setClearRes({ state: 'err', text: String(err) })
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err)
+            setClearRes({ state: 'err', text: msg })
         } finally {
             setClearBusy(false)
         }
     }
 
-    const traceByUpdateId = new Map<number, any[]>()
-    for (const ev of (outgoingTrace?.events || []) as any[]) {
+    const traceByUpdateId = new Map<number, TelegramEvent[]>()
+    for (const ev of (outgoingTrace?.events ?? []) as TelegramEvent[]) {
         const uid = typeof ev?.update_id === 'number' ? ev.update_id : null
         if (uid === null) continue
-        const arr = traceByUpdateId.get(uid) || []
+        const arr: TelegramEvent[] = traceByUpdateId.get(uid) || []
         arr.push(ev)
         traceByUpdateId.set(uid, arr)
     }
@@ -159,8 +184,9 @@ export const DebugPage: React.FC = () => {
             } else {
                 setProfileResult({ ok: false, msg: (d as { ok: false; msg?: string }).msg || 'Unknown error' })
             }
-        } catch (e: any) {
-            setProfileResult({ ok: false, msg: String(e) })
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e)
+            setProfileResult({ ok: false, msg })
         } finally { setProfileBusy(false) }
     }
 
@@ -183,7 +209,7 @@ export const DebugPage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Analyze */}
-                <Card title={t('debug.card.analyze')} badge="POST /ai/analyze">
+                <Card title={t('debug.card.analyze')} badge="POST /api/ai/analyze">
                     <InputField label={t('debug.label.subject')} value={aSubject} onChange={setASubject} />
                     <InputField label={t('debug.label.body')} value={aBody} onChange={setABody} multi rows={4} />
                     <div className="flex items-center gap-2 flex-wrap">
@@ -196,7 +222,7 @@ export const DebugPage: React.FC = () => {
                 </Card>
 
                 {/* Summary */}
-                <Card title={t('debug.card.summary')} badge="POST /ai/summary">
+                <Card title={t('debug.card.summary')} badge="POST /api/ai/summary">
                     <InputField label={t('debug.label.subject')} value={sSubject} onChange={setSSubject} />
                     <InputField label={t('debug.label.body')} value={sBody} onChange={setSBody} multi rows={4} />
                     <div className="flex items-center gap-2 flex-wrap">
@@ -209,7 +235,7 @@ export const DebugPage: React.FC = () => {
                 </Card>
 
                 {/* Full pipeline */}
-                <Card title={t('debug.card.pipeline')} badge="POST /ai/process" full>
+                <Card title={t('debug.card.pipeline')} badge="POST /api/ai/process" full>
                     <div className="flex gap-2 items-center text-[10px] text-[#475569] font-bold uppercase tracking-widest flex-wrap mb-2">
                         {(['debug.step.receive', 'debug.step.analyze', 'debug.step.summarize', 'debug.step.telegram'] as const).map((k, i) => (
                             <span key={k} className="flex items-center gap-2">
@@ -241,7 +267,7 @@ export const DebugPage: React.FC = () => {
                             </div>
                             {pTab === 'tg' && (
                                 <div className="bg-[#17212b] border border-[#2b5278] rounded-xl p-4 text-sm whitespace-pre-wrap break-words min-h-[120px] max-h-[400px] overflow-y-auto text-[#e2e8f0] leading-relaxed font-mono">
-                                    {(pData.telegram_message as string) || '(empty)'}
+                                    {pData.telegram_message || '(empty)'}
                                 </div>
                             )}
                             {pTab === 'analysis' && <div className={resCls('ok')}>{JSON.stringify(pData.analysis, null, 2)}</div>}
@@ -288,7 +314,7 @@ export const DebugPage: React.FC = () => {
                 </Card>
 
                 {/* User Profile */}
-                <Card title={`👤 ${t('debug.card.profile')}`} badge="POST /telegram/bot/generate_profile" full>
+                <Card title={`👤 ${t('debug.card.profile')}`} badge="POST /api/telegram/bot/generate_profile" full>
                     <p className="text-sm text-[#64748b] leading-relaxed -mt-2 mb-2">{t('debug.card.profile_desc')}</p>
                     <div className="flex items-center gap-4 flex-wrap">
                         <Button onClick={generateProfile} loading={profileBusy}>{t('debug.btn.generate_profile')}</Button>
@@ -315,9 +341,9 @@ export const DebugPage: React.FC = () => {
 
                     <div className="text-xs font-semibold text-[#94a3b8] mb-2">Telegram 最近 reply/callback 事件（内存 200 条，2s 刷新）</div>
                     <div className="flex flex-col gap-3">
-                        {((tgEvents?.events || []) as any[]).slice().reverse().map((ev, idx) => {
+                        {((tgEvents?.events ?? []) as TelegramEvent[]).slice().reverse().map((ev, idx) => {
                             const uid = typeof ev?.update_id === 'number' ? ev.update_id : null
-                            const steps = uid !== null ? (traceByUpdateId.get(uid) || []) : []
+                            const steps: TelegramEvent[] = uid !== null ? (traceByUpdateId.get(uid) || []) : []
                             const routerSteps = steps.filter(s => s?.type === 'router_routing')
                             const sentToRouter = routerSteps.length > 0
                             const selectedTools = routerSteps.flatMap(s => Array.isArray(s?.tool_names) ? s.tool_names : [])
