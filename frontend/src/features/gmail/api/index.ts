@@ -11,9 +11,11 @@ export const pollNow = () => api.post('/worker/poll').then(r => r.data)
 
 export const getGmailAuthUrl = () =>
   api.get<{ url: string }>('/gmail/auth/url').then(r => r.data.url)
+export const getLogs = (limit = 20, log_type?: string, before_id?: number, from_ts?: string, to_ts?: string) =>
+  api.get<{ logs: LogEntry[] }>('/worker/logs', { params: { limit, log_type, before_id, from_ts, to_ts } }).then(r => r.data.logs)
 
-export const getLogs = (limit = 100, log_type?: string) =>
-  api.get<{ logs: LogEntry[] }>('/worker/logs', { params: { limit, log_type } }).then(r => r.data.logs)
+export const getLogsWindow = (limit = 20, log_type?: string, before_id?: number, from_ts?: string, to_ts?: string) =>
+  api.get<{ logs: LogEntry[]; from_ts: string | null; to_ts: string | null }>('/worker/logs/window', { params: { limit, log_type, before_id, from_ts, to_ts } }).then(r => r.data)
 
 export const clearLogs = (log_type?: string) => api.delete('/worker/logs', { params: { log_type } }).then(r => r.data)
 

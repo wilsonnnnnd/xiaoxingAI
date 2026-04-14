@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../../../i18n/useI18n'
 import { formatLogMessage } from '../../../utils/formatLog'
@@ -6,7 +6,7 @@ import {
     getChatWorkStatus, startBot, stopBot, clearBotHistory,
     generateChatPersona
 } from '../api'
-import { getLogs } from '../../gmail'
+import { getLogsWindow } from '../../gmail'
 import { getMe, listUsers, listBots, updateBot } from '../../users'
 import { getPersonaConfig } from '../../persona'
 import { getDbPrompts, createDbPrompt, deleteDbPrompt } from '../../prompts'
@@ -17,6 +17,8 @@ import { Button } from '../../../components/common/Button'
 import { InputField } from '../../../components/common/InputField'
 import { Select } from '../../../components/common/Select'
 import toast from 'react-hot-toast'
+
+const LOG_PAGE_SIZE = 20
 
 const LEVEL_CLS: Record<string, string> = {
     warn: 'text-[#fbbf24]',
@@ -137,6 +139,12 @@ const PersonaDisplay: React.FC<{ text: string; onEdit: () => void }> = ({ text, 
 export const ChatPage: React.FC = () => {
     const { t } = useI18n()
     const qc = useQueryClient()
+    const logBoxRef = useRef<HTMLDivElement | null>(null)
+    const logAtBottomRef = useRef(true)
+    const [logFromDraft, setLogFromDraft] = useState('')
+    const [logToDraft, setLogToDraft] = useState('')
+    const [logFrom, setLogFrom] = useState<string | undefined>(undefined)
+    const [logTo, setLogTo] = useState<string | undefined>(undefined)
 
     const [keywords, setKeywords] = useState('')
     const [zodiac, setZodiac] = useState('')
@@ -150,8 +158,21 @@ export const ChatPage: React.FC = () => {
     const [editMode, setEditMode] = useState(false)
 
     const botQuery = useQuery({ queryKey: ['chatworkstatus'], queryFn: getChatWorkStatus, enabled: false })
-    const { data: chatLogs = [] } = useQuery({ queryKey: ['logs', 'chat'], queryFn: () => getLogs(200, 'chat'), refetchInterval: 8000 })
+    const autoRefreshLogs = !logFrom && !logTo
+    const { data: logWindow } = useQuery<{ logs: LogEntry[]; from_ts: string | null; to_ts: string | null }>({
+        queryKey: ['logs', 'chat', 'latest', logFrom ?? null, logTo ?? null],
+        queryFn: () => getLogsWindow(LOG_PAGE_SIZE, 'chat', undefined, logFrom, logTo),
+        refetchInterval: autoRefreshLogs ? 8000 : false,
+    })
+    const latestLogs = logWindow?.logs ?? []
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
+
+    useEffect(() => {
+        const el = logBoxRef.current
+        if (!el) return
+        if (!logAtBottomRef.current) return
+        el.scrollTop = el.scrollHeight
+    }, [latestLogs.length])
 
     const { data: personaConfig = {} } = useQuery({
         queryKey: ['personaConfig'],
@@ -167,6 +188,15 @@ export const ChatPage: React.FC = () => {
         enabled: me?.role === 'admin',
     })
     const usersMap = new Map<number, string>(allUsers.map((u) => [u.id, u.email.split('@')[0]] as [number, string]))
+    const fmtTs = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : ''
+    const normTs = (v: string): string | undefined => {
+        let s = v.trim()
+        if (!s) return undefined
+        s = s.replace(' ', 'T')
+        if (s.length === 16) return `${s}:00`
+        return s
+    }
+    const chatLogs = latestLogs
 
     const { data: myBots = [] } = useQuery<Bot[]>({
         queryKey: ['bots', me?.id],
@@ -260,8 +290,8 @@ export const ChatPage: React.FC = () => {
     const botClearMut = useMutation({
         mutationFn: clearBotHistory,
         onSuccess: () => {
-            qc.setQueryData(['logs', 'chat'], [])
-            qc.invalidateQueries({ queryKey: ['logs', 'chat'] })
+            qc.setQueryData(['logs', 'chat', 'latest'], { logs: [], from_ts: null, to_ts: null })
+            qc.invalidateQueries({ queryKey: ['logs', 'chat', 'latest'] })
         },
     })
 
@@ -300,12 +330,42 @@ export const ChatPage: React.FC = () => {
 
                     <div className="flex flex-col gap-4 mt-4">
                         <div className="flex items-center justify-between gap-2">
-                            <h3 className="text-sm font-semibold text-[#cbd5e1]">{t('home.bot.log_title')}</h3>
+                            <h3 className="text-sm font-semibold text-[#cbd5e1]">
+                                {t('home.bot.log_title')}
+                                <span className="ml-2 text-xs font-mono text-[#64748b]">
+                                    {logWindow?.from_ts && logWindow?.to_ts ? `${fmtTs(logWindow.from_ts)} ~ ${fmtTs(logWindow.to_ts)}` : '—'}
+                                </span>
+                            </h3>
                             <Button variant="primary" className="bg-[#334155] text-[#94a3b8] px-3 py-1 text-xs" onClick={() => botClearMut.mutate()} disabled={botClearMut.isPending || chatLogs.length === 0}>
                                 {t('home.worker.log_clear')}
                             </Button>
                         </div>
-                        <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 h-[400px] overflow-y-auto font-mono text-xs leading-relaxed">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3">
+                            <InputField label="From" type="datetime-local" value={logFromDraft} onChange={setLogFromDraft} />
+                            <InputField label="To" type="datetime-local" value={logToDraft} onChange={setLogToDraft} />
+                            <Button
+                                variant="primary"
+                                className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe] h-10 self-end"
+                                onClick={() => { setLogFrom(normTs(logFromDraft)); setLogTo(normTs(logToDraft)) }}
+                            >
+                                Apply
+                            </Button>
+                            <Button
+                                variant="primary"
+                                className="bg-[#334155] text-[#94a3b8] h-10 self-end"
+                                onClick={() => { setLogFromDraft(''); setLogToDraft(''); setLogFrom(undefined); setLogTo(undefined) }}
+                            >
+                                Clear
+                            </Button>
+                        </div>
+                        <div
+                            ref={logBoxRef}
+                            className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 h-[400px] overflow-y-auto font-mono text-xs leading-relaxed"
+                            onScroll={(e) => {
+                                const el = e.currentTarget
+                                logAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 24
+                            }}
+                        >
                             {chatLogs.length === 0
                                 ? <div className="text-[#475569] text-center pt-12">— No logs —</div>
                                 : chatLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
@@ -518,4 +578,3 @@ export const ChatPage: React.FC = () => {
         </div>
     )
 }
-

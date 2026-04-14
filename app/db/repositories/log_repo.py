@@ -21,6 +21,9 @@ def get_recent_logs(
     limit: int = 20,
     log_type: Optional[LogType] = None,
     user_id: Optional[int] = None,
+    before_id: Optional[int] = None,
+    from_ts: Optional[str] = None,
+    to_ts: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """返回最近日志。user_id=None 时管理员视图（返回全部含系统日志），否则过滤当前用户。"""
     with _cur() as cur:
@@ -32,6 +35,15 @@ def get_recent_logs(
         if user_id is not None:
             conditions.append("user_id = %s")
             params.append(user_id)
+        if before_id is not None:
+            conditions.append("id < %s")
+            params.append(before_id)
+        if from_ts is not None:
+            conditions.append("ts >= %s")
+            params.append(from_ts)
+        if to_ts is not None:
+            conditions.append("ts <= %s")
+            params.append(to_ts)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         params.append(limit)
         cur.execute(

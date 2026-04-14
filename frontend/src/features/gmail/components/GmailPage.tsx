@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../../../i18n/useI18n'
 import { formatLogMessage } from '../../../utils/formatLog'
 import {
-    getGmailWorkStatus, getLogs, clearLogs,
+    getGmailWorkStatus, getLogsWindow, clearLogs,
     startWorker, stopWorker, pollNow, getGmailAuthUrl
 } from '../api'
 import { getDbStats } from '../../system/api'
@@ -11,6 +11,7 @@ import { getMe, listUsers, listBots, testTelegram } from '../../users'
 import type { LogEntry, WorkerStatus, User, Bot } from '../../../types'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
+import { InputField } from '../../../components/common/InputField'
 import { Badge } from '../../../components/common/Badge'
 import toast from 'react-hot-toast'
 
@@ -52,18 +53,25 @@ const LogRow: React.FC<{ entry: LogEntry; usersMap: Map<number, string> }> = ({ 
 export const GmailPage: React.FC = () => {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const logEndRef = useRef<HTMLDivElement>(null)
+    const logBoxRef = useRef<HTMLDivElement | null>(null)
+    const logAtBottomRef = useRef(true)
+    const [logFromDraft, setLogFromDraft] = useState('')
+    const [logToDraft, setLogToDraft] = useState('')
+    const [logFrom, setLogFrom] = useState<string | undefined>(undefined)
+    const [logTo, setLogTo] = useState<string | undefined>(undefined)
 
     const { data: worker } = useQuery({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus, refetchOnWindowFocus: false })
     const { data: stats } = useQuery({ queryKey: ['dbStats'], queryFn: getDbStats, refetchInterval: 10_000 })
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
 
-    const { data: displayLogs = [] } = useQuery<LogEntry[]>({
-        queryKey: ['logs', 'email'],
-        queryFn: () => getLogs(20, 'email'),
-        refetchInterval: 8000,
+    const autoRefreshLogs = !logFrom && !logTo
+    const { data: logWindow } = useQuery<{ logs: LogEntry[]; from_ts: string | null; to_ts: string | null }>({
+        queryKey: ['logs', 'email', logFrom ?? null, logTo ?? null],
+        queryFn: () => getLogsWindow(20, 'email', undefined, logFrom, logTo),
+        refetchInterval: autoRefreshLogs ? 8000 : false,
         refetchOnWindowFocus: false,
     })
+    const displayLogs = logWindow?.logs ?? []
 
     const { data: allUsers = [] } = useQuery<User[]>({
         queryKey: ['users'],
@@ -80,7 +88,12 @@ export const GmailPage: React.FC = () => {
         staleTime: 30_000,
     })
 
-    useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [displayLogs.length])
+    useEffect(() => {
+        const el = logBoxRef.current
+        if (!el) return
+        if (!logAtBottomRef.current) return
+        el.scrollTop = el.scrollHeight
+    }, [displayLogs.length])
 
     const startMut = useMutation({
         mutationFn: startWorker,
@@ -143,7 +156,7 @@ export const GmailPage: React.FC = () => {
     const clearMut = useMutation({
         mutationFn: () => clearLogs('email'),
         onSuccess: () => {
-            qc.setQueryData(['logs', 'email'], [])
+            qc.setQueryData(['logs', 'email'], { logs: [], from_ts: null, to_ts: null })
             qc.invalidateQueries({ queryKey: ['logs', 'email'] })
         }
     })
@@ -160,6 +173,14 @@ export const GmailPage: React.FC = () => {
     const canStart = authorized && hasNotifyBot
 
     const fmt = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : '—'
+    const fmtTs = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : ''
+    const normTs = (v: string): string | undefined => {
+        let s = v.trim()
+        if (!s) return undefined
+        s = s.replace(' ', 'T')
+        if (s.length === 16) return `${s}:00`
+        return s
+    }
 
     const handleGoogleAuth = async () => {
         try {
@@ -246,7 +267,12 @@ export const GmailPage: React.FC = () => {
 
                 <div className="bg-[#1e2330] border border-[#2d3748] rounded-xl p-5 flex flex-col gap-4 flex-1 min-h-[400px]">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <h2 className="text-sm font-semibold text-[#cbd5e1]">{t('home.worker.log_title')}</h2>
+                        <h2 className="text-sm font-semibold text-[#cbd5e1]">
+                            {t('home.worker.log_title')}
+                            <span className="ml-2 text-xs font-mono text-[#64748b]">
+                                {logWindow?.from_ts && logWindow?.to_ts ? `${fmtTs(logWindow.from_ts)} ~ ${fmtTs(logWindow.to_ts)}` : '—'}
+                            </span>
+                        </h2>
                         <Button 
                             variant="primary" 
                             className="bg-[#334155] text-[#94a3b8] px-3 py-1 text-xs" 
@@ -257,16 +283,40 @@ export const GmailPage: React.FC = () => {
                         </Button>
                     </div>
 
-                    <div className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 flex-1 overflow-y-auto font-mono text-xs leading-relaxed max-h-[360px]">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3">
+                        <InputField label="From" type="datetime-local" value={logFromDraft} onChange={setLogFromDraft} />
+                        <InputField label="To" type="datetime-local" value={logToDraft} onChange={setLogToDraft} />
+                        <Button
+                            variant="primary"
+                            className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe] h-10 self-end"
+                            onClick={() => { setLogFrom(normTs(logFromDraft)); setLogTo(normTs(logToDraft)) }}
+                        >
+                            Apply
+                        </Button>
+                        <Button
+                            variant="primary"
+                            className="bg-[#334155] text-[#94a3b8] h-10 self-end"
+                            onClick={() => { setLogFromDraft(''); setLogToDraft(''); setLogFrom(undefined); setLogTo(undefined) }}
+                        >
+                            Clear
+                        </Button>
+                    </div>
+
+                    <div
+                        ref={logBoxRef}
+                        className="bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 flex-1 overflow-y-auto font-mono text-xs leading-relaxed max-h-[360px]"
+                        onScroll={(e) => {
+                            const el = e.currentTarget
+                            logAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 24
+                        }}
+                    >
                         {displayLogs.length === 0
                             ? <div className="text-[#475569] text-center pt-12">— No logs —</div>
                             : displayLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
                         }
-                        <div ref={logEndRef} />
                     </div>
                 </div>
             </div>
         </div>
     )
 }
-
