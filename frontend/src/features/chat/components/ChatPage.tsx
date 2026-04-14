@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../../../i18n/useI18n'
 import { formatLogMessage } from '../../../utils/formatLog'
@@ -10,7 +10,7 @@ import { getLogs } from '../../gmail'
 import { getMe, listUsers, listBots, updateBot } from '../../users'
 import { getPersonaConfig } from '../../persona'
 import { getDbPrompts, createDbPrompt, deleteDbPrompt } from '../../prompts'
-import type { LogEntry, DbPrompt, Bot } from '../../../types'
+import type { LogEntry, DbPrompt, Bot, User } from '../../../types'
 import { parsePersona } from '../utils'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
@@ -137,7 +137,6 @@ const PersonaDisplay: React.FC<{ text: string; onEdit: () => void }> = ({ text, 
 export const ChatPage: React.FC = () => {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const endRef = useRef<HTMLDivElement>(null)
 
     const [keywords, setKeywords] = useState('')
     const [zodiac, setZodiac] = useState('')
@@ -161,15 +160,15 @@ export const ChatPage: React.FC = () => {
         enabled: me?.role === 'admin',
     })
 
-    const { data: allUsers = [] } = useQuery({
+    const { data: allUsers = [] } = useQuery<User[]>({
         queryKey: ['users'],
         queryFn: async () => { try { return await listUsers() } catch { return [] } },
         staleTime: 60_000,
         enabled: me?.role === 'admin',
     })
-    const usersMap = new Map<number, string>(allUsers.map((u: any) => [u.id, u.email.split('@')[0]]))
+    const usersMap = new Map<number, string>(allUsers.map((u) => [u.id, u.email.split('@')[0]] as [number, string]))
 
-    const { data: myBots = [] } = useQuery({
+    const { data: myBots = [] } = useQuery<Bot[]>({
         queryKey: ['bots', me?.id],
         queryFn: () => listBots(me!.id),
         enabled: me != null,
@@ -266,10 +265,10 @@ export const ChatPage: React.FC = () => {
         },
     })
 
-    useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatLogs.length])
+    // Auto-scroll intentionally disabled.
 
     const botRunning = botQuery.data?.running ?? false
-    const chatBots = (myBots as any[]).filter(b => b.bot_mode === 'all' || b.bot_mode === 'chat')
+    const chatBots = myBots.filter(b => b.bot_mode === 'all' || b.bot_mode === 'chat')
     const hasChatBot = chatBots.length > 0
     const canStart = hasChatBot
 
@@ -311,7 +310,6 @@ export const ChatPage: React.FC = () => {
                                 ? <div className="text-[#475569] text-center pt-12">— No logs —</div>
                                 : chatLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
                             }
-                            <div ref={endRef} />
                         </div>
                     </div>
                 </Card>
@@ -448,7 +446,7 @@ export const ChatPage: React.FC = () => {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {chatPrompts.map((p: DbPrompt) => {
-                                const assignedBots = (myBots as Bot[]).filter(b => b.chat_prompt_id === p.id)
+                                const assignedBots = myBots.filter(b => b.chat_prompt_id === p.id)
                                 const selBot = selectedBot[p.id] ?? ''
                                 return (
                                     <div key={p.id} className="bg-[#0b0e14] border border-[#2d3748] rounded-xl p-5 flex flex-col gap-4">
@@ -493,7 +491,7 @@ export const ChatPage: React.FC = () => {
                                                     onChange={e => setSelectedBot(s => ({ ...s, [p.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
                                                     options={[
                                                         { label: t('chat.prompts.select_bot'), value: '' },
-                                                        ...(myBots as Bot[])
+                                                        ...myBots
                                                             .filter(b => b.bot_mode === 'all' || b.bot_mode === 'chat')
                                                             .map(b => ({ label: b.name, value: b.id }))
                                                     ]}
