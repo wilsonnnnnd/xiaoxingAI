@@ -10,7 +10,7 @@ sent_ids.json
 .venv/
 .trae/
 .vercel/
-
+.github/
 .vercelignore
 frontend/package-lock.json
 frontend/node_modules/
