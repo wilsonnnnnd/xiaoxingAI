@@ -105,11 +105,32 @@ app.include_router(chat.router)
 app.include_router(debug_outgoing.router)
 app.include_router(reply_format.router)
 
+API_PREFIX = "/api"
+
+app.include_router(health.router, prefix=API_PREFIX)
+app.include_router(ai.router, prefix=API_PREFIX)
+app.include_router(email_records.router, prefix=API_PREFIX)
+app.include_router(auth_routes.router, prefix=API_PREFIX)
+app.include_router(users.router, prefix=API_PREFIX)
+app.include_router(bots.router, prefix=API_PREFIX)
+app.include_router(db_prompts.router, prefix=API_PREFIX)
+app.include_router(admin_persona.router, prefix=API_PREFIX)
+app.include_router(config_routes.router, prefix=API_PREFIX)
+app.include_router(prompts.router, prefix=API_PREFIX)
+app.include_router(stats_logs.router, prefix=API_PREFIX)
+app.include_router(gmail_actions.router, prefix=API_PREFIX)
+app.include_router(gmail_compose.router, prefix=API_PREFIX)
+app.include_router(telegram_tools.router, prefix=API_PREFIX)
+app.include_router(chat.router, prefix=API_PREFIX)
+app.include_router(debug_outgoing.router, prefix=API_PREFIX)
+app.include_router(reply_format.router, prefix=API_PREFIX)
+
 
 # ─────────────────────────────────────────
 # Gmail OAuth
 # ─────────────────────────────────────────
 
+@app.get("/api/gmail/auth/url")
 @app.get("/gmail/auth/url")
 def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_user)):
     """返回 Gmail OAuth 授权 URL（JSON）。前端用此接口获取 URL 后由 JS 跳转，可携带 user_id。"""
@@ -121,6 +142,7 @@ def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_u
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/gmail/auth")
 @app.get("/gmail/auth")
 def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
     """跳转到 Google OAuth 授权页面（浏览器直接跳转的兼容路由，无 JWT 时 user_id=None）"""
@@ -133,6 +155,7 @@ def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_cur
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/gmail/callback")
 @app.get("/gmail/callback")
 def gmail_callback(request: Request, code: str,
                    state: Optional[str] = None,
@@ -160,6 +183,7 @@ def gmail_callback(request: Request, code: str,
 # Worker 调度控制
 # ─────────────────────────────────────────
 
+@app.post("/api/worker/start")
 @app.post("/worker/start")
 async def worker_start():
     """启动自动轮询 Worker"""
@@ -170,6 +194,7 @@ async def worker_start():
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/worker/stop")
 @app.post("/worker/stop")
 def worker_stop():
     """停止自动轮询 Worker"""
@@ -177,6 +202,7 @@ def worker_stop():
     return {"ok": True, "stopped": stopped, "status": worker.get_status()}
 
 
+@app.get("/api/worker/status")
 @app.get("/worker/status")
 def worker_status():
     """获取 Worker 当前状态和统计"""
@@ -188,6 +214,7 @@ def worker_status():
 # ─────────────────────────────────────────
 
 
+@app.post("/api/worker/poll")
 @app.post("/worker/poll")
 async def worker_poll():
     """立即触发一次轮询（无论 worker 是否在运行）"""
@@ -200,6 +227,7 @@ async def worker_poll():
         raise HTTPException(status_code=500, detail=f"轮询失败: {str(e)}")
 
 
+@app.websocket("/api/ws/worker/status")
 @app.websocket("/ws/worker/status")
 async def ws_worker_status(websocket: WebSocket):
     await websocket.accept()
@@ -219,6 +247,7 @@ async def ws_worker_status(websocket: WebSocket):
         ws_pub.unsubscribe_worker(q)
 
 
+@app.websocket("/api/ws/bot/status")
 @app.websocket("/ws/bot/status")
 async def ws_bot_status(websocket: WebSocket):
     await websocket.accept()
@@ -242,6 +271,7 @@ async def ws_bot_status(websocket: WebSocket):
 # Telegram Bot 聊天 Worker
 # ─────────────────────────────────────────
 
+@app.post("/api/telegram/bot/start")
 @app.post("/telegram/bot/start")
 async def tg_bot_start():
     """启动 Telegram Bot 聊天 Worker（长轮询）"""
@@ -252,6 +282,7 @@ async def tg_bot_start():
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/telegram/bot/stop")
 @app.post("/telegram/bot/stop")
 async def tg_bot_stop():
     """停止 Telegram Bot 聊天 Worker"""
@@ -259,6 +290,7 @@ async def tg_bot_stop():
     return {"ok": True, "running": False}
 
 
+@app.get("/api/telegram/bot/status")
 @app.get("/telegram/bot/status")
 def tg_bot_status():
     """返回 Bot Worker 运行状态"""
@@ -266,31 +298,15 @@ def tg_bot_status():
 
 
 # Backwards-compatible wrappers exposing explicit endpoints for separated statuses
+@app.get("/api/gmail/workstatus")
 @app.get("/gmail/workstatus")
 def gmail_work_status():
     """Wrapper for Gmail worker status (frontend-friendly name)."""
     return worker.get_status()
 
 
+@app.get("/api/chat/workstatus")
 @app.get("/chat/workstatus")
 def chat_work_status():
     """Wrapper for Chat (Telegram bot) worker status (frontend-friendly name)."""
     return {"running": tg_bot_worker.is_running()}
-
-
-# ─────────────────────────────────────────
-
-
-# ─────────────────────────────────────────
-# Auth
-# ─────────────────────────────────────────
-
-
-# ─────────────────────────────────────────
-# User 管理
-# ─────────────────────────────────────────
-
-
-# ─────────────────────────────────────────
-# Prompt 管理（数据库版）
-# ─────────────────────────────────────────
