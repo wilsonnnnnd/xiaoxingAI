@@ -1,79 +1,79 @@
-﻿﻿﻿﻿# 小星项目开发与扩展指南 (Development & Extension Guide)
+﻿﻿# Xiaoxing Project Development and Extension Guide
 
-本文档旨在指导开发者如何在"小星"项目中添加新功能，并明确各功能模块的存放位置。
+This document explains how developers can add new features to the Xiaoxing project and where each module should be placed.
 
 ---
 
-## 1. 整体架构概览
+## 1. Architecture Overview
 
-项目采用 **前后端分离** 架构：
+The project uses a separated frontend and backend structure:
 
-- **后端 (Backend)**: 基于 Python FastAPI，采用领域驱动设计 (DDD) 的简化版，分为 API 层、Service/Skill 层、Repository 层和 DB 模型层。
-- **前端 (Frontend)**: 基于 React 19 + TypeScript + Vite，采用 **Feature-based** 的组织结构，使用 TanStack Query 管理服务器状态，Zustand 管理客户端状态。
-- **新增页面示例**: 邮件回复格式配置页 `/settings/reply-format`（`frontend/src/features/replyFormat/`），用于编辑回复模板与署名。
+- **Backend**: Built with Python FastAPI. It uses a simple layered design with API, Service or Skill, Repository, and database model layers.
+- **Frontend**: Built with React 19, TypeScript, and Vite. It uses a feature-based structure. TanStack Query manages server state, and Zustand manages client state.
+- **Example new page**: The reply format page at `/settings/reply-format` in `frontend/src/features/replyFormat/` is used to edit reply templates and signatures.
 
 ```
-请求链路 (后端):
+Request flow (backend):
 HTTP → Route (FastAPI) → Service/Skill → Repository → PostgreSQL
                        → Core (LLM / Redis / Telegram)
 
-数据链路 (前端):
-页面组件 → useQuery/useMutation → features/xxx/api/index.ts → axios (client.ts) → 后端 API
+Data flow (frontend):
+Page component → useQuery/useMutation → features/xxx/api/index.ts → axios (client.ts) → Backend API
 ```
 
 ---
 
-## 2. 后端扩展流程 (Backend)
+## 2. Backend Extension Flow
 
-### 2.1 项目结构
+### 2.1 Project Structure
 
 ```
 app/
-├── main.py              # 应用入口、中间件、路由注册、lifespan
-├── config.py            # 重新导出 core/config.py
-├── api/routes/          # HTTP 接口层
-├── core/                # 核心工具 (JWT、LLM、Redis、Telegram、WebSocket、Tools)
+├── main.py              # app entry, middleware, route registration, lifespan
+├── config.py            # re-export of core/config.py
+├── api/routes/          # HTTP API layer
+├── core/                # core tools (JWT, LLM, Redis, Telegram, WebSocket, Tools)
 ├── db/
-│   ├── base.py          # SQLAlchemy 模型 + init_db()
-│   ├── session.py       # 连接池
-│   └── repositories/    # 数据访问层 (所有 SQL)
-├── schemas/             # Pydantic 请求/响应模型
-├── services/            # 业务逻辑层
-├── skills/              # 复杂异步技能 (如 Gmail 轮询)
-└── utils/               # 工具函数 (prompt_loader, json_parser)
+│   ├── base.py          # SQLAlchemy models + init_db()
+│   ├── session.py       # connection pool
+│   └── repositories/    # data access layer (all SQL)
+├── schemas/             # Pydantic request and response models
+├── services/            # business logic layer
+├── skills/              # complex async modules, such as Gmail polling
+└── utils/               # helper functions, such as prompt_loader and json_parser
 ```
 
-### 2.2 环境变量 & 配置 (`app/core/config.py`)
+### 2.2 Environment Variables and Config in `app/core/config.py`
 
-所有配置通过环境变量注入，并在 `Settings` 类中读取，通过 `get_settings()` 全局依赖获得单例。新增配置字段需在此文件中添加。
+All settings come from environment variables. They are loaded in the `Settings` class and accessed by the global `get_settings()` singleton. When you add a new config field, add it in this file.
 
-| 变量名 | 默认值 | 说明 |
+| Variable | Default | Description |
 |--------|--------|------|
-| `POSTGRES_DSN` | `postgresql://postgres:postgres@localhost:5432/xiaoxing` | PostgreSQL 连接串 |
-| `REDIS_URL` | `redis://localhost:6380` | Redis 连接串 |
-| `JWT_SECRET` | `change-me-in-production` | JWT 签名密钥（生产必须修改） |
-| `JWT_EXPIRE_MINUTES` | `60` | Token 有效期 |
-| `ADMIN_USER` | — | 管理员邮箱 |
-| `ADMIN_PASSWORD` | — | 管理员密码 |
-| `FRONTEND_URL` | `http://localhost:5173` | CORS 允许的来源 |
-| `LLM_BACKEND` | `local` | `local` 或 `openai` |
-| `LLM_API_URL` | `http://127.0.0.1:8001/v1/chat/completions` | 主 LLM 推理地址 |
-| `LLM_MODEL` | `local-model` | 主模型名称 |
-| `ROUTER_API_URL` | `http://127.0.0.1:8002/v1/chat/completions` | 小型路由模型地址 |
-| `ROUTER_MODEL` | `local-router` | 路由模型名称 |
-| `OPENAI_API_KEY` | — | 当 `LLM_BACKEND=openai` 时使用 |
-| `UI_LANG` | `en` | 默认界面语言 (`en` / `zh`) |
-| `TELEGRAM_BOT_TOKEN` | — | Bot Token |
-| `TELEGRAM_CHAT_ID` | — | 默认推送 Chat ID |
-| `GMAIL_POLL_INTERVAL` | `300` | Gmail 轮询间隔（秒） |
-| `GMAIL_POLL_QUERY` | `is:unread in:inbox` | Gmail 搜索条件 |
-| `GMAIL_POLL_MAX` | `5` | 每次最多处理邮件数 |
-| `GMAIL_MARK_READ` | `true` | 处理后标记已读 |
-| `NOTIFY_MIN_PRIORITY` | `""` | 推送最低优先级（空=全部） |
+| `POSTGRES_DSN` | `postgresql://postgres:postgres@localhost:5432/xiaoxing` | PostgreSQL connection string |
+| `REDIS_URL` | `redis://localhost:6380` | Redis connection string |
+| `JWT_SECRET` | `change-me-in-production` | JWT signing key, must be changed in production |
+| `JWT_EXPIRE_MINUTES` | `60` | Token lifetime |
+| `ADMIN_USER` | — | Admin email |
+| `ADMIN_PASSWORD` | — | Admin password |
+| `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin |
+| `LLM_BACKEND` | `local` | `local` or `openai` |
+| `LLM_API_URL` | `http://127.0.0.1:8001/v1/chat/completions` | Main LLM endpoint |
+| `LLM_MODEL` | `local-model` | Main model name |
+| `ROUTER_API_URL` | `http://127.0.0.1:8002/v1/chat/completions` | Small router model endpoint |
+| `ROUTER_MODEL` | `local-router` | Router model name |
+| `OPENAI_API_KEY` | — | Used when `LLM_BACKEND=openai` |
+| `UI_LANG` | `en` | Default UI language, `en` or `zh` |
+| `TELEGRAM_BOT_TOKEN` | — | Bot token |
+| `TELEGRAM_CHAT_ID` | — | Default push chat ID |
+| `GMAIL_POLL_INTERVAL` | `300` | Gmail polling interval in seconds |
+| `GMAIL_POLL_QUERY` | `is:unread in:inbox` | Gmail search query |
+| `GMAIL_POLL_MAX` | `5` | Max emails per run |
+| `GMAIL_MARK_READ` | `true` | Mark email as read after processing |
+| `NOTIFY_MIN_PRIORITY` | `""` | Minimum priority for push messages, empty means all |
 
-**Prompt 文件配置（可被数据库覆盖）：**
+**Prompt file config, can be overridden by the database:**
 
-| 变量名 | 默认文件路径 |
+| Variable | Default file path |
 |--------|-------------|
 | `PROMPT_ANALYZE` | `gmail/email_analysis.txt` |
 | `PROMPT_SUMMARY` | `gmail/email_summary.txt` |
@@ -81,31 +81,31 @@ app/
 | `PROMPT_CHAT` | `chat.txt` |
 | `PROMPT_PROFILE` | `user_profile.txt` |
 
-### 2.3 数据库模型 (`app/db/base.py`)
+### 2.3 Database Models in `app/db/base.py`
 
-在此文件中定义 SQLAlchemy Core 表结构，`init_db()` 在应用启动时自动建表。
+SQLAlchemy Core table definitions are stored in this file. The `init_db()` function creates tables automatically when the app starts.
 
-**现有表：**
+**Current tables:**
 
-| 表名 | 主要字段 | 说明 |
+| Table | Main fields | Description |
 |------|----------|------|
-| `user` | `id`, `email`, `role`, `password_hash`, `worker_enabled`, `min_priority`, `max_emails_per_run`, `poll_interval` | 用户账号 |
-| `bot` | `id`, `user_id`, `name`, `token`, `chat_id`, `is_default`, `chat_prompt_id`, `bot_mode` | Telegram Bot 配置 |
-| `system_prompts` | `id`, `name`, `type`, `content`, `is_default` | 系统内置 Prompt（不可改） |
-| `user_prompts` | `id`, `user_id`, `name`, `type`, `content`, `is_default`, `meta` | 用户自定义 Prompt |
-| `oauth_tokens` | `id`, `user_id`, `token_json` | Gmail OAuth Token |
-| `email_records` | `id`, `user_id`, `email_id`, `subject`, `sender`, `analysis_json`, `summary_json`, `telegram_msg`, `priority`, `sent_telegram` | 已处理邮件存档 |
-| `reply_templates` | `id`, `user_id`, `name`, `body_template`, `closing`, `is_default` | 用户邮件回复模板 |
-| `reply_format_settings` | `user_id`, `default_template_id`, `signature` | 用户回复格式设置（默认模板/署名） |
-| `worker_stats` | `id`, `user_id`, `total_sent`, `total_fetched`, `total_errors`, `total_tokens`, `last_poll` | Gmail Worker 统计 |
-| `user_profile` | `bot_id` (PK), `profile` | 每个 Bot 对话用户画像（文本） |
-| `log` | `id`, `user_id`, `ts`, `level`, `log_type`, `tokens`, `msg` | 系统日志 |
+| `user` | `id`, `email`, `role`, `password_hash`, `worker_enabled`, `min_priority`, `max_emails_per_run`, `poll_interval` | User account |
+| `bot` | `id`, `user_id`, `name`, `token`, `chat_id`, `is_default`, `chat_prompt_id`, `bot_mode` | Telegram bot config |
+| `system_prompts` | `id`, `name`, `type`, `content`, `is_default` | Built-in system prompts |
+| `user_prompts` | `id`, `user_id`, `name`, `type`, `content`, `is_default`, `meta` | User custom prompts |
+| `oauth_tokens` | `id`, `user_id`, `token_json` | Gmail OAuth token |
+| `email_records` | `id`, `user_id`, `email_id`, `subject`, `sender`, `analysis_json`, `summary_json`, `telegram_msg`, `priority`, `sent_telegram` | Saved processed emails |
+| `reply_templates` | `id`, `user_id`, `name`, `body_template`, `closing`, `is_default` | User email reply templates |
+| `reply_format_settings` | `user_id`, `default_template_id`, `signature` | User reply format settings |
+| `worker_stats` | `id`, `user_id`, `total_sent`, `total_fetched`, `total_errors`, `total_tokens`, `last_poll` | Gmail worker stats |
+| `user_profile` | `bot_id` as PK, `profile` | Text profile for each bot conversation |
+| `log` | `id`, `user_id`, `ts`, `level`, `log_type`, `tokens`, `msg` | System log |
 
-### 2.4 Pydantic Schemas (`app/schemas/`)
+### 2.4 Pydantic Schemas in `app/schemas/`
 
-定义 HTTP 请求/响应的数据格式。按资源类型分文件组织：
+This folder defines the request and response format for HTTP APIs. Files are grouped by resource type.
 
-| 文件 | 主要 Schema |
+| File | Main schemas |
 |------|-------------|
 | `auth.py` | `AdminLoginRequest` |
 | `user.py` | `UserCreate`, `UserUpdate` |
@@ -114,7 +114,7 @@ app/
 | `chat.py` | `ChatPersonaRequest` |
 | `persona.py` | `PersonaConfigSave` |
 
-**新增 Schema 示例：**
+**Example of a new schema:**
 ```python
 # app/schemas/my_feature.py
 from pydantic import BaseModel
@@ -129,11 +129,11 @@ class MyFeatureResponse(BaseModel):
     value: int
 ```
 
-### 2.5 Repository 层 (`app/db/repositories/`)
+### 2.5 Repository Layer in `app/db/repositories/`
 
-**职责**：封装所有 SQL 操作，禁止在 Route 或 Service 中直接执行 SQL。返回值统一为 `dict` 或 `list[dict]`。
+**Purpose**: put all SQL operations here. Do not run SQL directly in a Route or Service. Return values should be `dict` or `list[dict]`.
 
-**现有 Repository 及方法签名：**
+**Current repositories and method signatures:**
 
 ```python
 # user_repo.py
@@ -191,7 +191,7 @@ get_persona_configs() -> dict[str, dict[str, str]]
 upsert_persona_config(category, key, content) -> None
 ```
 
-**新增 Repository 模板：**
+**Template for a new repository:**
 ```python
 # app/db/repositories/my_repo.py
 from app.db.session import get_conn
@@ -205,36 +205,36 @@ async def create_item(name: str, user_id: int) -> dict:
         return dict(row)
 ```
 
-### 2.6 Service / Skill 层
+### 2.6 Service and Skill Layer
 
-- **Service** (`app/services/`): 组合多个 Repository 调用或核心工具的业务逻辑。
-- **Skill** (`app/skills/`): 具有独立生命周期的复杂模块（如后台轮询 Worker）。
+- **Service** in `app/services/`: business logic that combines repositories and core tools.
+- **Skill** in `app/skills/`: more complex modules with their own lifecycle, such as background polling workers.
 
-**现有服务：**
+**Current services:**
 
-| 文件 | 类 | 核心方法 |
+| File | Class | Main methods |
 |------|----|----------|
 | `gmail_service.py` | `GmailService` | `fetch()`, `process()` |
 | `telegram_service.py` | `TelegramService` | `clear_history()`, `generate_profile()` |
-| `persona_prompt_service.py` | `PersonaPromptService` | `generate(payload)` → 4 阶段 Prompt 生成 |
+| `persona_prompt_service.py` | `PersonaPromptService` | `generate(payload)` for a 4-stage prompt flow |
 
-**Skill 目录结构（以 `gmail/` 为例）：**
+**Skill folder structure, using `gmail/` as an example:**
 ```
 app/skills/gmail/
-├── schemas.py    # 该 Skill 专用的 Pydantic 模型
-├── client.py     # Gmail API 客户端封装
-├── auth.py       # OAuth2 流程
-├── pipeline.py   # AI 处理管线 (analyze → summarize → telegram)
-└── worker.py     # 后台轮询 Worker
+├── schemas.py    # Pydantic models for this skill
+├── client.py     # Gmail API client wrapper
+├── auth.py       # OAuth2 flow
+├── pipeline.py   # AI processing pipeline, analyze to summarize to telegram
+└── worker.py     # background polling worker
 ```
 
-### 2.7 API 路由层 (`app/api/routes/`)
+### 2.7 API Route Layer in `app/api/routes/`
 
-在此添加 FastAPI Router，在 `app/api/routes/__init__.py` 中注册，并在 `app/main.py` 中 `include_router`。
+Add new FastAPI routers here. Then register them in `app/api/routes/__init__.py` and include them in `app/main.py`.
 
-**现有路由总览：**
+**Current routes overview:**
 
-| 文件 | 主要端点 |
+| File | Main endpoints |
 |------|----------|
 | `health.py` | `GET /`, `GET /health` |
 | `auth.py` | `POST /auth/login`, `GET /auth/me` |
@@ -242,17 +242,17 @@ app/skills/gmail/
 | `bots.py` | `GET/POST /users/{id}/bots`, `PUT/DELETE .../bots/{bot_id}`, `POST .../set-default` |
 | `db_prompts.py` | `GET/POST /db/prompts`, `PUT/DELETE /db/prompts/{id}` |
 | `prompts.py` | `GET/POST/DELETE /prompts/{filename}` |
-| `config.py` | `GET/POST /config`（管理员） |
-| `admin_persona.py` | `GET/PUT /admin/persona-config`（管理员） |
+| `config.py` | `GET/POST /config`, admin only |
+| `admin_persona.py` | `GET/PUT /admin/persona-config`, admin only |
 | `email_records.py` | `GET /email/records`, `GET /email/records/{email_id}` |
 | `ai.py` | `GET /ai/ping`, `POST /ai/analyze`, `/ai/summary`, `/ai/process` |
 | `gmail_actions.py` | `POST /gmail/fetch`, `POST /gmail/process` |
 | `telegram_tools.py` | `POST /telegram/test`, `GET /telegram/chat_id`, `POST /telegram/bot/clear_history`, `GET/DELETE/POST /telegram/bot/profile` |
 | `stats_logs.py` | `GET/DELETE /worker/logs`, `GET /db/stats` |
 | `chat.py` | `POST /chat/generate_persona_prompt` |
-| `reply_format.py` | `GET/PUT /reply-format`, `/reply-templates` CRUD |
+| `reply_format.py` | `GET/PUT /reply-format` and CRUD for `/reply-templates` |
 
-**新增路由模板：**
+**Template for a new route:**
 ```python
 # app/api/routes/my_feature.py
 from fastapi import APIRouter, Depends
@@ -271,143 +271,143 @@ async def create_item(body: MyFeatureCreate, user=Depends(current_user)):
     return await my_repo.create_item(body.name, user["id"])
 ```
 
-### 2.8 核心工具 (`app/core/`)
+### 2.8 Core Tools in `app/core/`
 
-| 模块 | 功能 |
+| Module | Function |
 |------|------|
-| `auth.py` | JWT 签发/验证、bcrypt、依赖项 `current_user` / `require_admin` / `assert_self_or_admin` |
-| `llm.py` | `call_llm(prompt)` / `call_router(prompt)` → `(text, tokens)`，带 3 次退避重试 + Redis 缓存（1h） |
-| `chat.py` | `chat_reply(message, history, profile, ...)` → `(reply, tokens)`；`build_user_profile(history)` |
-| `redis_client.py` | LLM 缓存、对话历史（TTL 7天）、去重、任务队列；Redis 不可用时降级处理 |
-| `telegram/client.py` | Telegram API 封装：`send_message()` / `edit_message_text()` / `test_connection()` / `get_latest_chat_id()` |
-| `bot_worker.py` | Telegram Bot 多实例管理，长轮询 + 任务队列消费，每日自动生成用户画像 |
-| `realtime/ws.py` | WebSocket 订阅/发布：`subscribe_worker()` / `publish_worker_status()` / `subscribe_bot()` / `publish_bot_status()` |
-| `debug/*` | 内存调试事件缓冲：Telegram 事件与 Outgoing Trace |
-| `constants.py` | 业务常量 |
+| `auth.py` | JWT sign and verify, bcrypt, and dependencies like `current_user`, `require_admin`, `assert_self_or_admin` |
+| `llm.py` | `call_llm(prompt)` and `call_router(prompt)` return `(text, tokens)` with retry and Redis cache |
+| `chat.py` | `chat_reply(message, history, profile, ...)` returns `(reply, tokens)` and `build_user_profile(history)` |
+| `redis_client.py` | LLM cache, chat history, dedup, task queue, with fallback if Redis is unavailable |
+| `telegram/client.py` | Telegram API wrapper for `send_message()`, `edit_message_text()`, `test_connection()`, and `get_latest_chat_id()` |
+| `bot_worker.py` | Multi-instance Telegram bot manager with long polling and daily profile generation |
+| `realtime/ws.py` | WebSocket subscribe and publish helpers for worker and bot status |
+| `debug/*` | In-memory debug event buffer |
+| `constants.py` | Business constants |
 
-### 2.9 Tools 系统 (`app/core/tools/`)
+### 2.9 Tools System in `app/core/tools/`
 
-AI 可调用的工具函数，通过装饰器注册后由路由模型自动分发：
+AI tools can be registered with a decorator and then called automatically by the router model:
 
 ```python
 @register(
     "tool_name",
-    "工具描述（路由模型用于判断是否调用）",
-    keywords=["触发关键词"],
-    takes_message=True,   # 是否传入用户消息
-    takes_user_id=True    # 是否传入 user_id
+    "Tool description used by the router model",
+    keywords=["trigger keyword"],
+    takes_message=True,   # whether to pass the user message
+    takes_user_id=True    # whether to pass the user_id
 )
 def my_tool(message: str, user_id: int | None = None) -> str:
-    return "工具返回的文本，会被注入到 LLM 上下文中"
+    return "The tool output text will be added to the LLM context"
 ```
 
-**现有工具：**
+**Current tools:**
 
-| 工具 | 触发场景 |
+| Tool | Trigger use case |
 |------|----------|
-| `time_tool` | 询问时间、日期、星期 |
-| `emails_tool` | 查询本地邮件记录/统计 |
-| `fetch_email_tool` | 实时拉取 Gmail + AI 处理 |
+| `time_tool` | Ask for time, date, or weekday |
+| `emails_tool` | Check local email records or stats |
+| `fetch_email_tool` | Fetch Gmail in real time and process it with AI |
 
 ---
 
-## 3. 前端扩展流程 (Frontend)
+## 3. Frontend Extension Flow
 
-### 3.1 技术栈
+### 3.1 Tech Stack
 
-| 库 | 版本 | 用途 |
+| Library | Version | Use |
 |----|------|------|
-| React | 19 | UI 框架 |
-| TypeScript | 6 | 类型安全 |
-| Vite | 8 | 构建工具 |
-| React Router | 7 | 客户端路由 |
-| TanStack Query | 5 | 服务器状态 + 缓存 |
-| react-hook-form | 7 | 表单管理 |
-| zod | 4 | 表单验证 Schema |
-| axios | 1 | HTTP 客户端 |
-| Zustand | 5 | 客户端全局状态 |
-| react-hot-toast | 2 | Toast 通知 |
-| Tailwind CSS | 4 | 样式 |
+| React | 19 | UI framework |
+| TypeScript | 6 | Type safety |
+| Vite | 8 | Build tool |
+| React Router | 7 | Client routing |
+| TanStack Query | 5 | Server state and cache |
+| react-hook-form | 7 | Form management |
+| zod | 4 | Form validation schema |
+| axios | 1 | HTTP client |
+| Zustand | 5 | Global client state |
+| react-hot-toast | 2 | Toast notifications |
+| Tailwind CSS | 4 | Styling |
 
-**TypeScript 严格模式注意事项：**
-- `verbatimModuleSyntax: true` — 所有仅用于类型的导入**必须**使用 `import type { ... }`
-- `noUnusedLocals: true` / `noUnusedParameters: true` — 未使用的变量/参数会报错
-- `catch` 块中不需要错误对象时，写 `catch {}` 而非 `catch (e) {}`
+**Notes for strict TypeScript mode:**
+- `verbatimModuleSyntax: true` means all type-only imports must use `import type { ... }`
+- `noUnusedLocals: true` and `noUnusedParameters: true` mean unused items will cause errors
+- if you do not need the error object in a `catch` block, use `catch {}` instead of `catch (e) {}`
 
-### 3.2 项目结构
+### 3.2 Project Structure
 
 ```
 frontend/src/
-├── App.tsx              # 路由配置
-├── main.tsx             # 应用入口
+├── App.tsx              # route config
+├── main.tsx             # app entry
 ├── api/
-│   └── client.ts        # Axios 实例（所有请求都用这个）
+│   └── client.ts        # Axios instance for all requests
 ├── components/
-│   ├── common/          # 共用 UI 原子组件
-│   │   └── form/        # react-hook-form 受控表单组件
-│   └── layout/          # Layout、Sidebar 等
+│   ├── common/          # shared UI components
+│   │   └── form/        # controlled form components for react-hook-form
+│   └── layout/          # Layout, Sidebar, and so on
 ├── constants/
-│   └── navigation.ts    # 侧边栏导航配置
-├── features/            # 业务功能模块（每个功能一个目录）
-├── hooks/               # 全局 Custom Hooks
-├── i18n/                # 国际化
-├── pages/               # 非功能性页面（Home、Skill 首页等）
+│   └── navigation.ts    # sidebar navigation config
+├── features/            # feature modules, one folder per feature
+├── hooks/               # global custom hooks
+├── i18n/                # internationalization
+├── pages/               # non-feature pages, such as Home
 ├── types/
-│   └── index.ts         # 全局共享类型定义
+│   └── index.ts         # shared global types
 └── utils/
-    └── formatLog.ts     # 日志消息格式化
+    └── formatLog.ts     # log message formatter
 ```
 
-**现有路由（`App.tsx`）：**
+**Current routes in `App.tsx`:**
 
 ```
-/login                  → LoginPage (公开)
-/ (Layout 包裹)
-  ├── /home             → Home (仪表盘)
-  ├── /skill            → Skill (技能首页)
+/login                  → LoginPage, public
+/                       → wrapped by Layout
+  ├── /home             → Home dashboard
+  ├── /skill            → Skill home page
   ├── /skill/gmail      → GmailPage
   ├── /skill/chat       → ChatPage
   ├── /settings         → SettingsPage
   ├── /prompts          → PromptsPage
-  ├── /debug            → DebugPage (管理员)
-  ├── /users            → UsersPage (管理员)
-  └── /persona-config   → PersonaConfigPage (管理员)
+  ├── /debug            → DebugPage, admin only
+  ├── /users            → UsersPage, admin only
+  └── /persona-config   → PersonaConfigPage, admin only
 ```
 
-### 3.3 API 客户端 (`src/api/client.ts`)
+### 3.3 API Client in `src/api/client.ts`
 
 ```typescript
-// 使用方式
+// usage
 import { api } from '../../../api/client'
 const data = await api.get<MyType>('/endpoint').then(r => r.data)
 ```
 
-**已配置的拦截器（无需手动处理）：**
-- 请求拦截：自动附加 `Authorization: Bearer <token>`（来自 localStorage）
-- 响应拦截：
-  - `401`/`403` → 跳转 `/login`，清除 Token
-  - HTTP 错误 → 自动通过 `react-hot-toast` 显示 i18n 错误 Toast
-  - **禁止**在页面组件中自行维护 `errMsg` 状态
+**Configured interceptors, no need to handle them manually:**
+- request interceptor: automatically adds `Authorization: Bearer <token>` from localStorage
+- response interceptor:
+  - `401` or `403` redirects to `/login` and clears the token
+  - HTTP errors show i18n error toasts through `react-hot-toast`
+  - do not keep a local `errMsg` state in page components
 
-### 3.4 共用 UI 组件 (`src/components/common/`)
+### 3.4 Shared UI Components in `src/components/common/`
 
-**优先使用以下组件，禁止在 Feature 页面中写内联样式或原生 HTML 替代品：**
+**Use these standard components first. Do not add inline styles or replace them with raw HTML in feature pages.**
 
-| 组件 | Props 摘要 | 用途 |
+| Component | Main props | Use |
 |------|-----------|------|
-| `Button` | `variant: 'primary'\|'telegram'`, `loading?: boolean`, `disabled?` | 标准按钮 |
-| `Card` | `title: string`, `badge?: string`, `full?: boolean` | 数据容器卡片 |
-| `Modal` | `isOpen`, `onClose`, `title`, `footer?`, `size: 'sm'\|'md'\|'lg'\|'xl'` | 弹窗（Portal 挂载） |
-| `InputField` | `label?`, `multi?: boolean`, `rows?`, `error?`, `required?`, `onChange?: (value: string) => void` | 输入框 / 多行文本 |
-| `Select` | `label?`, `options: {label,value}[]`, `error?`, `required?`, `onChange?: (value: string) => void` | 下拉选择 |
-| `Switch` | `label?`, `error?`, `onChange?: (checked: boolean) => void` | 开关 |
-| `Badge` | `variant: 'success'\|'error'\|'warning'\|'info'\|'neutral'` | 状态标签 |
+| `Button` | `variant: 'primary'\|'telegram'`, `loading?: boolean`, `disabled?` | Standard button |
+| `Card` | `title: string`, `badge?: string`, `full?: boolean` | Data container card |
+| `Modal` | `isOpen`, `onClose`, `title`, `footer?`, `size: 'sm'\|'md'\|'lg'\|'xl'` | Modal dialog |
+| `InputField` | `label?`, `multi?: boolean`, `rows?`, `error?`, `required?`, `onChange?: (value: string) => void` | Input or text area |
+| `Select` | `label?`, `options: {label,value}[]`, `error?`, `required?`, `onChange?: (value: string) => void` | Dropdown selector |
+| `Switch` | `label?`, `error?`, `onChange?: (checked: boolean) => void` | Switch |
+| `Badge` | `variant: 'success'\|'error'\|'warning'\|'info'\|'neutral'` | Status badge |
 
-> **注意**：`InputField`、`Select` 的 `onChange` 直接传值（`string`），`Switch` 的 `onChange` 传 `boolean`，而非原生 `ChangeEvent`。
+> Note: `InputField` and `Select` pass a direct string value to `onChange`, and `Switch` passes a boolean. They do not pass the native `ChangeEvent`.
 
-**表单受控组件 (`src/components/common/form/`)：**
+**Form components in `src/components/common/form/`:**
 
-与 `react-hook-form` 集成，自动处理注册和错误显示：
+They work with `react-hook-form` and handle register and error display automatically.
 
 ```typescript
 import { useForm } from 'react-hook-form'
@@ -417,30 +417,30 @@ import { FormInput, FormSelect, FormSwitch } from '../../../components/common/fo
 
 const { control, handleSubmit } = useForm<FormData>({ resolver: zodResolver(schema) })
 
-<FormInput name="email" control={control} label="邮箱" required />
-<FormSelect name="role" control={control} label="角色" options={[...]} />
-<FormSwitch name="enabled" control={control} label="启用" />
+<FormInput name="email" control={control} label="Email" required />
+<FormSelect name="role" control={control} label="Role" options={[...]} />
+<FormSwitch name="enabled" control={control} label="Enabled" />
 ```
 
-### 3.5 创建新 Feature 模块
+### 3.5 Create a New Feature Module
 
-在 `frontend/src/features/` 下新建目录，内部结构：
+Create a new folder under `frontend/src/features/` with this structure:
 
 ```
 features/my-feature/
 ├── api/
-│   └── index.ts     # 该模块的所有 API 调用函数
+│   └── index.ts     # all API calls for this module
 ├── components/
 │   └── MyFeaturePage.tsx
-├── hooks/           # (可选) 该模块专用 Hooks
-├── types.ts         # (可选) 模块专用类型
-└── index.ts         # 公共入口，导出页面组件和对外接口
+├── hooks/           # optional hooks for this module
+├── types.ts         # optional types for this module
+└── index.ts         # public entry that exports the page and API
 ```
 
-**`api/index.ts` 规范：**
+**Standard pattern for `api/index.ts`:**
 ```typescript
 import { api } from '../../../api/client'
-import type { MyItem } from '../../../types'  // 类型必须用 import type
+import type { MyItem } from '../../../types'  // use import type for types
 
 export const getItems = () =>
   api.get<MyItem[]>('/my-feature').then(r => r.data)
@@ -455,7 +455,7 @@ export const deleteItem = (id: number) =>
   api.delete(`/my-feature/${id}`).then(r => r.data)
 ```
 
-**页面组件规范：**
+**Page component pattern:**
 ```typescript
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
@@ -476,7 +476,7 @@ export function MyFeaturePage() {
       void qc.invalidateQueries({ queryKey: ['my-feature'] })
       toast.success('Created')
     },
-    // onError 不需要：全局拦截器已处理错误 Toast
+    // no onError needed, the global interceptor already handles error toasts
   })
 
   if (isLoading) return <div>Loading...</div>
@@ -492,31 +492,31 @@ export function MyFeaturePage() {
 }
 ```
 
-### 3.6 注册路由与导航
+### 3.6 Register Routes and Navigation
 
-**1. 添加路由** (`src/App.tsx`)：
+**1. Add the route in `src/App.tsx`:**
 ```tsx
 import { MyFeaturePage } from './features/my-feature'
-// 在 Layout 路由内添加：
+// add this inside the Layout routes
 <Route path="/my-feature" element={<MyFeaturePage />} />
 ```
 
-**2. 添加导航菜单** (`src/constants/navigation.ts`)：
+**2. Add the navigation item in `src/constants/navigation.ts`:**
 ```typescript
 { to: '/my-feature', key: 'nav.my_feature', adminOnly: false }
 ```
 
-**3. 添加 i18n 文本** (`src/i18n/zh.ts` 和 `en.ts`)：
+**3. Add i18n text in `src/i18n/zh.ts` and `en.ts`:**
 ```typescript
 // zh.ts
-'nav.my_feature': '我的功能',
+'nav.my_feature': 'My Feature',
 // en.ts
 'nav.my_feature': 'My Feature',
 ```
 
-### 3.7 国际化 (i18n)
+### 3.7 Internationalization, i18n
 
-所有用户可见的文字**必须**通过 i18n，不允许硬编码中英文字符串。
+All user-facing text must go through i18n. Do not hardcode Chinese or English strings in components.
 
 ```typescript
 import { useI18n } from '../../../i18n'
@@ -527,18 +527,18 @@ function MyComponent() {
 }
 ```
 
-**现有 i18n key 分类：** `nav.*`, `home.*`, `settings.*`, `prompts.*`, `debug.*`, `chat.*`, `users.*`, `persona_config.*`, `log.*`, `error.*`, `opt.*`
+**Current i18n key groups:** `nav.*`, `home.*`, `settings.*`, `prompts.*`, `debug.*`, `chat.*`, `users.*`, `persona_config.*`, `log.*`, `error.*`, `opt.*`
 
-### 3.8 全局共享类型 (`src/types/index.ts`)
+### 3.8 Shared Global Types in `src/types/index.ts`
 
-在此文件中定义跨 Feature 使用的类型。功能模块内部专用类型放在各自的 `types.ts` 中。
+Put types used across many features in this file. Feature-only types can stay in each feature's own `types.ts`.
 
-**现有主要类型：**
+**Main existing types:**
 ```typescript
 AuthUser           // id, email, role
 User               // id, email, role, worker_enabled, min_priority, max_emails_per_run, poll_interval
 Bot                // id, user_id, name, token, chat_id, is_default, chat_prompt_id, bot_mode
-Config             // 所有后端配置字段 (LLM_BACKEND, GMAIL_POLL_INTERVAL 等 50+ 字段)
+Config             // all backend config fields, such as LLM_BACKEND and GMAIL_POLL_INTERVAL
 LogEntry           // id, user_id, ts, level, log_type, tokens, msg
 EmailRecord        // id, email_id, subject, sender, analysis, summary, telegram_msg, priority, ...
 WorkerStatus       // running, interval, query, priorities, stats
@@ -549,33 +549,33 @@ PersonaConfigData  // Record<category, Record<key, string>>
 PersonaGenerateResult  // prompt, tokens
 ```
 
-### 3.9 全局 Custom Hooks (`src/hooks/`)
+### 3.9 Global Custom Hooks in `src/hooks/`
 
-| Hook | 返回值 | 作用 |
+| Hook | Return value | Purpose |
 |------|--------|------|
-| `useHealthCheck(interval?)` | `boolean \| null` | 定期检查 `/health`，null 表示检查中 |
-| `useWorkerStatus()` | `{ gmailWorker, chatBot }` | 监听 WebSocket 状态，更新 Query 缓存 |
-| `useConfirmDiscard(isDirty, msg)` | — | 表单有未保存更改时，离开页面前弹出确认 |
+| `useHealthCheck(interval?)` | `boolean \| null` | Check `/health` regularly, `null` means still checking |
+| `useWorkerStatus()` | `{ gmailWorker, chatBot }` | Listen to WebSocket status and update Query cache |
+| `useConfirmDiscard(isDirty, msg)` | — | Show a confirm dialog when a form has unsaved changes |
 
-### 3.10 Tailwind 颜色规范
+### 3.10 Tailwind Color Rules
 
-使用已有的颜色变量，不要随意引入新颜色：
+Use the existing color values. Do not add random new colors.
 
-| 用途 | 颜色值 |
+| Use | Color value |
 |------|--------|
-| 深色背景 (页面/卡片) | `#0f172a`, `#0b0e14`, `#1e2330`, `#16213e` |
-| 边框 | `#2d3748` |
-| 主文本 | `#e2e8f0` |
-| 次要文本 | `#94a3b8`, `#64748b` |
-| Indigo 强调 | `#6366f1` |
-| Telegram 蓝 | `#0088cc` |
-| 成功 | `#22c55e` |
-| 错误 | `#ef4444` |
-| 警告 | `#fcd34d` |
+| Dark background for page or card | `#0f172a`, `#0b0e14`, `#1e2330`, `#16213e` |
+| Border | `#2d3748` |
+| Main text | `#e2e8f0` |
+| Secondary text | `#94a3b8`, `#64748b` |
+| Indigo highlight | `#6366f1` |
+| Telegram blue | `#0088cc` |
+| Success | `#22c55e` |
+| Error | `#ef4444` |
+| Warning | `#fcd34d` |
 
-### 3.11 表单规范
+### 3.11 Form Rules
 
-对于包含 3 个字段以上的表单，**必须**使用 `react-hook-form` + `zod`：
+For forms with more than 3 fields, you must use `react-hook-form` and `zod`:
 
 ```typescript
 import { useForm } from 'react-hook-form'
@@ -602,11 +602,11 @@ export function MyForm() {
   return (
     <form onSubmit={handleSubmit(data => mutation.mutate(data))}>
       <FormInput name="email" control={control} label="Email" required />
-      <FormSelect name="priority" control={control} label="优先级"
-        options={[{label:'高',value:'high'},{label:'中',value:'medium'},{label:'低',value:'low'}]} />
-      <FormSwitch name="enabled" control={control} label="启用" />
+      <FormSelect name="priority" control={control} label="Priority"
+        options={[{label:'High',value:'high'},{label:'Medium',value:'medium'},{label:'Low',value:'low'}]} />
+      <FormSwitch name="enabled" control={control} label="Enabled" />
       <Button type="submit" loading={mutation.isPending} disabled={!isDirty}>
-        保存
+        Save
       </Button>
     </form>
   )
@@ -615,49 +615,50 @@ export function MyForm() {
 
 ---
 
-## 4. 完整新功能开发流程示例
+## 4. Example of a Full New Feature Flow
 
-以添加"通知模板"功能为例：
+Here is an example for adding a notification template feature.
 
-### 后端步骤
+### Backend steps
 
-1. **定义模型** → `app/db/base.py` 添加 `notification_templates` 表
-2. **定义 Schema** → `app/schemas/notification.py` 添加 `TemplateCreate`, `TemplateResponse`
-3. **实现 Repository** → `app/db/repositories/template_repo.py`
-4. **（可选）Service** → `app/services/notification_service.py`
-5. **添加路由** → `app/api/routes/notifications.py`
-6. **注册路由** → `app/api/routes/__init__.py` 导入，`app/main.py` `include_router`
+1. **Define the model** in `app/db/base.py` and add the `notification_templates` table
+2. **Define the schemas** in `app/schemas/notification.py`, such as `TemplateCreate` and `TemplateResponse`
+3. **Implement the repository** in `app/db/repositories/template_repo.py`
+4. **Optional service layer** in `app/services/notification_service.py`
+5. **Add routes** in `app/api/routes/notifications.py`
+6. **Register the routes** by importing in `app/api/routes/__init__.py` and using `include_router` in `app/main.py`
 
-### 前端步骤
+### Frontend steps
 
-1. **创建 Feature 目录** → `frontend/src/features/notifications/`
-2. **定义类型** → `src/types/index.ts`（跨模块）或 `features/notifications/types.ts`（局部）
-3. **实现 API 层** → `features/notifications/api/index.ts`
-4. **实现页面** → `features/notifications/components/NotificationsPage.tsx`
-5. **注册路由** → `src/App.tsx`
-6. **添加导航** → `src/constants/navigation.ts`
-7. **更新 i18n** → `src/i18n/zh.ts` + `en.ts`
-8. **导出** → `features/notifications/index.ts`
+1. **Create the feature folder** in `frontend/src/features/notifications/`
+2. **Define types** in `src/types/index.ts` for shared types or `features/notifications/types.ts` for local types
+3. **Build the API layer** in `features/notifications/api/index.ts`
+4. **Build the page** in `features/notifications/components/NotificationsPage.tsx`
+5. **Register the route** in `src/App.tsx`
+6. **Add navigation** in `src/constants/navigation.ts`
+7. **Update i18n** in `src/i18n/zh.ts` and `en.ts`
+8. **Export from the module** in `features/notifications/index.ts`
 
 ---
 
-## 5. 快速检查清单 (Checklist)
+## 5. Quick Checklist
 
-### 后端
-- [ ] 数据库模型已在 `app/db/base.py` 中定义
-- [ ] Pydantic Schema 已在 `app/schemas/` 下创建
-- [ ] SQL 逻辑封装在 Repository 中，Route/Service 不直接执行 SQL
-- [ ] 路由已在 `app/api/routes/__init__.py` 注册并在 `main.py` 中 `include_router`
-- [ ] 鉴权路由使用了 `Depends(current_user)` 或 `Depends(require_admin)`
-- [ ] 新增环境变量已在 `app/core/config.py` 的 `Settings` 中声明
+### Backend
+- [ ] The database model is defined in `app/db/base.py`
+- [ ] The Pydantic schema is created under `app/schemas/`
+- [ ] SQL logic is inside the repository, not directly in Route or Service
+- [ ] The route is registered in `app/api/routes/__init__.py` and included in `main.py`
+- [ ] Protected routes use `Depends(current_user)` or `Depends(require_admin)`
+- [ ] New environment variables are declared in the `Settings` class in `app/core/config.py`
 
-### 前端
-- [ ] Feature 目录结构完整（`api/index.ts`, `components/`, `index.ts`）
-- [ ] API 调用使用 `api` 实例，类型导入用 `import type`
-- [ ] 页面使用 `useQuery` / `useMutation`，未手动维护 loading/error 状态
-- [ ] 未在页面中处理 API 错误 Toast（拦截器已处理）
-- [ ] 使用了 `src/components/common/` 的标准组件，无内联样式
-- [ ] 3 个字段以上的表单使用了 `react-hook-form` + `zod`
-- [ ] i18n 文本已在 `zh.ts` 和 `en.ts` 中同步更新
-- [ ] 路由已在 `App.tsx` 注册，导航已在 `navigation.ts` 配置
-- [ ] `npm run build` 通过（零 TypeScript 错误）
+### Frontend
+- [ ] The feature folder has the full structure, such as `api/index.ts`, `components/`, and `index.ts`
+- [ ] API calls use the shared `api` instance, and type imports use `import type`
+- [ ] Pages use `useQuery` and `useMutation` instead of manual loading or error state logic
+- [ ] API error toasts are not handled inside the page because the interceptor already handles them
+- [ ] Standard components from `src/components/common/` are used, with no inline styles
+- [ ] Forms with more than 3 fields use `react-hook-form` and `zod`
+- [ ] i18n text is updated in both `zh.ts` and `en.ts`
+- [ ] The route is added in `App.tsx`, and navigation is added in `navigation.ts`
+- [ ] `npm run build` passes with zero TypeScript errors
+

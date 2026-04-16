@@ -1,36 +1,36 @@
-# 聊天人设配置功能文档
+# Chat Persona Configuration Guide
 
-本文档介绍 Xiaoxing AI 的「聊天人设」体系，包括管理员如何配置星座 / 属相 / 性别风格提示词，以及用户如何通过 AI 生成器生成专属聊天 System Prompt。
-
----
-
-## 目录
-
-1. [功能概述](#功能概述)
-2. [数据库设计](#数据库设计)
-3. [管理员：人设配置页面](#管理员人设配置页面)
-4. [用户：聊天提示词生成器](#用户聊天提示词生成器)
-5. [AI 生成流水线](#ai-生成流水线)
-6. [API 接口](#api-接口)
+This document explains the chat persona system in Xiaoxing AI. It includes how admins can set style prompts for zodiac, Chinese zodiac, and gender, and how users can generate their own chat system prompt with AI.
 
 ---
 
-## 功能概述
+## Contents
 
-「聊天人设」功能分为两个层次：
+1. [Feature Overview](#feature-overview)
+2. [Database Design](#database-design)
+3. [Admin: Persona Config Page](#admin-persona-config-page)
+4. [User: Chat Prompt Generator](#user-chat-prompt-generator)
+5. [AI Generation Pipeline](#ai-generation-pipeline)
+6. [API Endpoints](#api-endpoints)
 
-| 层次 | 使用者 | 说明 |
+---
+
+## Feature Overview
+
+The chat persona feature has two levels:
+
+| Level | User | Description |
 |------|--------|------|
-| **人设配置**（系统级） | 管理员 | 为星座、属相、性别分类配置风格提示词，存入 `system_prompts` 表，作为 AI 生成的参考语境 |
-| **聊天提示词**（用户级） | 普通用户 | 输入关键词，可选择星座 / 属相 / 性别，AI 四步流水线生成专属 System Prompt，存入 `user_prompts` 表，可分配给 Bot |
+| **Persona configuration** at system level | Admin | Configure style prompts for zodiac, Chinese zodiac, and gender. They are stored in the `system_prompts` table and used as reference context for AI generation. |
+| **Chat prompt** at user level | Regular user | Enter keywords and optionally choose zodiac, Chinese zodiac, or gender. The AI uses a four-step pipeline to generate a custom system prompt, stores it in the `user_prompts` table, and it can be assigned to a bot. |
 
 ---
 
-## 数据库设计
+## Database Design
 
-### 表结构
+### Table Structure
 
-系统分两张表存储 Prompt，彼此职责清晰：
+The system uses two tables to store prompts, and each table has a clear role:
 
 ```
 system_prompts                    user_prompts
@@ -45,178 +45,179 @@ updated_at  TIMESTAMP             created_at  TIMESTAMP
                                   updated_at  TIMESTAMP
 ```
 
-- **`system_prompts`**：管理员专属，存放内置 AI 提示词模板（`chat`、`user_profile`、`email_analysis` 等）以及所有人设配置（`type = 'persona_config'`）。
-- **`user_prompts`**：每行属于一个用户，存放用户生成/保存的聊天人设（`type = 'chat'`）以及用户对默认提示词的自定义覆盖。
+- **`system_prompts`**: admin-only. It stores built-in AI prompt templates such as `chat`, `user_profile`, and `email_analysis`, and also all persona config items where `type = 'persona_config'`.
+- **`user_prompts`**: each row belongs to one user. It stores user-generated or saved chat personas where `type = 'chat'`, and also user overrides for default prompts.
 
-`bot.chat_prompt_id` 外键指向 `user_prompts(id)`，代表该 Bot 当前使用的聊天人设。
+The foreign key `bot.chat_prompt_id` points to `user_prompts(id)`. It means the chat persona currently used by that bot.
 
-### 人设配置的 name 格式
+### Name Format for Persona Config
 
-人设配置行的 `name` 字段采用 `{category}:{key}` 格式：
+The `name` field for persona config rows uses the format `{category}:{key}`:
 
-| category | key 示例 | 含义 |
+| category | example key | meaning |
 |---|---|---|
-| `zodiac` | `aries`、`taurus`、... | 十二星座 |
-| `chinese_zodiac` | `rat`、`ox`、... | 十二属相 |
-| `gender` | `male`、`female`、`other` | 性别 |
+| `zodiac` | `aries`, `taurus`, ... | the 12 zodiac signs |
+| `chinese_zodiac` | `rat`, `ox`, ... | the 12 Chinese zodiac animals |
+| `gender` | `male`, `female`, `other` | gender |
 
-例：`name = 'zodiac:aries'` 表示白羊座的风格提示词。
+Example: `name = 'zodiac:aries'` means the style prompt for Aries.
 
-### 数据迁移（旧版 `prompts` 单表）
+### Data Migration from the Old `prompts` Table
 
-若数据库中存在旧版 `prompts` 单表，应用启动时 `init_db()` 会自动执行一次性迁移：
+If the database still has the old single `prompts` table, `init_db()` will run a one-time migration when the app starts:
 
-1. `user_id IS NULL` 的行 → 复制至 `system_prompts`（保留原 ID）
-2. `user_id IS NOT NULL` 的行 → 复制至 `user_prompts`（保留原 ID）
-3. 修复两张新表的序列值
-4. `bot.chat_prompt_id` 外键重新绑定到 `user_prompts`
-5. 删除旧 `prompts` 表
+1. Rows with `user_id IS NULL` are copied to `system_prompts`, keeping the original IDs
+2. Rows with `user_id IS NOT NULL` are copied to `user_prompts`, keeping the original IDs
+3. The sequence values of the new tables are fixed
+4. The foreign key `bot.chat_prompt_id` is rebound to `user_prompts`
+5. The old `prompts` table is deleted
 
-迁移完全幂等：旧表不存在时立即返回，不会重复执行。
-
----
-
-## 管理员：人设配置页面
-
-位置：导航栏 **PersonaConfig**（仅管理员可见）
-
-### 功能
-
-- 按标签页切换「星座」「属相」「性别」三个分类
-- 点击某个分类项（如「白羊座」），右侧编辑框中显示当前已配置的风格提示词
-- 编辑后点击「保存」，写入 `system_prompts` 表（Upsert）
-- 尚未配置的项可直接输入新内容后保存
-
-### 风格提示词建议格式
-
-提示词应以第三人称描述该类型用户的典型聊天风格，例如：
-
-```
-白羊座用户性格直率、热情，语言风格简短有力，喜欢直接表达观点，
-充满行动力，不喜欢拐弯抹角，偶尔会冲动但很快平复。
-```
-
-这段文字会作为语境补充（加上标签 `[星座风格参考]`）注入到 AI 生成流水线的第一、第二步。
+The migration is idempotent. If the old table does not exist, it returns immediately and does not run again.
 
 ---
 
-## 用户：聊天提示词生成器
+## Admin: Persona Config Page
 
-位置：**Chat 页面** → 「聊天提示词生成器」卡片
+Location: **PersonaConfig** in the navigation bar, visible only to admins.
 
-### 操作流程
+### Functions
 
-1. **选择属性**（可选）：从「星座」「属相」「性别」三个下拉框中选择，仅展示管理员已配置的选项
-2. **输入关键词**：自由描述想要的聊天人格，例如「活泼可爱的女生，爱开玩笑，说话简短」
-3. 点击 **✨ 生成提示词**，AI 执行四步流水线，约需 10–30 秒
-4. 在结果框中可直接编辑生成内容
-5. 填写名称后点击 **💾 保存提示词**，存入 `user_prompts` 表
-6. 在「聊天提示词管理」卡片中，将保存的提示词分配给对应的 Bot
+- switch between the three tabs: zodiac, Chinese zodiac, and gender
+- click one item such as Aries, and the editor on the right shows the current style prompt
+- edit the text and click Save to write it into the `system_prompts` table with upsert logic
+- if an item has no config yet, you can enter new content and save it directly
 
-### 选项联动说明
+### Suggested Style Prompt Format
 
-选择了星座 / 属相 / 性别后，系统会在后端从 `system_prompts` 中读取对应的风格提示词，以如下格式追加到关键词末尾，再一同送给 AI：
+The prompt should describe the typical chat style of this type of user in the third person. For example:
 
 ```
-<用户输入的关键词>
-
-[星座风格参考]
-<zodiac:aries 的配置内容>
-
-[属相风格参考]
-<chinese_zodiac:rat 的配置内容>
+An Aries user is direct and warm. The speaking style is short and strong.
+They like to express ideas clearly, act quickly, dislike too much hesitation,
+and may be a little impulsive but calm down soon.
 ```
 
-若某个选项尚无配置内容，则静默跳过，不影响生成。
+This text is added as extra context, with a label like `[Zodiac Style Reference]`, into step 1 and step 2 of the AI generation flow.
 
 ---
 
-## AI 生成流水线
+## User: Chat Prompt Generator
 
-生成使用四步流水线，全部在 `POST /chat/generate_persona_prompt` 中执行：
+Location: **Chat page** → **Chat Prompt Generator** card
+
+### Steps
+
+1. **Choose attributes** if needed. Select from zodiac, Chinese zodiac, and gender. Only options already configured by the admin are shown.
+2. **Enter keywords**. Freely describe the chat personality you want, for example: `a lively and cute girl, likes jokes, speaks in short sentences`
+3. Click **Generate Prompt**. The AI runs a four-step pipeline and usually takes about 10 to 30 seconds
+4. You can edit the generated result directly in the result box
+5. Enter a name and click **Save Prompt** to store it in the `user_prompts` table
+6. In the prompt management card, assign the saved prompt to a bot
+
+### How the Selected Options Work
+
+When the user selects zodiac, Chinese zodiac, or gender, the backend reads the matching style prompt from `system_prompts` and appends it to the keywords like this before sending everything to the AI:
 
 ```
-用户输入（关键词 + 风格补充）
+<user input keywords>
+
+[Zodiac Style Reference]
+<content of zodiac:aries>
+
+[Chinese Zodiac Style Reference]
+<content of chinese_zodiac:rat>
+```
+
+If one option has no saved content yet, it is skipped silently and generation still works.
+
+---
+
+## AI Generation Pipeline
+
+The generation uses a four-step pipeline. Everything runs in `POST /chat/generate_persona_prompt`:
+
+```
+User input, keywords plus style reference
         │
         ▼
 Step 1  tonePersonaGenerator.txt
-        LLM 分析语气风格 → tone JSON
+        The LLM analyzes tone and style and returns tone JSON
         {tone, style, rhythm, language_features, ...}
         │
         ▼
 Step 2  characterPortraitGeneration.txt
-        LLM 生成角色画像 → portrait JSON
+        The LLM creates a character portrait and returns portrait JSON
         {personality_traits, social_persona, emotional_pattern, ...}
         │
         ▼
 Step 3  chatPrompt.txt
-        LLM 生成自由叙述型 system prompt（参考用，不直接使用）
+        The LLM creates a free-form system prompt for reference
         │
         ▼
-Step 4  specificChatStyle.txt（模板填充，无需 LLM）
-        用 Step 1 & 2 的 JSON 字段填入结构化模板
-        → 最终 System Prompt
+Step 4  specificChatStyle.txt, template fill only, no LLM
+        Fill the structured template with JSON fields from step 1 and 2
+        → final system prompt
 ```
 
-Step 4 为纯字符串替换（不调用 LLM），确保输出格式固定、可预测。
+Step 4 is only string replacement and does not call the LLM. This makes the output more stable and predictable.
 
-### Token 消耗
+### Token Cost
 
-三次 LLM 调用共消耗约 500–2000 Token，结果页面显示总消耗量。
+The three LLM calls usually use about 500 to 2000 tokens in total. The result page shows the total token usage.
 
 ---
 
-## API 接口
+## API Endpoints
 
-### 管理员人设配置
+### Admin Persona Config
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| `GET` | `/admin/persona-config` | 获取所有人设配置，按分类分组返回 |
-| `PUT` | `/admin/persona-config` | 保存单条配置（Upsert） |
+| `GET` | `/admin/persona-config` | Get all persona config and return it grouped by category |
+| `PUT` | `/admin/persona-config` | Save one config item with upsert |
 
-`PUT` 请求体：
+`PUT` request body:
 ```json
 {
   "category": "zodiac",
   "key": "aries",
-  "content": "白羊座风格描述..."
+  "content": "Aries style description..."
 }
 ```
 
-### 聊天提示词生成
+### Chat Prompt Generation
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| `POST` | `/chat/generate_persona_prompt` | 执行四步 AI 流水线，返回生成的 System Prompt |
+| `POST` | `/chat/generate_persona_prompt` | Run the four-step AI pipeline and return the generated system prompt |
 
-请求体：
+Request body:
 ```json
 {
-  "keywords": "活泼可爱的女生，爱开玩笑",
+  "keywords": "a lively and cute girl who likes jokes",
   "zodiac": "aries",
   "chinese_zodiac": "rat",
   "gender": "female"
 }
 ```
 
-响应：
+Response:
 ```json
 {
-  "prompt": "...<生成的 System Prompt>...",
+  "prompt": "...<generated system prompt>...",
   "tokens": 1230
 }
 ```
 
-`zodiac`、`chinese_zodiac`、`gender` 均为可选字段，传 `null` 或不传则不注入风格补充。
+`zodiac`, `chinese_zodiac`, and `gender` are all optional. If you pass `null` or do not pass them, no extra style reference is added.
 
-### 用户提示词 CRUD
+### User Prompt CRUD
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| `GET` | `/db/prompts` | 列出当前用户的所有提示词 |
-| `POST` | `/db/prompts` | 创建新提示词 |
-| `PUT` | `/db/prompts/{id}` | 更新提示词 |
-| `DELETE` | `/db/prompts/{id}` | 删除提示词 |
+| `GET` | `/db/prompts` | List all prompts of the current user |
+| `POST` | `/db/prompts` | Create a new prompt |
+| `PUT` | `/db/prompts/{id}` | Update a prompt |
+| `DELETE` | `/db/prompts/{id}` | Delete a prompt |
 
-这些接口操作 `user_prompts` 表，仅返回当前登录用户自己的数据。
+These endpoints work on the `user_prompts` table and only return data of the current logged-in user.
