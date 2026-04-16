@@ -1,6 +1,6 @@
 # Xiaoxing AI (小星 AI)
 
-> 多用户 Gmail 自动化 + Telegram AI 聊天机器人平台
+> 多用户 Gmail 自动化 + Telegram 通知平台
 
 [English](README.md)
 
@@ -8,28 +8,26 @@
 
 如果你觉得本项目对你有帮助，欢迎在 GitHub 上给我们一个 ⭐ 支持，这能帮助更多人发现并维持项目发展。谢谢！
 
----
+***
 
 ## 截图
 
 ![Xiaoxing AI 首页](app/image/Home-zh.png)
 
----
+***
 
 ## 功能特性
 
-| 功能 | 简介 |
-|------|------|
-|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，3 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重 |
-|[Telegram 集成](feature/zh/telegram.md) | 多 Bot 聊天 + 邮件推送；各自维护历史、人设与工具；线程安全 |
-|[记忆系统](feature/zh/memory.md) | 结构化长期记忆（`[事实]` `[偏好]` `[近期事件]` `[性格观察]`），按相关性筛选注入 |
-|[工具系统](feature/zh/tool-system.md) | `get_time`、`get_emails`、`fetch_email`；Router LLM 调度，关键词降级兜底 |
-|[人格生成器](feature/zh/persona.md) | 4 阶段 AI 人格生成流水线，身份属性（星座/性别/年龄感）内嵌到 Prompt 内容 |
-|[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
-|[Prompt 管理](feature/zh/prompts.md) | 内置 + 每用户自定义 Prompt，每次 LLM 调用热重载；每个 Bot 可绑定聊天 Prompt |
-|[Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语 |
+| 功能                                    | 简介                                                               |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| [Gmail 流水线](feature/zh/gmail.md)      | 每用户独立 Worker，3 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重                    |
+| [Telegram 集成](feature/zh/telegram.md) | 邮件推送通知、发信草稿的确认/取消回调按钮、用户绑定 Bot                                   |
+| [工具系统](feature/zh/tool-system.md)     | 工具注册表 + Router LLM 调度（不可用时关键词降级）；包含发信草稿相关工具                      |
+| [认证与用户管理](feature/zh/auth.md)         | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销                       |
+| [Prompt 管理](feature/zh/prompts.md)    | 内置 Prompt + 每用户覆盖；管理员可在网页端管理所有 Prompt 文件                         |
+| [Web 界面](feature/zh/ui.md)            | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语；移动端友好 |
 
----
+***
 
 ## 系统要求
 
@@ -43,7 +41,7 @@
   - 云端：OpenAI API Key
 - **Router LLM（可选）** — 第二个 llama-server，端口 8002（推荐 Qwen2.5-1.5B），用于 AI 工具调度；不可达时自动降级为关键词匹配
 
----
+***
 
 ## 快速开始
 
@@ -58,7 +56,7 @@ cd xiaoxingAI
 
 ```bash
 docker run -d --name pg16 \
-  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_PASSWORD=<change-me> \
   -p 5432:5432 \
   postgres:16
 
@@ -93,30 +91,33 @@ copy .env.example .env        # Windows
 
 编辑 .env，填入以下内容：
 
-| 变量 | 说明 |
-|------|------|
-| `ADMIN_USER` | 管理员登录邮箱（例如 admin@local.com） |
-| `ADMIN_PASSWORD` | 管理员密码 |
-| `JWT_SECRET` | JWT 签名密钥 — **生产环境必须修改** |
-| `JWT_EXPIRE_MINUTES` | JWT 有效期（分钟，默认 60） |
-| `GMAIL_POLL_INTERVAL` | 默认轮询间隔秒数（默认 300） |
-| `GMAIL_POLL_QUERY` | Gmail 搜索语法（默认 is:unread in:inbox） |
-| `GMAIL_POLL_MAX` | 每次最多处理邮件数（默认 20） |
-| `GMAIL_MARK_READ` | 处理后是否标记已读（true/false） |
-| `NOTIFY_MIN_PRIORITY` | 推送优先级过滤，逗号分隔；留空则推送全部 |
-| `LLM_BACKEND` | local 或 openai（默认 local） |
-| `LLM_API_URL` | LLM API 地址 |
-| `LLM_MODEL` | 模型名称 |
-| `OPENAI_API_KEY` | OpenAI API Key（LLM_BACKEND=openai 时必填） |
-| `POSTGRES_DSN` | PostgreSQL 连接字符串（默认 postgresql://postgres:postgres@localhost:5432/xiaoxing） |
-| `REDIS_URL` | Redis 连接地址（默认 redis://localhost:6380） |
-| `ROUTER_API_URL` | Router LLM 地址（默认 http://127.0.0.1:8002/v1/chat/completions） |
-| `ROUTER_MODEL` | Router 模型名称（默认 local-router） |
-| `FRONTEND_URL` | 前端来源地址，用于 OAuth 回调和 CORS（默认 http://localhost:5173） |
-| `UI_LANG` | 默认 UI 语言，`en` 或 `zh`（默认 en） |
-| `TELEGRAM_CALLBACK_SECRET` | Telegram callback_data 签名密钥（按钮确认/取消等操作防伪造） |
-| `OUTGOING_EMAIL_ENCRYPTION_KEY` | 发信草稿正文加密密钥：base64(32 bytes) |
-| `OUTGOING_DRAFT_TTL_MINUTES` | 发信草稿有效期（分钟，默认 30） |
+| 变量                              | 说明                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `ADMIN_USER`                    | 管理员登录邮箱（例如 <admin@local.com>）                                                |
+| `ADMIN_PASSWORD`                | 管理员密码                                                                        |
+| `JWT_SECRET`                    | JWT 签名密钥 — **生产环境必须修改**                                                      |
+| `JWT_EXPIRE_MINUTES`            | JWT 有效期（分钟，默认 60）                                                            |
+| `GMAIL_POLL_INTERVAL`           | 默认轮询间隔秒数（默认 300）                                                             |
+| `GMAIL_POLL_QUERY`              | Gmail 默认搜索语法（兜底值，默认 `is:unread in:inbox category:primary`）                   |
+| `GMAIL_POLL_MAX`                | 每次最多处理邮件数（默认 5）                                                              |
+| `GMAIL_MARK_READ`               | 处理后是否标记已读（true/false）                                                        |
+| `AUTO_START_GMAIL_WORKER`       | 启动服务时自动启动轮询（默认 false）                                                        |
+| `NOTIFY_MIN_PRIORITY`           | 推送优先级过滤，逗号分隔；留空则推送全部                                                         |
+| `LLM_BACKEND`                   | local 或 openai（默认 local）                                                     |
+| `LLM_API_URL`                   | LLM API 地址                                                                   |
+| `LLM_MODEL`                     | 模型名称                                                                         |
+| `LLM_API_KEY`                   | LLM API Key（LLM\_BACKEND=openai 时使用；会回退到 OPENAI\_API\_KEY）                   |
+| `OPENAI_API_KEY`                | OpenAI API Key（兼容旧配置）                                                        |
+| `POSTGRES_DSN`                  | PostgreSQL 连接字符串（默认 postgresql://postgres:postgres\@localhost:5432/xiaoxing） |
+| `REDIS_URL`                     | Redis 连接地址（默认 redis\://localhost:6380）                                       |
+| `REQUIRE_REDIS`                 | Redis 不可用时是否直接报错退出（默认 false）                                                 |
+| `ROUTER_API_URL`                | Router LLM 地址（默认 <http://127.0.0.1:8002/v1/chat/completions）>                |
+| `ROUTER_MODEL`                  | Router 模型名称（默认 local-router）                                                 |
+| `FRONTEND_URL`                  | 前端来源地址，用于 OAuth 回调和 CORS（默认 <http://localhost:5173）>                         |
+| `UI_LANG`                       | 默认 UI 语言，`en` 或 `zh`（默认 en）                                                  |
+| `TELEGRAM_CALLBACK_SECRET`      | Telegram callback\_data 签名密钥（按钮确认/取消等操作防伪造）                                  |
+| `OUTGOING_EMAIL_ENCRYPTION_KEY` | 发信草稿正文加密密钥：base64(32 bytes)                                                  |
+| `OUTGOING_DRAFT_TTL_MINUTES`    | 发信草稿有效期（分钟，默认 30）                                                            |
 
 ### 6. 放置 Google OAuth 凭据
 
@@ -142,25 +143,30 @@ curl http://127.0.0.1:8000/api/health
 ```
 
 首次启动会自动执行：
+
 - 创建 PostgreSQL 数据库结构（用户、机器人、Prompt、邮件、发信草稿、回复格式、日志等表）
 - 将 app/prompts/ 下的文件导入为系统内置 Prompt
-- 根据 ADMIN_USER / ADMIN_PASSWORD 创建管理员账号
+- 根据 ADMIN\_USER / ADMIN\_PASSWORD 创建管理员账号
 
 ### 8. 启动前端
 
 **开发模式**（热重载）：
+
 ```bash
 cd frontend
 npm run dev
 ```
-访问：http://localhost:5173
+
+访问：<http://localhost:5173>
 
 **生产模式**：
+
 ```bash
 cd frontend
 npm run build
 ```
-访问：http://127.0.0.1:8000
+
+访问：<http://127.0.0.1:8000>
 
 ### 9. 登录
 
@@ -170,13 +176,13 @@ npm run build
 
 在设置页面点击 **Authorize via Google**，授权后 token 将自动存入数据库并与当前用户绑定。
 
----
+***
 
 ## Token 获取方式
 
 Telegram Bot Token、Chat ID 和 Google OAuth2 凭据的获取方式见 [support/help.zh.md](support/help.zh.md)。
 
----
+***
 
 ## 项目结构
 
@@ -188,10 +194,8 @@ xiaoxing/
 │   │   └── routes/             # 每类资源独立文件（auth、users、bots…）
 │   ├── core/
 │   │   ├── auth.py             # JWT 签发/验证、bcrypt、FastAPI 依赖项
-│   │   ├── bot_worker.py       # 多 Bot Telegram 长轮询 Worker
-│   │   ├── chat.py             # LLM 对话回复 + 用户画像生成
 │   │   ├── llm.py              # LLM 客户端（本地 / OpenAI）；3 次退避重试 + Redis 缓存
-│   │   ├── redis_client.py     # Redis 工具（历史、队列、去重、LLM 缓存）
+│   │   ├── redis_client.py     # Redis 工具（LLM 缓存、去重、jwt 版本号等）
 │   │   ├── telegram/           # Telegram 客户端（发/改消息、getUpdates 辅助）
 │   │   ├── debug/              # 内存调试事件缓冲
 │   │   ├── realtime/           # WebSocket 订阅/发布（Gmail & Bot 状态）
@@ -212,10 +216,10 @@ xiaoxing/
 │   │       ├── log_repo.py
 │   │       ├── stats_repo.py
 │   │       ├── oauth_repo.py
-│   │       ├── profile_repo.py
-│   │       └── persona_repo.py
+│   │       ├── outgoing_email_repo.py
+│   │       └── reply_format_repo.py
 │   ├── schemas/                # Pydantic 请求/响应模型
-│   ├── services/               # 业务逻辑层（GmailService、TelegramService…）
+│   ├── services/               # 业务逻辑层（GmailService、发信草稿相关 service 等）
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 授权流程（按用户存储 token）
@@ -227,13 +231,11 @@ xiaoxing/
 │   │   ├── json_parser.py      # 从 LLM 输出提取 JSON
 │   │   └── prompt_loader.py    # 加载 app/prompts/ 下的文件
 │   └── prompts/
-│       ├── chat.txt
-│       ├── user_profile.txt
 │       ├── gmail/
 │       │   ├── email_analysis.txt
 │       │   ├── email_summary.txt
 │       │   └── telegram_notify.txt
-│       └── tools/              # 人格生成相关 Prompt
+│       └── outgoing/           # 发信/回复/改写相关 Prompt
 ├── frontend/
 │   └── src/
 │       ├── api/
@@ -243,11 +245,9 @@ xiaoxing/
 │       ├── features/           # 基于功能模块的组织结构（各含 api/、components/、index.ts）
 │       │   ├── auth/           # 登录、getMe
 │       │   ├── gmail/          # GmailPage、Worker 控制、日志查看
-│       │   ├── chat/           # ChatPage、Bot 控制
 │       │   ├── settings/       # SettingsPage、LLM/Gmail/Bot 子表单
 │       │   ├── prompts/        # PromptsPage、Prompt 编辑器
 │       │   ├── users/          # UsersPage、用户 & Bot CRUD
-│       │   ├── persona/        # PersonaConfigPage（管理员）
 │       │   ├── debug/          # DebugPage（管理员）
 │       │   └── system/         # 健康检查、DB 统计
 │       ├── hooks/              # useHealthCheck、useWorkerStatus、useConfirmDiscard
@@ -262,60 +262,62 @@ xiaoxing/
 └── requirements.txt
 ```
 
----
+***
 
 ## 数据库结构
 
-| 表名 | 说明 |
-|------|------|
-| `user` | 注册用户（管理员 + 普通用户）；存储每用户的 Worker 配置（`min_priority`、`poll_interval`…）和角色 |
-| `bot` | Telegram Bot；每个 Bot 归属一个用户；`bot_mode` 支持 `all` / `notify` / `chat` |
-| `system_prompts` | 系统内置 Prompt 模板（只读，启动时从 `app/prompts/` 自动导入） |
-| `user_prompts` | 用户自定义 Prompt 覆盖；可绑定到指定 Bot |
-| `oauth_tokens` | Google OAuth token，每用户一行 |
-| `email_records` | 邮件处理记录，包含完整 AI 输出（分析、摘要、Telegram 文案） |
-| `outgoing_email_drafts` | 发信草稿（正文加密）+ 状态机 + Telegram 预览关联 |
-| `outgoing_email_actions` | 发信动作审计/流水；也用于幂等（telegram_update_id 唯一） |
-| `reply_templates` | 每用户回复格式模板 |
-| `reply_format_settings` | 每用户回复格式设置（默认模板 + 署名） |
-| `worker_stats` | Gmail Worker 会话统计，按用户记录 |
-| `user_profile` | AI 生成的对话用户画像，每个 Bot 一行 |
-| `log` | Worker 和对话日志，含级别、类型和 token 数 |
+| 表名                       | 说明                                                              |
+| ------------------------ | --------------------------------------------------------------- |
+| `user`                   | 注册用户（管理员 + 普通用户）；角色与鉴权字段                                        |
+| `user_settings`          | 每用户设置（轮询间隔、轮询 query、优先级、worker\_enabled 等）                      |
+| `bot`                    | Telegram Bot；每个 Bot 归属一个用户；用于邮件通知（`bot_mode`: `all` / `notify`） |
+| `system_prompts`         | 系统内置 Prompt 模板（启动时从 `app/prompts/` 自动导入）                        |
+| `user_prompts`           | 用户 Prompt 覆盖                                                    |
+| `oauth_tokens`           | Google OAuth token，每用户一行                                        |
+| `email_records`          | 邮件处理记录，包含完整 AI 输出（分析、摘要、Telegram 文案）                            |
+| `outgoing_email_drafts`  | 发信草稿（正文加密）+ 状态机 + Telegram 预览关联                                 |
+| `outgoing_email_actions` | 发信动作审计/流水；也用于幂等（telegram\_update\_id 唯一）                        |
+| `reply_templates`        | 每用户回复格式模板                                                       |
+| `reply_format_settings`  | 每用户回复格式设置（默认模板 + 署名）                                            |
+| `worker_stats`           | Gmail Worker 会话统计，按用户记录                                         |
+| `log`                    | Worker 日志，含级别、类型和 token 数                                       |
 
----
+***
 
 ## API 接口
 
 完整接口文档见 [support/api.zh.md](support/api.zh.md)。
 
----
+***
 
 ## 部署说明
 
 如果你需要使用 Nginx、systemd、PostgreSQL、Redis 和 HTTPS 进行正式部署，请参考 [Deployment Guide](doc/deploy.md)。
 
----
+***
 
 ## 更多文档
 
 - [开发扩展指南](doc/development_guide.md)
-- [人格配置文档](doc/persona_config.md)
 - [API 文档](doc/api.md)
+- [后端设计指南](doc/backend-guide.md)
+- [前端 UI 指南](doc/ui-guide.md)
 - [帮助文档](support/help.zh.md)
 
----
+***
 
 ## LLM 配置
 
 详见 [LLM 配置 →](feature/zh/llm-configuration.md)。
 
----
+***
 
 ## 注意事项
 
 - credentials.json 包含敏感的 OAuth 客户端密钥，已加入 .gitignore，请勿提交到版本库。
-- 每用户的 OAuth token 存储在数据库 oauth_tokens 表中，不写入磁盘文件。
-- 首次启动时，若数据库中不存在管理员账号，服务会自动根据 ADMIN_USER / ADMIN_PASSWORD 创建。
-- JWT_SECRET 默认值为 change-me-in-production — **生产环境部署前必须修改为强密钥**。
+- 每用户的 OAuth token 存储在数据库 oauth\_tokens 表中，不写入磁盘文件。
+- 首次启动时，若数据库中不存在管理员账号，服务会自动根据 ADMIN\_USER / ADMIN\_PASSWORD 创建。
+- JWT\_SECRET 默认值为 change-me-in-production — **生产环境部署前必须修改为强密钥**。
 - Redis 为可选依赖；不可达时所有功能自动降级（无缓存、无异步队列）。
 - 每封邮件触发 3 次 LLM 调用：分析 → 摘要 → Telegram 文案，三个阶段的 Prompt 均可通过 UI 独立配置。
+

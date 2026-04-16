@@ -17,7 +17,7 @@ POST /auth/login
 1. JWT 签名和过期时间
 2. Token 版本号与 Redis 中的记录对比（支持即时吊销）
 
-Redis 不可达时跳过版本号检查（自动降级）。
+Redis 不可达时版本号校验会降级处理，即时吊销的保证会减弱。
 
 ## JWT 配置
 
@@ -39,8 +39,10 @@ Redis 不可达时跳过版本号检查（自动降级）。
 - Gmail OAuth Token（`oauth_tokens` 表，按 `user_id` 隔离）
 - Gmail Worker 状态和邮件记录
 - Telegram Bot（`bot` 表，`user_id` 外键）
-- 自定义 Prompt（`user_prompts`，`user_id` 外键）
-- Bot 对话历史和记忆（`user_profile`，`bot_id` 外键）
+- 每用户设置（`user_settings`，`user_id` 外键）
+- Prompt 覆盖（`user_prompts`，`user_id` 外键）
+- 发信草稿（`outgoing_email_drafts`，按 `user_id` 隔离）
+- 回复格式设置与模板（`reply_format_settings`、`reply_templates`）
 
 ## 密码管理
 
@@ -48,10 +50,6 @@ Redis 不可达时跳过版本号检查（自动降级）。
 - 管理员密码通过 `.env` 中的 `ADMIN_PASSWORD` 在首次启动时设置
 - 普通用户密码由管理员在用户管理页面设置
 - 无自助找回密码流程，由管理员在 UI 中直接重置
-
-## 登录审计
-
-每次登录尝试（成功或失败）均记录到 `log` 表，含时间戳和 IP 地址。
 
 ## Token 吊销
 

@@ -62,8 +62,6 @@ Base URL：`http://127.0.0.1:8000`
 |------|------|------|
 | GET | `/config` | 读取当前运行时配置 |
 | POST | `/config` | 更新 .env 并热重载 |
-| GET | `/admin/persona-config` | 获取系统 Persona 配置 |
-| PUT | `/admin/persona-config` | 更新系统 Persona 配置 |
 | GET | `/db/stats` | 获取数据库统计信息 |
 
 ## 7. AI 处理 (AI Processing)
@@ -99,21 +97,12 @@ Base URL：`http://127.0.0.1:8000`
 | POST | `/gmail/process` | 触发处理获取到的 Gmail 邮件 |
 | GET | `/gmail/workstatus` | 获取 Gmail 处理工作状态 |
 
-## 10. Telegram Bot & 聊天 (Telegram Bot & Chat)
+## 10. Telegram 工具 (Telegram Tools)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/telegram/bot/start` | 启动所有已注册的 Telegram Bot |
-| POST | `/telegram/bot/stop` | 停止所有 Telegram Bot |
-| GET | `/telegram/bot/status` | 获取 Telegram Bot 运行状态 |
-| POST | `/telegram/bot/clear_history` | 清空所有对话历史 |
-| GET | `/telegram/bot/profile` | 获取用户记忆画像 |
-| DELETE | `/telegram/bot/profile` | 删除用户记忆画像 |
-| POST | `/telegram/bot/generate_profile` | 手动触发记忆画像生成 |
 | POST | `/telegram/test` | 发送 Telegram 测试消息 |
 | GET | `/telegram/chat_id` | 获取 Telegram Chat ID |
-| POST | `/chat/generate_persona_prompt` | 生成 Persona Prompt 对话 |
-| GET | `/chat/workstatus` | 获取 Chat 处理工作状态 |
 
 ---
 

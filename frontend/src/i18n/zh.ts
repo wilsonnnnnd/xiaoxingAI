@@ -157,8 +157,6 @@ export const zh: Record<string, string> = {
   "home.worker.log_filter.chat": "聊天",
   "home.tg.test_ok": "Telegram 连接正常，测试消息已发送！",
   "home.oauth_success": "Google OAuth 授权成功！token.json 已保存。",
-  "home.card.bot_worker": "Telegram Bot 聊天",
-  "home.card.bot_worker_desc": "监听 Telegram Bot 消息，接收后由本地 AI 回复。向 Bot 发送任意消息即可开始聊天。",
   "home.btn.bot_start": "启动 Bot",
   "home.btn.bot_stop": "停止 Bot",
   "home.btn.bot_clear": "清空历史",

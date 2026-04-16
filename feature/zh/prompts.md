@@ -2,54 +2,33 @@
 
 ## 概述
 
-Xiaoxing 所有 LLM Prompt 均可在 Web UI 中编辑。分为两类：系统内置 Prompt（所有用户共享）和每用户自定义 Prompt。
+小星的 Prompt 以纯文本文件形式存放在 `app/prompts/`。后端在运行时从磁盘读取（`app/utils/prompt_loader.py`），因此编辑后无需重启即可生效。
 
-## Prompt 类型
+Web UI 的 Prompt 页面通过 `/prompts` API 直接编辑这些文件。
 
-| 类型键 | 用途 |
-|--------|------|
-| `chat` | Bot 对话人格（可按 Bot 独立分配） |
-| `email_analysis` | Gmail 邮件分类和优先级判断 |
-| `email_summary` | 邮件摘要生成 |
-| `telegram_notify` | Telegram 通知消息撰写 |
-| `user_profile` | 从聊天历史提炼记忆 |
-| `router` _（隐藏）_ | 工具调度路由 — 不在 UI 编辑器中显示 |
+## Prompt 文件（现状）
 
-## 内置 Prompt
+常见内置 Prompt：
 
-位于 `app/prompts/`，首次启动时自动导入数据库。可在 **Prompt** 页面编辑（仅管理员）。
+- `gmail/email_analysis.txt`：邮件分类与优先级判断
+- `gmail/email_summary.txt`：邮件摘要生成
+- `gmail/telegram_notify.txt`：Telegram 通知消息（HTML）
+- `outgoing/email_reply_compose.txt`：生成回复草稿（只输出正文，不含 closing/signature）
+- `outgoing/email_edit.txt`：改写草稿（只输出正文，不含 closing/signature）
+- `outgoing/email_compose.txt`：生成新邮件草稿
 
-修改**即时生效** — 所有 Prompt 在每次 LLM 调用时热重载，无需重启服务。
+## Web UI 可见性规则
 
-## 自定义 Prompt（聊天人格）
+- 普通用户只看到少量白名单 Prompt
+- 管理员可查看并编辑所有非 internal 的 Prompt
+- `app/prompts/tools/` 目录下的 Prompt 视为 internal，会被 `/prompts` 文件接口隐藏
 
-用户可通过人格生成器（技能 → 聊天）创建自己的聊天人格 Prompt，以 `type = 'chat'` 存入 `user_prompts`，按用户隔离。
+对应代码位置：
 
-每个 Bot 可绑定一个自定义 Prompt：
-- 技能 → 聊天 → Prompt 管理 → 选择 Bot → 分配
-- 绑定后，该 Prompt 替换系统默认的 Xiaoxing 人格描述进入聊天系统提示词
-- 如包含 `[身份设定]` 头部，会被解析为明确的身份陈述句注入
-
-## `router.txt` 特殊说明
-
-`router.txt` 驱动工具路由系统，它：
-- 存放在 `app/prompts/tools/router.txt`
-- 不在 UI Prompt 编辑器中展示（非用户可见配置）
-- 每次工具路由调用时热重载
-
-## Prompt 变量
-
-Prompt 使用 Python `str.format()` 替换变量，各 Prompt 支持的变量如下：
-
-| Prompt | 可用变量 |
-|--------|---------|
-| `chat.txt` | `{persona_section}`, `{profile_section}`, `{db_context_section}`, `{history}`, `{message}` |
-| `user_profile.txt` | `{existing_profile}`, `{chat_history}` |
-| `email_analysis.txt` | `{email_body}` |
-| `email_summary.txt` | `{email_body}` |
-| `telegram_notify.txt` | `{analysis}`, `{summary}` |
+- `app/core/constants.py`（`USER_VISIBLE_PROMPTS`）
+- `app/api/routes/prompts.py`（`_is_internal_prompt`）
 
 ## 相关文档
 
-- [聊天人格 →](persona.md)
 - [工具系统 →](tool-system.md)
+- [Gmail 流水线 →](gmail.md)

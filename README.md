@@ -1,6 +1,6 @@
 # Xiaoxing AI (小星 AI)
 
-> Multi-user Gmail automation + Telegram AI chatbot platform
+> Multi-user Gmail automation + Telegram notifications platform
 
 [中文文档](README.zh.md)
 
@@ -21,13 +21,11 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 | Feature | Description |
 |---------|-------------|
 |[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 3-stage AI pipeline (classify → summarise → push); priority filter and deduplication |
-|[Telegram](feature/telegram.md) | Multi-bot chat + email push notifications; per-bot history, persona, tools; thread-safe |
-|[Memory System](feature/memory.md) | Structured long-term memory (`[Facts]` `[Preferences]` `[Events]` `[Personality]`); relevance-filtered injection |
-|[Tool System](feature/tool-system.md) | `get_time`, `get_emails`, `fetch_email`; Router LLM dispatch with keyword fallback |
-|[Persona Generator](feature/persona.md) | 4-stage AI persona pipeline; identity attributes (zodiac, gender, age) embedded in prompt content |
+|[Telegram](feature/telegram.md) | Email notifications, interactive callback buttons for outgoing draft confirmation, and per-user bot binding |
+|[Tool System](feature/tool-system.md) | Tool registry + Router LLM dispatch with keyword fallback; includes outgoing reply draft tools |
 |[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
-|[Prompt Editor](feature/prompts.md) | Built-in + per-user prompts; hot-reloaded on every LLM call; per-bot custom chat prompt |
-|[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n |
+|[Prompt Editor](feature/prompts.md) | Built-in + per-user prompt overrides; admin can manage all prompt files from the web UI |
+|[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n; mobile-friendly layout |
 
 ---
 
@@ -58,7 +56,7 @@ cd xiaoxingAI
 
 ```bash
 docker run -d --name pg16 \
-  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_PASSWORD=<change-me> \
   -p 5432:5432 \
   postgres:16
 
@@ -100,16 +98,19 @@ Edit `.env`:
 | `JWT_SECRET` | Secret key for signing JWTs — **change this in production** |
 | `JWT_EXPIRE_MINUTES` | JWT lifetime in minutes (default: 60) |
 | `GMAIL_POLL_INTERVAL` | Default poll interval in seconds (default: 300) |
-| `GMAIL_POLL_QUERY` | Gmail search query (default: is:unread in:inbox) |
-| `GMAIL_POLL_MAX` | Max emails per poll (default: 20) |
+| `GMAIL_POLL_QUERY` | Default Gmail search query fallback (default: `is:unread in:inbox category:primary`) |
+| `GMAIL_POLL_MAX` | Max emails per run (default: 5) |
 | `GMAIL_MARK_READ` | Mark as read after processing (true/false) |
+| `AUTO_START_GMAIL_WORKER` | Auto-start polling worker on server startup (true/false, default: false) |
 | `NOTIFY_MIN_PRIORITY` | Comma-separated priorities to notify; leave empty for all |
 | `LLM_BACKEND` | local or openai (default: local) |
 | `LLM_API_URL` | LLM endpoint URL |
 | `LLM_MODEL` | Model name |
-| `OPENAI_API_KEY` | OpenAI API key (required when LLM_BACKEND=openai) |
+| `LLM_API_KEY` | LLM API key (used when LLM_BACKEND=openai; falls back to OPENAI_API_KEY) |
+| `OPENAI_API_KEY` | OpenAI API key (legacy alias) |
 | `POSTGRES_DSN` | PostgreSQL DSN (default: postgresql://postgres:postgres@localhost:5432/xiaoxing) |
 | `REDIS_URL` | Redis URL (default: redis://localhost:6380) |
+| `REQUIRE_REDIS` | Fail fast if Redis is unavailable (true/false, default: false) |
 | `ROUTER_API_URL` | Router LLM endpoint (default: http://127.0.0.1:8002/v1/chat/completions) |
 | `ROUTER_MODEL` | Router model name (default: local-router) |
 | `FRONTEND_URL` | Frontend origin for OAuth callback and CORS (default: http://localhost:5173) |
@@ -188,10 +189,8 @@ xiaoxing/
 │   │   └── routes/             # One file per resource group (auth, users, bots, …)
 │   ├── core/
 │   │   ├── auth.py             # JWT sign/verify, bcrypt, FastAPI deps
-│   │   ├── bot_worker.py       # Multi-bot Telegram long-poll workers
-│   │   ├── chat.py             # LLM chat reply + user profiling
 │   │   ├── llm.py              # LLM client (local / OpenAI); 3-retry + Redis cache
-│   │   ├── redis_client.py     # Redis helpers (history, queue, dedup, LLM cache)
+│   │   ├── redis_client.py     # Redis helpers (LLM cache, dedup, jwt version, etc.)
 │   │   ├── telegram/           # Telegram client (send/edit message, getUpdates helper)
 │   │   ├── debug/              # In-memory debug event buffers
 │   │   ├── realtime/           # WebSocket pub/sub (Gmail & bot status)
@@ -212,10 +211,10 @@ xiaoxing/
 │   │       ├── log_repo.py
 │   │       ├── stats_repo.py
 │   │       ├── oauth_repo.py
-│   │       ├── profile_repo.py
-│   │       └── persona_repo.py
+│   │       ├── outgoing_email_repo.py
+│   │       └── reply_format_repo.py
 │   ├── schemas/                # Pydantic request / response models
-│   ├── services/               # Business logic (GmailService, TelegramService, …)
+│   ├── services/               # Business logic (GmailService, outgoing draft services, …)
 │   ├── skills/
 │   │   └── gmail/
 │   │       ├── auth.py         # Google OAuth2 flow (per-user token storage)
@@ -227,13 +226,11 @@ xiaoxing/
 │   │   ├── json_parser.py      # Extract JSON from LLM output
 │   │   └── prompt_loader.py    # Load prompt files from app/prompts/
 │   └── prompts/
-│       ├── chat.txt
-│       ├── user_profile.txt
 │       ├── gmail/
 │       │   ├── email_analysis.txt
 │       │   ├── email_summary.txt
 │       │   └── telegram_notify.txt
-│       └── tools/              # Persona generation prompts
+│       └── outgoing/           # Outgoing reply/compose/edit prompts
 ├── frontend/
 │   └── src/
 │       ├── api/
@@ -243,11 +240,9 @@ xiaoxing/
 │       ├── features/           # Feature-based modules (each has api/, components/, index.ts)
 │       │   ├── auth/           # Login, getMe
 │       │   ├── gmail/          # GmailPage, worker controls, log viewer
-│       │   ├── chat/           # ChatPage, bot controls
 │       │   ├── settings/       # SettingsPage, LLM/Gmail/Bot sub-forms
 │       │   ├── prompts/        # PromptsPage, prompt editor
 │       │   ├── users/          # UsersPage, user & bot CRUD
-│       │   ├── persona/        # PersonaConfigPage (admin)
 │       │   ├── debug/          # DebugPage (admin)
 │       │   └── system/         # Health check, DB stats
 │       ├── hooks/              # useHealthCheck, useWorkerStatus, useConfirmDiscard
@@ -268,10 +263,11 @@ xiaoxing/
 
 | Table | Description |
 |-------|-------------|
-| `user` | Registered users; stores per-user worker settings (`min_priority`, `poll_interval`, …) and role |
-| `bot` | Telegram Bots; each belongs to one user; supports `bot_mode`: `all` / `notify` / `chat` |
-| `system_prompts` | Built-in prompt templates (immutable, seeded from `app/prompts/` on startup) |
-| `user_prompts` | Per-user custom prompt overrides; can be bound to a specific bot |
+| `user` | Registered users; role and auth fields |
+| `user_settings` | Per-user settings (poll interval, poll query, min priority, worker_enabled, …) |
+| `bot` | Telegram bots (per user); used for notifications (`bot_mode`: `all` / `notify`) |
+| `system_prompts` | Built-in prompt templates seeded from `app/prompts/` on startup |
+| `user_prompts` | Per-user prompt overrides |
 | `oauth_tokens` | Google OAuth tokens, one row per user |
 | `email_records` | Processed emails with full AI output (analysis, summary, Telegram message) |
 | `outgoing_email_drafts` | Outgoing email drafts (encrypted body) + status machine + Telegram preview binding |
@@ -279,7 +275,6 @@ xiaoxing/
 | `reply_templates` | Per-user reply format templates |
 | `reply_format_settings` | Per-user reply format settings (default template + signature) |
 | `worker_stats` | Gmail worker session stats, per user |
-| `user_profile` | AI-generated chat user profile, one row per bot |
 | `log` | Worker and chat logs with level, log_type, and token count |
 
 ---
@@ -299,8 +294,9 @@ For a production setup with Nginx, systemd, PostgreSQL, Redis, and HTTPS, see [D
 ## More Documentation
 
 - [Development Guide](doc/development_guide.md)
-- [Persona Config Guide](doc/persona_config.md)
 - [API Reference](doc/api.md)
+- [Backend Design Guide](doc/backend-guide.md)
+- [Frontend UI Guide](doc/ui-guide.md)
 - [Support Help](support/help.md)
 
 ---

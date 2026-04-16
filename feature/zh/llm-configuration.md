@@ -7,7 +7,7 @@
 - **本地**：启动一个 OpenAI 兼容接口的服务（例如 llama.cpp 的 `llama-server`）
 - **云端**：使用 OpenAI API（或其他兼容 OpenAI 的服务，只需调整 endpoint）
 
-此外系统还支持可选的 **Router LLM**：用于在 Telegram 聊天中识别用户意图并选择调用哪些工具。
+此外系统还支持可选的 **Router LLM**：用于识别用户意图并选择调用哪些工具。
 
 ## 主模型（Main LLM）
 
@@ -18,7 +18,8 @@
 | `LLM_BACKEND` | `local` 或 `openai` | `local` |
 | `LLM_API_URL` | OpenAI 兼容 chat-completions 地址 | `http://127.0.0.1:8001/v1/chat/completions` |
 | `LLM_MODEL` | 传给接口的模型名 | `local-model` / `gpt-4o-mini` |
-| `OPENAI_API_KEY` | 当 `LLM_BACKEND=openai` 时必填 | `sk-...` |
+| `LLM_API_KEY` | 当 `LLM_BACKEND=openai` 时必填（会回退到 `OPENAI_API_KEY`） | `sk-...` |
+| `OPENAI_API_KEY` | 兼容旧配置 | `sk-...` |
 
 ### 本地（推荐自托管）
 
@@ -42,7 +43,7 @@ OPENAI_API_KEY=sk-...
 
 ## Router LLM（可选）
 
-Router LLM 用于 Telegram 聊天的“工具意图识别”。如果 Router 不可达，系统会自动降级为关键词匹配。
+Router LLM 用于“工具意图识别”。如果 Router 不可达，系统会自动降级为关键词匹配。
 
 ### 环境变量
 
@@ -58,10 +59,11 @@ ROUTER_MODEL=local-router
 
 ## Prompt
 
-- 主对话 Prompt：`app/prompts/chat.txt`
-- Router Prompt：`app/prompts/tools/router.txt`
+Prompt 存放在 `app/prompts/`，运行时从磁盘读取。
 
-Prompt 从磁盘读取，设计目标是修改后可以快速生效。
+- Gmail 流水线：`app/prompts/gmail/*`
+- 发信/回复草稿：`app/prompts/outgoing/*`
+- Router Prompt（internal，可选）：`app/prompts/tools/router.txt`
 
 ## 缓存与稳定性
 
@@ -70,7 +72,7 @@ Prompt 从磁盘读取，设计目标是修改后可以快速生效。
 
 ## 常见问题
 
-- **401/未授权**：`LLM_BACKEND=openai` 时检查 `OPENAI_API_KEY`。
+- **401/未授权**：`LLM_BACKEND=openai` 时检查 `LLM_API_KEY`（或 `OPENAI_API_KEY`）。
 - **连接失败**：检查 `LLM_API_URL` / `ROUTER_API_URL` 的 host/port 是否正确。
 - **工具路由不工作**：Router 不可达会走关键词降级，属于预期行为。
 
