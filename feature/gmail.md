@@ -14,7 +14,7 @@ Gmail (OAuth2) → AI Analysis → Telegram Push
 
 - Each user authorises their Gmail account via Google OAuth2 (Settings page → "Authorize via Google")
 - A background worker polls the inbox on a configurable interval (default: 300 s)
-- Only emails matching the search query (default: `is:unread in:inbox`) are fetched
+- Only emails matching the search query are fetched (default: `is:unread in:inbox category:primary`)
 - OAuth tokens are encrypted and stored per-user in PostgreSQL
 
 ### 2. AI Analysis Pipeline
@@ -40,7 +40,6 @@ Configuration: Settings → Gmail → Minimum Priority
 ### 4. Deduplication
 
 - Processed email IDs stored per `(user_id, email_id)` in `email_records` table
-- Redis `SET NX` prevents duplicate processing across restarts
 - Every processed email (body, analysis, summary, Telegram message, token count) is persisted
 
 ## Configuration
@@ -48,8 +47,8 @@ Configuration: Settings → Gmail → Minimum Priority
 | `.env` variable | Default | Description |
 |-----------------|---------|-------------|
 | `GMAIL_POLL_INTERVAL` | `300` | Poll interval in seconds |
-| `GMAIL_POLL_QUERY` | `is:unread in:inbox` | Gmail search query |
-| `GMAIL_POLL_MAX` | `20` | Max emails per poll cycle |
+| `GMAIL_POLL_QUERY` | `is:unread in:inbox category:primary` | Gmail search query fallback |
+| `GMAIL_POLL_MAX` | `5` | Max emails per poll cycle |
 | `GMAIL_MARK_READ` | `true` | Mark processed emails as read |
 | `NOTIFY_MIN_PRIORITY` | _(empty)_ | Comma-separated priorities to notify; empty = all |
 

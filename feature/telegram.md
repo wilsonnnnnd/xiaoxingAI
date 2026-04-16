@@ -2,20 +2,19 @@
 
 ## Overview
 
-Xiaoxing integrates with Telegram in two ways:
+Xiaoxing uses Telegram for:
 
-- **Push Notifications**: after an email is processed, an HTML notification is delivered.
-- **Multi-bot Chat**: each bot can act as a conversational assistant with memory, persona, and tools.
+- Email notifications (HTML message after an email is processed)
+- Interactive buttons for outgoing email drafts (confirm / cancel / modify) via `callback_data`
 
-Each user can bind their own Telegram bots and choose a bot mode.
+Each user can bind one or more Telegram bots; the Gmail worker sends notifications only to bots in `all` or `notify` mode.
 
 ## Bot Modes
 
 | Mode | Behaviour |
 |------|-----------|
-| `all` | Full-featured: chat + email notifications |
-| `chat` | Chat only, no email push |
-| `notify` | Email notifications only, ignores chat messages |
+| `all` | Receives email notifications |
+| `notify` | Receives email notifications (notification-only) |
 
 ## Push Notifications
 
@@ -23,71 +22,25 @@ Each user can bind their own Telegram bots and choose a bot mode.
 
 1. Create a bot via **@BotFather** → `/newbot` → copy the token
 2. Get your Chat ID via **@userinfobot** or the **Get Chat ID** button in Settings
-3. In Settings → Bots, add a new Bot with the token and chat ID
-4. Set bot mode to `notify` (notification-only) or `all` (chat + notification)
+3. In Settings → Bots, add a new bot with the token and chat ID
+4. Set bot mode to `notify` or `all`
 5. Start the Gmail worker on the Skills → Gmail page
 
 ### Notification Format
 
-Notifications are composed by the LLM using `telegram_notify.txt` and delivered as HTML:
+Notifications are composed by the LLM using `app/prompts/gmail/telegram_notify.txt` and delivered as HTML.
 
-```
-📧 <b>[Priority] Subject</b>
-From: sender@example.com
+## Outgoing Draft Callbacks
 
-AI-generated summary of the email content...
+When the system generates an outgoing reply draft, it can attach inline buttons (confirm/cancel). Telegram button payloads use `callback_data`, so the backend signs it to prevent forgery.
 
-<i>Processed at HH:MM:SS</i>
-```
+Required env var:
 
-## Multi-bot Chat
-
-### Conversation History
-
-- Last **40 messages** (20 turns) kept in memory per bot
-- History persisted in Redis (7-day TTL) — survives server restarts
-- `/clear` command wipes all conversation history for that bot
-- Per-bot `threading.Lock` prevents race conditions under concurrent messages
-
-### Custom Persona
-
-Each bot can be assigned a custom chat prompt that defines its personality, communication style, and identity.
-
-- Generate a persona: Skills → Chat → Persona Generator
-- Save and assign to a bot: Skills → Chat → Prompt Management → Assign
-
-See [Chat Persona Generator →](persona.md)
-
-### Built-in Commands
-
-| Command | Action |
-|---------|--------|
-| `/start`, `/hi` | Greeting message |
-| `/clear` | Clear conversation history |
-| `/help` | Show available commands |
-
-### Tool Integration
-
-The bot can call built-in tools based on message intent:
-
-- **get_time** — returns current time
-- **get_emails** — lists recent emails
-- **fetch_email** — retrieves full email content
-
-A lightweight Router LLM (port 8002) dispatches tool calls; falls back to keyword matching if unavailable.
-
-See [Tool System →](tool-system.md)
-
-## Long-term Memory
-
-At midnight the bot summarises the day's conversation into structured memories. These are filtered by relevance and injected into future conversations.
-
-See [Memory System →](memory.md)
+- `TELEGRAM_CALLBACK_SECRET` — secret key used to sign and verify callback payloads
 
 ## Deduplication and Reliability
 
-- Telegram update dedup: Redis `SET NX` on `update_id` avoids duplicate processing.
-- Multi-bot concurrency: bots run as independent asyncio tasks.
+- Telegram update dedup uses Redis keys based on `update_id` to avoid duplicate processing.
 
 ## Related
 

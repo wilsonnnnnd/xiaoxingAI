@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Telegram bot can call built-in tools based on the user's message intent. A lightweight Router LLM decides which tools to call; a keyword-based fallback handles cases where the router is unavailable.
+Xiaoxing exposes a small set of “tools” that the LLM can call to fetch real data (DB, Gmail) or perform controlled actions (outgoing draft workflow). A lightweight Router LLM decides which tools to call; a keyword-based fallback handles cases where the router is unavailable.
 
 ## Available Tools
 
@@ -28,13 +28,16 @@ Tool results are injected into the LLM context under a clearly labelled section:
 
 ### Primary: Router LLM
 
-A second, smaller LLM (recommended: Qwen2.5-1.5B, port 8002) reads the user message and decides which tools to invoke. The routing prompt is loaded from `app/prompts/tools/router.txt` and **hot-reloaded** on every call — changes take effect immediately without restarting.
+A second, smaller LLM reads the user message and decides which tools to invoke.
 
-Configure via `.env`:
+Configuration via `.env`:
+
 ```
 ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
 ROUTER_MODEL=local-router
 ```
+
+The router prompt is treated as internal (recommended location: `app/prompts/tools/router.txt`). If the file is missing, the system still works via the fallback strategy below.
 
 ### Fallback: Keyword Matching
 
@@ -57,9 +60,9 @@ Every routing decision is logged:
 
 ## Adding a New Tool
 
-1. Create a file in `app/core/tools/` (e.g. `my_tool.py`) implementing a function that returns `(result_str, token_count)`
-2. Register it in `app/core/tools/__init__.py`
-3. Update `app/prompts/tools/router.txt` to describe when to call the new tool
+1. Create a file in `app/core/tools/` (e.g. `my_tool.py`) implementing a function
+2. Register it via the `@register(...)` decorator (imported by `load_tools()`)
+3. (Optional) Update the router prompt if you use Router LLM routing
 
 ## Related
 

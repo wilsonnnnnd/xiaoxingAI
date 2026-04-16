@@ -10,15 +10,14 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 |-------|------|-------------|
 | `/login` | Login | Email + password authentication |
 | `/home` | Home / Dashboard | System overview, quick-start checklist |
-| `/skill` | Skills Hub | Entry point for Gmail and Chat sub-skills |
+| `/skill` | Skills Hub | Entry point for skills (currently Gmail) |
 | `/skill/gmail` | Gmail | Worker control, live email log, per-user settings |
-| `/skill/chat` | Chat | Bot worker control, persona generator, prompt management, live chat log |
-| `/prompts` | Prompt Editor | View and edit all system prompts |
+| `/prompts` | Prompt Editor | View and edit prompt files (admin + limited non-admin view) |
 | `/settings` | Settings | Google OAuth, bot configuration, environment variables |
 | `/settings/reply-format` | Reply Format | Configure per-user reply templates and signature |
 | `/users` | User Management | Admin-only: create/manage users |
-| `/persona-config` | Persona Config | Admin-only: configure zodiac/gender personality style prompts for the AI persona generator |
-| `/debug` | Debug Tools | Manual triggers for profile update, cache flush, etc. |
+| `/debug` | Debug Tools | Admin-only debug utilities |
+| `/help` | Help | Quick-start and common operations |
 
 ## Internationalisation (i18n)
 
@@ -26,6 +25,16 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 - Language switcher in the top navigation bar
 - Preference stored via **Zustand** (persists across page reloads)
 - Translation keys in `frontend/src/i18n/en.ts` and `zh.ts`
+
+## Mobile Support
+
+- `md` and above: fixed Sidebar layout
+- below `md`: top bar + drawer Sidebar (overlay with backdrop; closes on navigation)
+
+See:
+
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/components/layout/Sidebar.tsx`
 
 ## Development Mode
 
