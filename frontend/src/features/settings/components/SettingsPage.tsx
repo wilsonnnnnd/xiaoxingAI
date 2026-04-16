@@ -13,6 +13,7 @@ import { ConnectionTests } from './ConnectionTests'
 import { LLMSettings } from './LLMSettings'
 import { GmailSettings } from './GmailSettings'
 import { BotSettings } from './BotSettings'
+import { ChangePasswordCard } from './ChangePasswordCard'
 import toast from 'react-hot-toast'
 
 export const SettingsPage: React.FC = () => {
@@ -135,6 +136,7 @@ export const SettingsPage: React.FC = () => {
 
       <div className="flex flex-col gap-6">
         <ConnectionTests />
+        <ChangePasswordCard />
 
         <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
           <LLMSettings control={control} />
