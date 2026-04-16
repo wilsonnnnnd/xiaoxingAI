@@ -10,6 +10,12 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 
 ---
 
+## Screenshot
+
+![Xiaoxing AI Home](app/image/Home-en.png)
+
+---
+
 ## Features
 
 | Feature | Description |
@@ -44,8 +50,8 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 ### 1. Clone
 
 ```bash
-git clone <repository-url>
-cd xiaoxing
+git clone https://github.com/wilsonnnnnd/xiaoxingAI.git
+cd xiaoxingAI
 ```
 
 ### 2. Start PostgreSQL & Redis (Docker)
@@ -122,8 +128,21 @@ Download credentials.json from Google Cloud Console and place it in the project 
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+Quick checks:
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/api/health
+```
+
+You should see:
+
+```json
+{"status":"ok"}
+```
+
 On first startup the server automatically:
-- Creates the PostgreSQL schema (tables for users/bots/prompts/email, outgoing drafts, reply format, logs, etc.)
+- Creates the PostgreSQL schema (tables for users, bots, prompts, emails, outgoing drafts, reply format, logs, and more)
 - Imports built-in prompts from app/prompts/
 - Creates the admin account from ADMIN_USER / ADMIN_PASSWORD
 
@@ -268,6 +287,21 @@ xiaoxing/
 ## API Reference
 
 See [support/api.md](support/api.md) for the full endpoint reference.
+
+---
+
+## Deployment
+
+For a production setup with Nginx, systemd, PostgreSQL, Redis, and HTTPS, see [Deployment Guide](doc/deploy.md).
+
+---
+
+## More Documentation
+
+- [Development Guide](doc/development_guide.md)
+- [Persona Config Guide](doc/persona_config.md)
+- [API Reference](doc/api.md)
+- [Support Help](support/help.md)
 
 ---
 

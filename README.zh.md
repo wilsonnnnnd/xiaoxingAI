@@ -10,6 +10,12 @@
 
 ---
 
+## 截图
+
+![Xiaoxing AI 首页](app/image/Home-zh.png)
+
+---
+
 ## 功能特性
 
 | 功能 | 简介 |
@@ -35,7 +41,7 @@
 - **LLM 后端**，二选一：
   - 本地：llama.cpp llama-server（监听 127.0.0.1:8001）
   - 云端：OpenAI API Key
-- **Router LLM（可选）** — 第二个 llama-server，端口 8002（推荐 Qwen2.5-1.5B），用于 AI 工具调度；不可该地址时自动降级为关键词匹配
+- **Router LLM（可选）** — 第二个 llama-server，端口 8002（推荐 Qwen2.5-1.5B），用于 AI 工具调度；不可达时自动降级为关键词匹配
 
 ---
 
@@ -44,8 +50,8 @@
 ### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
-cd xiaoxing
+git clone https://github.com/wilsonnnnnd/xiaoxingAI.git
+cd xiaoxingAI
 ```
 
 ### 2. 启动 PostgreSQL & Redis（Docker）
@@ -122,8 +128,21 @@ copy .env.example .env        # Windows
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+快速检查：
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/api/health
+```
+
+正常情况下应返回：
+
+```json
+{"status":"ok"}
+```
+
 首次启动会自动执行：
-- 创建 PostgreSQL 数据库结构（用户/机器人/Prompt/邮件、发信草稿、回复格式、日志等表）
+- 创建 PostgreSQL 数据库结构（用户、机器人、Prompt、邮件、发信草稿、回复格式、日志等表）
 - 将 app/prompts/ 下的文件导入为系统内置 Prompt
 - 根据 ADMIN_USER / ADMIN_PASSWORD 创建管理员账号
 
@@ -268,6 +287,21 @@ xiaoxing/
 ## API 接口
 
 完整接口文档见 [support/api.zh.md](support/api.zh.md)。
+
+---
+
+## 部署说明
+
+如果你需要使用 Nginx、systemd、PostgreSQL、Redis 和 HTTPS 进行正式部署，请参考 [Deployment Guide](doc/deploy.md)。
+
+---
+
+## 更多文档
+
+- [开发扩展指南](doc/development_guide.md)
+- [人格配置文档](doc/persona_config.md)
+- [API 文档](doc/api.md)
+- [帮助文档](support/help.zh.md)
 
 ---
 
