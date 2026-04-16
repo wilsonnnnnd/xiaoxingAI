@@ -51,7 +51,12 @@ export interface Config {
   LLM_BACKEND: string
   LLM_API_URL: string
   LLM_MODEL: string
-  OPENAI_API_KEY: string
+  LLM_API_KEY?: string
+  ROUTER_API_KEY?: string
+  HAS_LLM_API_KEY?: boolean
+  HAS_ROUTER_API_KEY?: boolean
+  ROUTER_API_URL?: string
+  ROUTER_MODEL?: string
   GMAIL_POLL_INTERVAL: string
   GMAIL_POLL_QUERY: string
   GMAIL_POLL_MAX: string

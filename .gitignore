@@ -20,3 +20,4 @@ frontend/.env.local
 # /doc
 /test
 vercel.json
+.github/prompts/

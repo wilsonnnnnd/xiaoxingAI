@@ -2,10 +2,13 @@ import { z } from 'zod'
 
 export const settingsSchema = z.object({
   // Global Config
-  LLM_BACKEND: z.string(),
+  USE_ONLINE_AI: z.coerce.boolean(),
   LLM_MODEL: z.string().min(1, 'Model is required'),
   LLM_API_URL: z.string().url('Invalid URL'),
-  OPENAI_API_KEY: z.string().optional(),
+  LLM_API_KEY: z.string().optional(),
+  ROUTER_API_URL: z.string().optional(),
+  ROUTER_MODEL: z.string().optional(),
+  ROUTER_API_KEY: z.string().optional(),
   GMAIL_MARK_READ: z.string(),
   GMAIL_POLL_QUERY: z.string(),
   UI_LANG: z.enum(['en', 'zh']),

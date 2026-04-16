@@ -5,36 +5,81 @@ LLM 传输层 — 核心模块
 """
 import logging
 import time
+import hashlib
 
 import requests
 
 from app.core import config
 
 logger = logging.getLogger("llm")
-MAX_LLM_RETRIES = 3
+MAX_LLM_RETRIES = 2
+
+
+def _normalize_chat_completions_url(url: str) -> str:
+    u = (url or "").strip()
+    while u and u[0] in {"`", '"', "'"} and u[-1] == u[0]:
+        u = u[1:-1].strip()
+    u = u.strip("`").strip()
+    if not u:
+        return u
+    u = u.rstrip("/")
+    if "/chat/completions" in u:
+        return u
+    return f"{u}/chat/completions"
+
+
+def _warn_on_common_url_typos(url: str) -> None:
+    u = url.lower()
+    if "aliyuncs.comm" in u or "aliyuncs.commm" in u:
+        logger.warning("[llm] URL 可能拼写错误（.comm）: %s", url)
+    if "complletions" in u:
+        logger.warning("[llm] URL 可能拼写错误（complletions）: %s", url)
+    if u.startswith("http://") and "dashscope" in u:
+        logger.warning("[llm] DashScope 建议使用 https: %s", url)
+
+
+def _api_key_fingerprint(api_key: str) -> str:
+    k = (api_key or "").strip()
+    if not k:
+        return "none"
+    h = hashlib.sha256(k.encode("utf-8")).hexdigest()[:10]
+    return f"sha256:{h}"
 
 
 def _build_headers() -> dict:
     headers = {"Content-Type": "application/json"}
-    if config.LLM_BACKEND == "openai" and config.OPENAI_API_KEY:
-        headers["Authorization"] = f"Bearer {config.OPENAI_API_KEY}"
+    api_key = config.LLM_API_KEY or config.OPENAI_API_KEY
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     return headers
 
 
 def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
     """调用主 LLM（chat/email 等场景）。"""
-    return _call(config.LLM_API_URL, config.LLM_MODEL, prompt, max_tokens)
+    main_key = config.LLM_API_KEY or config.OPENAI_API_KEY
+    main_key_src = "LLM_API_KEY" if config.LLM_API_KEY else ("OPENAI_API_KEY" if config.OPENAI_API_KEY else "none")
+    return _call(
+        config.LLM_API_URL,
+        config.LLM_MODEL,
+        prompt,
+        max_tokens,
+        api_key=main_key,
+        purpose="main",
+        api_key_source=main_key_src,
+    )
 
 
 def call_router(prompt: str, max_tokens: int = 64) -> tuple:
     """调用 Router 小模型（工具意图识别）。若未配置则回退到主模型。"""
     url = config.ROUTER_API_URL or config.LLM_API_URL
     model = config.ROUTER_MODEL or config.LLM_MODEL
-    return _call(url, model, prompt, max_tokens, use_cache=False)
+    router_key = config.ROUTER_API_KEY or config.LLM_API_KEY or config.OPENAI_API_KEY
+    router_key_src = "ROUTER_API_KEY" if config.ROUTER_API_KEY else ("LLM_API_KEY" if config.LLM_API_KEY else ("OPENAI_API_KEY" if config.OPENAI_API_KEY else "none"))
+    return _call(url, model, prompt, max_tokens, use_cache=False, api_key=router_key, purpose="router", api_key_source=router_key_src)
 
 
 def _call(url: str, model: str, prompt: str, max_tokens: int,
-          use_cache: bool = True) -> tuple:
+          use_cache: bool = True, api_key: str = "", purpose: str = "", api_key_source: str = "") -> tuple:
     """
     调用指定端点的 LLM。
     - use_cache=True 时优先命中 Redis 缓存（TTL 1h）
@@ -47,19 +92,34 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
             from app.core.redis_client import get_llm_cache, set_llm_cache
             cached = get_llm_cache(prompt, max_tokens)
             if cached is not None:
-                logger.debug("[llm] cache hit | model=%s tokens=%d", model, cached[1])
+                logger.debug(
+                    "[llm] cache hit | model=%s tokens=%d", model, cached[1])
                 return cached
         except Exception:
             pass  # redis_client 未就绪时不阻断
 
     timeout = 120
+    raw_url = url
+    url = _normalize_chat_completions_url(url)
+    if raw_url and url != raw_url:
+        logger.info("[llm] normalize url | %s -> %s", raw_url, url)
+    _warn_on_common_url_typos(url)
+    logger.info(
+        "[llm] request | purpose=%s model=%s url=%s api_key=%s src=%s",
+        purpose or "-",
+        model,
+        url,
+        _api_key_fingerprint(api_key),
+        api_key_source or "-",
+    )
 
     for attempt in range(MAX_LLM_RETRIES):
         try:
             t0 = time.perf_counter()
             resp = requests.post(
                 url,
-                headers=_build_headers(),
+                headers={"Content-Type": "application/json", **
+                         ({"Authorization": f"Bearer {api_key}"} if api_key else {})},
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
@@ -80,7 +140,7 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
                 raise ValueError(f"Invalid response: {data}")
 
             content = data["choices"][0]["message"]["content"]
-            tokens  = data.get("usage", {}).get("total_tokens", 0)
+            tokens = data.get("usage", {}).get("total_tokens", 0)
             ms = (time.perf_counter() - t0) * 1000
             logger.info("[llm] %s | %.0fms | %dt", model, ms, tokens)
 
@@ -99,11 +159,13 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
                 logger.error("[llm] 4xx 错误，不重试: %s", e)
                 raise RuntimeError(f"LLM 调用失败: {e}") from None
             if attempt < MAX_LLM_RETRIES - 1:
-                logger.warning("[llm] 第%d次重试 (HTTP %d): %s", attempt + 1, status, url)
+                logger.warning("[llm] 第%d次重试 (HTTP %d): %s",
+                               attempt + 1, status, url)
                 time.sleep(2 ** attempt)
                 continue
             logger.error("[llm] 已重试%d次仍失败: %s", MAX_LLM_RETRIES, e)
-            raise RuntimeError(f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
+            raise RuntimeError(
+                f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
 
         except requests.exceptions.RequestException as e:
             if attempt < MAX_LLM_RETRIES - 1:
@@ -111,7 +173,8 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
                 time.sleep(2 ** attempt)
                 continue
             logger.error("[llm] 已重试%d次仍失败: %s", MAX_LLM_RETRIES, e)
-            raise RuntimeError(f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
+            raise RuntimeError(
+                f"LLM 调用失败（已重试{MAX_LLM_RETRIES}次）: {e}") from None
 
 
 # 向后兼容别名

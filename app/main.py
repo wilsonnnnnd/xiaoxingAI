@@ -51,6 +51,11 @@ async def lifespan(app: FastAPI):
     # 初始化数据库（建表 + 自动迁移旧 JSON 文件）
     db.init_db()
     auth_mod.ensure_admin_exists()
+    if app_config.AUTO_START_GMAIL_WORKER:
+        try:
+            await worker.start(allow_empty=True)
+        except Exception as e:
+            logger.warning("Gmail worker 自动恢复失败: %s", e)
     logger.info(
         "服务已启动 | FRONTEND=%s | LLM=%s | ROUTER=%s",
         app_config.FRONTEND_URL,

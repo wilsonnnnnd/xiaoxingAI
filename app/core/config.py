@@ -21,6 +21,7 @@ GMAIL_POLL_INTERVAL: int  = int(_get("GMAIL_POLL_INTERVAL", "300"))
 GMAIL_POLL_QUERY:    str  = _get("GMAIL_POLL_QUERY", "is:unread in:inbox")
 GMAIL_POLL_MAX:      int  = int(_get("GMAIL_POLL_MAX", "5"))
 GMAIL_MARK_READ:     bool = _get("GMAIL_MARK_READ", "true").lower() == "true"
+AUTO_START_GMAIL_WORKER: bool = _get("AUTO_START_GMAIL_WORKER", "true").lower() == "true"
 
 # 优先级过滤（空列表 = 全部通知）
 _priority_raw = _get("NOTIFY_MIN_PRIORITY", "")
@@ -32,12 +33,14 @@ NOTIFY_PRIORITIES: list[str] = [p.strip() for p in _priority_raw.split(",") if p
 LLM_BACKEND:      str = _get("LLM_BACKEND", "local").lower()
 LLM_API_URL:      str = _get("LLM_API_URL", "http://127.0.0.1:8001/v1/chat/completions")
 LLM_MODEL:        str = _get("LLM_MODEL", "local-model")
+LLM_API_KEY:      str = _get("LLM_API_KEY", "") or _get("OPENAI_API_KEY", "")
 OPENAI_API_KEY:   str = _get("OPENAI_API_KEY", "")
 
 # Router 模型（小模型，用于工具路由意图识别）
 # 留空则路由直接复用主模型
-ROUTER_API_URL:   str = _get("ROUTER_API_URL", "http://127.0.0.1:8002/v1/chat/completions")
-ROUTER_MODEL:     str = _get("ROUTER_MODEL", "local-router")
+ROUTER_API_URL:   str = _get("ROUTER_API_URL", "")
+ROUTER_MODEL:     str = _get("ROUTER_MODEL", "")
+ROUTER_API_KEY:   str = _get("ROUTER_API_KEY", "")
 
 # Prompt 文件分配（各处理阶段使用哪个 prompt 文件）
 # Gmail skill prompts 默认放在 prompts/gmail/ 子目录
@@ -110,15 +113,15 @@ def validate() -> list[str]:
         missing.append("TELEGRAM_BOT_TOKEN")
     if not TELEGRAM_CHAT_ID or TELEGRAM_CHAT_ID == "your_chat_id_here":
         missing.append("TELEGRAM_CHAT_ID")
-    if LLM_BACKEND == "openai" and not OPENAI_API_KEY:
-        missing.append("OPENAI_API_KEY")
+    if LLM_BACKEND == "openai" and not LLM_API_KEY:
+        missing.append("LLM_API_KEY")
     return missing
 
 def validate_gmail() -> list[str]:
     """返回启动 Gmail worker 所需但缺失的配置项（不包含 Telegram）"""
     missing: list[str] = []
-    if LLM_BACKEND == "openai" and not OPENAI_API_KEY:
-        missing.append("OPENAI_API_KEY")
+    if LLM_BACKEND == "openai" and not LLM_API_KEY:
+        missing.append("LLM_API_KEY")
     return missing
 
 

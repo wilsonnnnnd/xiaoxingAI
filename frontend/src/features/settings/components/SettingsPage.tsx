@@ -7,6 +7,7 @@ import { Select } from '../../../components/common/Select'
 import { useConfirmDiscard } from '../../../hooks/useConfirmDiscard'
 import { getConfig, saveConfig } from '../api'
 import { getMe, getUser, updateUser } from '../../users'
+import type { Config } from '../../../types'
 import { settingsSchema } from '../types'
 import type { SettingsFormInput, SettingsFormValues } from '../types'
 import { ConnectionTests } from './ConnectionTests'
@@ -19,6 +20,9 @@ import toast from 'react-hot-toast'
 export const SettingsPage: React.FC = () => {
   const { t, lang, setLang } = useI18n()
   const [myId, setMyId] = useState<number | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [hasLlmKey, setHasLlmKey] = useState(false)
+  const [hasRouterKey, setHasRouterKey] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const {
@@ -31,10 +35,13 @@ export const SettingsPage: React.FC = () => {
   } = useForm<SettingsFormInput>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
-      LLM_BACKEND: 'local',
-      LLM_MODEL: '',
-      LLM_API_URL: '',
-      OPENAI_API_KEY: '',
+      USE_ONLINE_AI: false,
+      LLM_MODEL: 'local-model',
+      LLM_API_URL: 'http://127.0.0.1:8001/v1/chat/completions',
+      LLM_API_KEY: '',
+      ROUTER_API_URL: '',
+      ROUTER_MODEL: '',
+      ROUTER_API_KEY: '',
       GMAIL_MARK_READ: 'true',
       GMAIL_POLL_QUERY: 'is:unread in:inbox',
       UI_LANG: lang,
@@ -51,20 +58,29 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     async function loadData() {
       try {
-        const [config, me] = await Promise.all([getConfig(), getMe()])
+        const me = await getMe()
         setMyId(me.id)
-        const user = await getUser(me.id)
+        setIsAdmin(me.role === 'admin')
+        const [user, config] = await Promise.all([
+          getUser(me.id),
+          me.role === 'admin' ? getConfig() : Promise.resolve(null),
+        ])
 
         // Build a properly typed SettingsFormInput object from config + user
-        const cfgRaw = config as unknown as Partial<Record<string, string>>
+        const cfgRaw = (config ?? {}) as Partial<Config>
+        setHasLlmKey(!!cfgRaw.HAS_LLM_API_KEY)
+        setHasRouterKey(!!cfgRaw.HAS_ROUTER_API_KEY)
         const values: SettingsFormInput = {
-          LLM_BACKEND: cfgRaw.LLM_BACKEND ?? 'local',
-          LLM_MODEL: cfgRaw.LLM_MODEL ?? '',
-          LLM_API_URL: cfgRaw.LLM_API_URL ?? '',
-          OPENAI_API_KEY: cfgRaw.OPENAI_API_KEY ?? '',
+          USE_ONLINE_AI: (cfgRaw.LLM_BACKEND ?? 'local') === 'openai',
+          LLM_MODEL: cfgRaw.LLM_MODEL ?? 'local-model',
+          LLM_API_URL: cfgRaw.LLM_API_URL ?? 'http://127.0.0.1:8001/v1/chat/completions',
+          LLM_API_KEY: '',
+          ROUTER_API_URL: cfgRaw.ROUTER_API_URL ?? '',
+          ROUTER_MODEL: cfgRaw.ROUTER_MODEL ?? '',
+          ROUTER_API_KEY: '',
           GMAIL_MARK_READ: cfgRaw.GMAIL_MARK_READ ?? 'true',
           GMAIL_POLL_QUERY: cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox',
-          UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : 'en',
+          UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : cfgRaw.UI_LANG === 'en' ? 'en' : lang,
 
           min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormInput['min_priority']) : 'medium',
           max_emails_per_run: user.max_emails_per_run ?? 10,
@@ -87,15 +103,27 @@ export const SettingsPage: React.FC = () => {
       const { min_priority, max_emails_per_run, poll_interval, ...globalConfig } = parsed
 
       await Promise.all([
-        saveConfig(globalConfig),
-        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval }) : Promise.resolve()
+        isAdmin ? (async () => {
+          type GlobalConfigWithFlag = Partial<Config> & { USE_ONLINE_AI?: boolean }
+          const { LLM_API_KEY, ROUTER_API_KEY, USE_ONLINE_AI, ...rest } = globalConfig as unknown as GlobalConfigWithFlag
+          const patch: Partial<Config> = { ...(rest as Partial<Config>), LLM_BACKEND: USE_ONLINE_AI ? 'openai' : 'local' }
+          if (LLM_API_KEY) patch.LLM_API_KEY = LLM_API_KEY
+          if (ROUTER_API_KEY) patch.ROUTER_API_KEY = ROUTER_API_KEY
+          const r = await saveConfig(patch)
+          const res = r as unknown as { config?: Partial<Config> }
+          if (res?.config) {
+            setHasLlmKey(!!res.config.HAS_LLM_API_KEY)
+            setHasRouterKey(!!res.config.HAS_ROUTER_API_KEY)
+          }
+        })() : Promise.resolve(),
+        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval }) : Promise.resolve(),
       ])
 
       toast.success(t('result.saved'))
       if (parsed.UI_LANG !== lang) {
         setLang(parsed.UI_LANG)
       }
-      reset(parsed)
+      reset({ ...parsed, LLM_API_KEY: '', ROUTER_API_KEY: '' })
     } catch {
       /* handled globally */
     }
@@ -139,7 +167,7 @@ export const SettingsPage: React.FC = () => {
         <ChangePasswordCard />
 
         <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
-          <LLMSettings control={control} />
+          {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
           <GmailSettings control={control} />
 
           <div className="flex items-center gap-3 sticky bottom-0 py-4 bg-[#0f172a]/80 backdrop-blur-md border-t border-[#2d3748] -mx-5 px-5 z-10">

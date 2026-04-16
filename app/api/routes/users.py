@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import db
 from app.core import auth as auth_mod
 from app.schemas import UserCreate, UserUpdate
+from app.skills.gmail import worker as gmail_worker
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ def user_get(user_id: int, user: dict = Depends(auth_mod.current_user)):
 
 
 @router.put("/users/{user_id}")
-def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod.current_user)):
+async def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod.current_user)):
     """更新用户设置（本人或管理员）"""
     auth_mod.assert_self_or_admin(user, user_id)
     if not db.get_user_by_id(user_id):
@@ -47,6 +48,10 @@ def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(auth_mod
     updates = payload.model_dump(exclude_unset=True)
     if updates:
         db.update_user(user_id, **updates)
+        if "worker_enabled" in updates:
+            if updates["worker_enabled"]:
+                await gmail_worker.ensure_user_running(user_id)
+            else:
+                gmail_worker.stop_user(user_id)
     row = db.get_user_by_id(user_id)
     return {k: v for k, v in row.items() if k != "password_hash"}
-

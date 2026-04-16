@@ -286,39 +286,90 @@ async def _user_loop(state: _UserWorkerState) -> None:
 
 # ── 公开控制接口 ────────────────────────────────────────────────────
 
-async def start() -> bool:
+def _start_user_worker(user_id: int) -> bool:
+    if user_id in _workers and _workers[user_id].running:
+        return False
+
+    state = _workers.setdefault(user_id, _UserWorkerState(user_id=user_id))
+    now = datetime.now()
+    state.running = True
+    state.session_start = now
+    state.stats.update({
+        "started_at":    now.isoformat(timespec="seconds"),
+        "last_poll":     None,
+        "total_fetched": 0,
+        "total_sent":    0,
+        "total_errors":  0,
+        "total_tokens":  0,
+        "last_error":    None,
+    })
+    state.task = asyncio.create_task(_user_loop(state))
+    return True
+
+
+async def start(allow_empty: bool = False) -> bool:
     """启动所有 worker_enabled 用户的轮询 Worker。"""
     users = db.list_worker_enabled_users()
     if not users:
+        if allow_empty:
+            return False
         raise RuntimeError("当前无 worker_enabled=True 的用户，请先在用户设置中开启")
 
     started_any = False
     for user in users:
         user_id = user["id"]
-        if user_id in _workers and _workers[user_id].running:
-            continue  # 已运行，跳过
-
-        state = _workers.setdefault(user_id, _UserWorkerState(user_id=user_id))
-        now = datetime.now()
-        state.running = True
-        state.session_start = now
-        state.stats.update({
-            "started_at":    now.isoformat(timespec="seconds"),
-            "last_poll":     None,
-            "total_fetched": 0,
-            "total_sent":    0,
-            "total_errors":  0,
-            "total_tokens":  0,
-            "last_error":    None,
-        })
-        state.task = asyncio.create_task(_user_loop(state))
-        started_any = True
+        started_any = _start_user_worker(int(user_id)) or started_any
 
     try:
         ws_pub.publish_worker_status(get_status())
     except Exception:
         pass
     return started_any
+
+
+async def ensure_user_running(user_id: int) -> bool:
+    """确保指定 user 的轮询 Task 处于运行状态。"""
+    if not db.get_user_by_id(user_id):
+        return False
+    if not db.get_user_by_id(user_id).get("worker_enabled"):
+        return False
+    started = _start_user_worker(user_id)
+    if started:
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
+    return started
+
+
+def stop_user(user_id: int) -> bool:
+    """停止指定 user 的轮询 Task。"""
+    state = _workers.get(user_id)
+    if not state or not state.running:
+        return False
+
+    state.running = False
+    runtime_secs = 0
+    if state.session_start is not None:
+        runtime_secs = int((datetime.now() - state.session_start).total_seconds())
+        state.session_start = None
+    db.save_worker_stats(
+        started_at=state.stats.get("started_at", ""),
+        total_sent=state.stats["total_sent"],
+        total_fetched=state.stats["total_fetched"],
+        total_errors=state.stats["total_errors"],
+        total_tokens=state.stats.get("total_tokens", 0),
+        runtime_secs=runtime_secs,
+        last_poll=state.stats.get("last_poll"),
+        user_id=user_id,
+    )
+    if state.task and not state.task.done():
+        state.task.cancel()
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    return True
 
 
 def stop() -> bool:
