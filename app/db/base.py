@@ -1,6 +1,7 @@
 import enum
 from pathlib import Path
 from .session import _cur, _TS_EXPR
+from app.core import config
 
 class LogType(str, enum.Enum):
     """日志来源类型，便于后续分类筛选"""
@@ -28,7 +29,7 @@ def init_db() -> None:
         )
         has_user_table = cur.fetchone()[0]
 
-        if not has_user_table:
+        if not has_user_table and config.DB_ALLOW_LEGACY_DROP:
             # 旧表清理（顺序：先子表后父表）
             for tbl in [
                 "worker_stats", "email_records", "user_profile",

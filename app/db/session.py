@@ -11,8 +11,8 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
         _pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
+            minconn=max(1, int(config.DB_POOL_MINCONN)),
+            maxconn=max(1, int(config.DB_POOL_MAXCONN)),
             dsn=config.POSTGRES_DSN,
         )
     return _pool

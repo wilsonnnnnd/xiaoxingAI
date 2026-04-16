@@ -1,6 +1,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _ENV_PATH = _ROOT / ".env"
@@ -50,7 +51,34 @@ PROMPT_PROFILE:   str = _get("PROMPT_PROFILE",    "user_profile.txt")
 REDIS_URL:        str = _get("REDIS_URL", "redis://localhost:6380")
 
 # PostgreSQL
-POSTGRES_DSN:     str = _get("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/xiaoxing")
+DB_SSLMODE:      str = _get("DB_SSLMODE", "")
+DB_POOL_MINCONN: int = int(_get("DB_POOL_MINCONN", "1"))
+DB_POOL_MAXCONN: int = int(_get("DB_POOL_MAXCONN", "10"))
+DB_ALLOW_LEGACY_DROP: bool = _get("DB_ALLOW_LEGACY_DROP", "false").lower() == "true"
+
+_DEFAULT_DSN = "postgresql://postgres:postgres@localhost:5432/xiaoxing"
+_RAW_DSN: str = _get("SUPABASE_DB_DSN") or _get("DATABASE_URL") or _get("POSTGRES_DSN", _DEFAULT_DSN)
+
+def _ensure_sslmode(dsn: str) -> str:
+    try:
+        u = urlparse(dsn)
+        if not u.scheme or not u.netloc:
+            return dsn
+        q = dict(parse_qsl(u.query, keep_blank_values=True))
+        if "sslmode" in q:
+            return dsn
+        sslmode = DB_SSLMODE
+        host = (u.hostname or "").lower()
+        if not sslmode and "supabase" in host:
+            sslmode = "require"
+        if not sslmode:
+            return dsn
+        q["sslmode"] = sslmode
+        return urlunparse(u._replace(query=urlencode(q)))
+    except Exception:
+        return dsn
+
+POSTGRES_DSN: str = _ensure_sslmode(_RAW_DSN)
 
 # Auth (JWT)
 JWT_SECRET:          str = _get("JWT_SECRET", "change-me-in-production")
