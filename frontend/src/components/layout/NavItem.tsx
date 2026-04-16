@@ -7,15 +7,17 @@ interface NavItemProps {
   translationKey: string
   className?: string
   end?: boolean
+  onClick?: () => void
 }
 
-export const NavItem: React.FC<NavItemProps> = ({ to, translationKey, className = '', end }) => {
+export const NavItem: React.FC<NavItemProps> = ({ to, translationKey, className = '', end, onClick }) => {
   const { t } = useI18n()
   
   return (
     <NavLink
       to={to}
       end={end}
+      onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out ${
           isActive 

@@ -6,7 +6,6 @@ class BotCreate(BaseModel):
     token: str
     chat_id: str
     is_default: bool = False
-    chat_prompt_id: Optional[int] = None
     bot_mode: str = "all"
 
 
@@ -15,5 +14,4 @@ class BotUpdate(BaseModel):
     token: Optional[str] = None
     chat_id: Optional[str] = None
     is_default: Optional[bool] = None
-    chat_prompt_id: Optional[int] = None
     bot_mode: Optional[str] = None

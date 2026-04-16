@@ -38,7 +38,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ── JWT ──────────────────────────────────────────────────────────
 _ALGORITHM = "HS256"
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/admin-login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def create_access_token(user: Dict[str, Any]) -> str:
@@ -84,24 +84,12 @@ def decode_token(token: str) -> Dict[str, Any]:
 
 def invalidate_user_tokens(user_id: int) -> None:
     """使指定用户的所有 JWT 失效（版本号 +1）。"""
-    r = rc._sync()
-    if r is None:
-        return
-    key = f"jwt:version:{user_id}"
-    r.incr(key)
+    rc.bump_jwt_version(user_id)
 
 
 def _get_jwt_version(user_id: int) -> int:
     """从 Redis 获取 JWT 版本号，不可达时返回 0（降级：仅验证签名）。"""
-    r = rc._sync()
-    if r is None:
-        return 0
-    key = f"jwt:version:{user_id}"
-    val = r.get(key)
-    if val is None:
-        r.set(key, 0)
-        return 0
-    return int(val)
+    return rc.get_jwt_version(user_id)
 
 
 # ── FastAPI 依赖 ──────────────────────────────────────────────────

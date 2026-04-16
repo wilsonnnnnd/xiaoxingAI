@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import logging
 import os
@@ -15,24 +16,24 @@ from pathlib import Path
 from app.core import config as app_config
 from app.core.constants import (
     ALLOWED_CONFIG_KEYS, DEFAULT_PROMPTS, INTERNAL_PROMPTS, 
-    INTERNAL_PROMPT_DIRS, VALID_BOT_MODES, VALID_PERSONA_CATS,
-    PERSONA_LABEL_MAP
+    INTERNAL_PROMPT_DIRS, VALID_BOT_MODES
 )
 from app.schemas import (
     AdminLoginRequest, UserCreate, UserUpdate, 
     BotCreate, BotUpdate, PromptCreate, PromptUpdate, 
-    PersonaConfigSave, ChatPersonaRequest
 )
 from app import db
 from app.core import auth as auth_mod
+from app.core import redis_client as rc
+from app.core.step_log import start_step_log_buffer, stop_step_log_buffer
 from app.skills.gmail import worker
-from app.core import bot_worker as tg_bot_worker
 from app.skills.gmail.auth import exchange_code_for_token, get_oauth_url
+from app.utils.oauth_state import decode_oauth_state
 from app.core.auth import get_current_user_or_none
 from app.api.routes import (
     health, ai, email_records, auth as auth_routes, users, bots, 
-    db_prompts, admin_persona, config as config_routes, 
-    prompts, stats_logs, gmail_actions, gmail_compose, telegram_tools, chat, debug_outgoing, reply_format
+    db_prompts, config as config_routes, 
+    prompts, stats_logs, gmail_actions, gmail_compose, telegram_tools, debug_outgoing, reply_format
 )
 
 
@@ -50,12 +51,19 @@ logger = logging.getLogger("main")
 async def lifespan(app: FastAPI):
     # 初始化数据库（建表 + 自动迁移旧 JSON 文件）
     db.init_db()
+    start_step_log_buffer()
     auth_mod.ensure_admin_exists()
+    if app_config.REQUIRE_REDIS and not rc.is_available():
+        raise RuntimeError("Redis 不可用（REQUIRE_REDIS=true）")
+    if not app_config.REQUIRE_REDIS and not rc.is_available():
+        logger.warning("Redis 不可用：Token 吊销/去重/缓存将降级失效")
     if app_config.AUTO_START_GMAIL_WORKER:
-        try:
-            await worker.start(allow_empty=True)
-        except Exception as e:
-            logger.warning("Gmail worker 自动恢复失败: %s", e)
+        async def _auto_start() -> None:
+            try:
+                await worker.start(allow_empty=True)
+            except Exception as e:
+                logger.warning("Gmail worker 自动恢复失败: %s", e)
+        asyncio.create_task(_auto_start())
     logger.info(
         "服务已启动 | FRONTEND=%s | LLM=%s | ROUTER=%s",
         app_config.FRONTEND_URL,
@@ -63,9 +71,9 @@ async def lifespan(app: FastAPI):
         app_config.ROUTER_API_URL or "(fallback to LLM)",
     )
     yield
-    # 关闭时优雅停止 worker 和 tg bot
+    # 关闭时优雅停止 worker
     await worker.shutdown()
-    await tg_bot_worker.stop()
+    await stop_step_log_buffer()
 
 
 app = FastAPI(
@@ -99,14 +107,12 @@ app.include_router(auth_routes.router)
 app.include_router(users.router)
 app.include_router(bots.router)
 app.include_router(db_prompts.router)
-app.include_router(admin_persona.router)
 app.include_router(config_routes.router)
 app.include_router(prompts.router)
 app.include_router(stats_logs.router)
 app.include_router(gmail_actions.router)
 app.include_router(gmail_compose.router)
 app.include_router(telegram_tools.router)
-app.include_router(chat.router)
 app.include_router(debug_outgoing.router)
 app.include_router(reply_format.router)
 
@@ -119,14 +125,12 @@ app.include_router(auth_routes.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(bots.router, prefix=API_PREFIX)
 app.include_router(db_prompts.router, prefix=API_PREFIX)
-app.include_router(admin_persona.router, prefix=API_PREFIX)
 app.include_router(config_routes.router, prefix=API_PREFIX)
 app.include_router(prompts.router, prefix=API_PREFIX)
 app.include_router(stats_logs.router, prefix=API_PREFIX)
 app.include_router(gmail_actions.router, prefix=API_PREFIX)
 app.include_router(gmail_compose.router, prefix=API_PREFIX)
 app.include_router(telegram_tools.router, prefix=API_PREFIX)
-app.include_router(chat.router, prefix=API_PREFIX)
 app.include_router(debug_outgoing.router, prefix=API_PREFIX)
 app.include_router(reply_format.router, prefix=API_PREFIX)
 
@@ -169,10 +173,7 @@ def gmail_callback(request: Request, code: str,
     # 优先 from OAuth state 参数恢复 user_id（由 /gmail/auth/url 编码进去）
     user_id = None
     if state:
-        try:
-            user_id = int(state)
-        except (ValueError, TypeError):
-            pass
+        user_id = decode_oauth_state(state, app_config.JWT_SECRET)
     # 降级：若 state 未携带（旧路由 /gmail/auth 直接跳转），尝试 JWT
     if user_id is None and user:
         user_id = user["id"]
@@ -252,66 +253,9 @@ async def ws_worker_status(websocket: WebSocket):
         ws_pub.unsubscribe_worker(q)
 
 
-@app.websocket("/api/ws/bot/status")
-@app.websocket("/ws/bot/status")
-async def ws_bot_status(websocket: WebSocket):
-    await websocket.accept()
-    from app.core.realtime import ws as ws_pub
-    q = ws_pub.subscribe_bot()
-    try:
-        # send current bot status immediately
-        await websocket.send_json({"running": tg_bot_worker.is_running()})
-        while True:
-            status = await q.get()
-            await websocket.send_json(status)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
-    finally:
-        ws_pub.unsubscribe_bot(q)
-
-
-# ─────────────────────────────────────────
-# Telegram Bot 聊天 Worker
-# ─────────────────────────────────────────
-
-@app.post("/api/telegram/bot/start")
-@app.post("/telegram/bot/start")
-async def tg_bot_start():
-    """启动 Telegram Bot 聊天 Worker（长轮询）"""
-    try:
-        started = await tg_bot_worker.start()
-        return {"ok": True, "started": started, "running": tg_bot_worker.is_running()}
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/telegram/bot/stop")
-@app.post("/telegram/bot/stop")
-async def tg_bot_stop():
-    """停止 Telegram Bot 聊天 Worker"""
-    await tg_bot_worker.stop()
-    return {"ok": True, "running": False}
-
-
-@app.get("/api/telegram/bot/status")
-@app.get("/telegram/bot/status")
-def tg_bot_status():
-    """返回 Bot Worker 运行状态"""
-    return {"running": tg_bot_worker.is_running()}
-
-
 # Backwards-compatible wrappers exposing explicit endpoints for separated statuses
 @app.get("/api/gmail/workstatus")
 @app.get("/gmail/workstatus")
 def gmail_work_status():
     """Wrapper for Gmail worker status (frontend-friendly name)."""
     return worker.get_status()
-
-
-@app.get("/api/chat/workstatus")
-@app.get("/chat/workstatus")
-def chat_work_status():
-    """Wrapper for Chat (Telegram bot) worker status (frontend-friendly name)."""
-    return {"running": tg_bot_worker.is_running()}

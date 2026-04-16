@@ -12,3 +12,4 @@ class UserUpdate(BaseModel):
     min_priority: Optional[str] = None
     max_emails_per_run: Optional[int] = None
     poll_interval: Optional[int] = None
+    gmail_poll_query: Optional[str] = None

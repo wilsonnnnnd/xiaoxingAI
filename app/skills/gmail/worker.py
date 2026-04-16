@@ -13,10 +13,12 @@ from app.core import ws as ws_pub
 
 from app.core import config
 from app import db
+from app.core.step_log import write_step_log
 from app.skills.gmail.client import fetch_emails, mark_as_read
 from app.skills.gmail.pipeline import process_email
 from app.core.telegram.client import send_message
 from app.core import redis_client as rc
+from app.skills.gmail import telegram_updates
 
 logger = logging.getLogger("worker")
 
@@ -52,9 +54,14 @@ _workers: Dict[int, _UserWorkerState] = {}
 
 def _wlog(msg: str, level: str = "info", tokens: int = 0,
            user_id: Optional[int] = None) -> None:
-    """写 logger 和持久化步骤日志数据库"""
-    ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    db.insert_log(ts, level, msg, db.LogType.EMAIL, tokens, user_id=user_id)
+    write_step_log(
+        msg=msg,
+        level=level,
+        tokens=tokens,
+        user_id=user_id,
+        log_type=db.LogType.EMAIL,
+    )
+
     if level == "error":
         logger.error(msg)
     elif level == "warn":
@@ -110,17 +117,17 @@ async def _poll_once(state: _UserWorkerState) -> None:
     user_id = state.user_id
 
     # 读取用户配置（DB 中的 per-user 设置）
-    user_row = db.get_user_by_id(user_id)
+    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
     if not user_row:
         return
 
-    poll_query    = config.GMAIL_POLL_QUERY
+    poll_query    = (str(user_row.get("gmail_poll_query") or "")).strip() or config.GMAIL_POLL_QUERY
     max_emails    = user_row.get("max_emails_per_run") or config.GMAIL_POLL_MAX
     min_priority  = user_row.get("min_priority") or None  # e.g. "high"
     mark_read     = config.GMAIL_MARK_READ
 
     # 获取该用户的 Gmail 通知 Bot（mode='all' 或 'notify'）
-    notify_bots = db.get_notify_bots(user_id)
+    notify_bots = await asyncio.to_thread(db.get_notify_bots, user_id)
 
     async with state.get_lock():
         state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
@@ -139,7 +146,11 @@ async def _poll_once(state: _UserWorkerState) -> None:
             state.stats["last_error"] = str(e)
             return
 
-        new_emails = [e for e in emails if not db.is_email_processed(e["id"], user_id)]
+        processed = await asyncio.gather(*[
+            asyncio.to_thread(db.is_email_processed, e["id"], user_id)
+            for e in emails
+        ])
+        new_emails = [e for e, is_done in zip(emails, processed) if not is_done]
         skipped_dup = len(emails) - len(new_emails)
         state.stats["total_fetched"] += len(new_emails)
         _wlog(
@@ -173,7 +184,8 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 if notify_priorities and priority not in notify_priorities:
                     _wlog(f"⏭️ 跳过低优先级 [{priority}]：{subj}",
                           level="warn", user_id=user_id)
-                    db.save_email_record(
+                    await asyncio.to_thread(
+                        db.save_email_record,
                         email_id=email["id"], subject=subj,
                         sender=email.get("from", ""), date=email.get("date", ""),
                         body=email.get("body") or email.get("snippet", ""),
@@ -227,7 +239,8 @@ async def _poll_once(state: _UserWorkerState) -> None:
                     _wlog(f"✅ 已发送：{subj}",
                           tokens=result.get("tokens", 0), user_id=user_id)
 
-                db.save_email_record(
+                await asyncio.to_thread(
+                    db.save_email_record,
                     email_id=email["id"], subject=subj,
                     sender=email.get("from", ""), date=email.get("date", ""),
                     body=email.get("body") or email.get("snippet", ""),
@@ -252,7 +265,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 _wlog(f"❌ 处理失败 [{subj}]: {e}",
                       level="error", user_id=user_id)
 
-        db.cleanup_old_logs()
+        await asyncio.to_thread(db.cleanup_old_logs)
         try:
             ws_pub.publish_worker_status(get_status())
         except Exception:
@@ -263,7 +276,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
 
 async def _user_loop(state: _UserWorkerState) -> None:
     user_id = state.user_id
-    user_row = db.get_user_by_id(user_id)
+    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
     poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
 
     _wlog(f"🚀 Worker 已启动，轮询间隔 {poll_interval}s", user_id=user_id)
@@ -275,7 +288,7 @@ async def _user_loop(state: _UserWorkerState) -> None:
             _wlog(f"❌ 轮询异常: {e}", level="error", user_id=user_id)
             logger.error(f"[worker] user#{user_id} 轮询异常: {e}", exc_info=True)
         # 重新读取 poll_interval（可能被热更新）
-        user_row = db.get_user_by_id(user_id)
+        user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
         poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
         for _ in range(poll_interval):
             if not state.running:
@@ -309,9 +322,13 @@ def _start_user_worker(user_id: int) -> bool:
 
 async def start(allow_empty: bool = False) -> bool:
     """启动所有 worker_enabled 用户的轮询 Worker。"""
-    users = db.list_worker_enabled_users()
+    users = await asyncio.to_thread(db.list_worker_enabled_users)
     if not users:
         if allow_empty:
+            try:
+                await telegram_updates.start()
+            except Exception:
+                pass
             return False
         raise RuntimeError("当前无 worker_enabled=True 的用户，请先在用户设置中开启")
 
@@ -324,14 +341,19 @@ async def start(allow_empty: bool = False) -> bool:
         ws_pub.publish_worker_status(get_status())
     except Exception:
         pass
+    try:
+        await telegram_updates.start()
+    except Exception:
+        pass
     return started_any
 
 
 async def ensure_user_running(user_id: int) -> bool:
     """确保指定 user 的轮询 Task 处于运行状态。"""
-    if not db.get_user_by_id(user_id):
+    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
+    if not user_row:
         return False
-    if not db.get_user_by_id(user_id).get("worker_enabled"):
+    if not user_row.get("worker_enabled"):
         return False
     started = _start_user_worker(user_id)
     if started:
@@ -375,6 +397,10 @@ def stop_user(user_id: int) -> bool:
 def stop() -> bool:
     """停止所有正在运行的 Worker。"""
     stopped_any = False
+    try:
+        telegram_updates.stop_now()
+    except Exception:
+        pass
     for user_id, state in list(_workers.items()):
         if not state.running:
             continue
@@ -407,6 +433,10 @@ async def shutdown() -> None:
     """优雅停止所有 Worker，等待当前轮询完成（最多 10 秒）。"""
     tasks = [s.task for s in _workers.values() if s.task and not s.task.done()]
     stop()
+    try:
+        await telegram_updates.stop()
+    except Exception:
+        pass
     if tasks:
         try:
             await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)

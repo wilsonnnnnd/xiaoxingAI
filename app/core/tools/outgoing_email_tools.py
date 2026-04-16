@@ -1,4 +1,3 @@
-import json
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -7,17 +6,19 @@ from fastapi import HTTPException
 
 from app import db
 from app.core import config
-from app.core.telegram.client import edit_message_text, send_message
-from app.skills.gmail.client import send_email_raw
+from app.core.step_log import write_step_log
+from app.core.telegram.client import edit_message_text
 from app.utils.callback_signer import build_callback_data
 from app.utils.crypto import decrypt_draft_body, encrypt_draft_body
-from app.utils.email_mime import build_gmail_raw_message
+from app.utils.outgoing_json import extract_json_from_llm
 from app.utils.prompt_loader import load_prompt
 from app.core.tools import register
 from app.core.llm import call_llm
 from app.core.outgoing_debug import record as record_outgoing_event
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
-from app.utils.reply_format import apply_reply_format
+from app.utils.reply_format import apply_reply_format, strip_reply_footer
+from app.services.outgoing_draft_sender import send_outgoing_draft
+from app.services.outgoing_preview_service import send_outgoing_preview
 
 
 def _extract_int(message: str, key: str) -> int | None:
@@ -28,21 +29,6 @@ def _extract_int(message: str, key: str) -> int | None:
 def _extract_str(message: str, key: str) -> str | None:
     m = re.search(rf"{re.escape(key)}=([^\s]+)", message)
     return m.group(1) if m else None
-
-
-def _extract_json(text: str) -> dict:
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\s*```\s*$", "", text, flags=re.MULTILINE)
-    text = text.strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start : end + 1]
-    try:
-        v = json.loads(text)
-        return v if isinstance(v, dict) else {}
-    except Exception:
-        return {}
 
 
 def _email_from_sender(sender: str) -> str:
@@ -68,8 +54,7 @@ def _preview_text(*, to_email: str, subject: str, body: str) -> str:
 
 
 def _wlog(*, user_id: int, msg: str, level: str = "info", tokens: int = 0) -> None:
-    ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    db.insert_log(ts, level, msg, db.LogType.EMAIL, tokens=tokens, user_id=user_id)
+    write_step_log(msg=msg, level=level, tokens=tokens, user_id=user_id, log_type=db.LogType.EMAIL)
 
 
 @register(
@@ -168,7 +153,7 @@ def reply_email(message: str, user_id: int | None = None) -> str:
     )
 
     content, tokens = call_llm(prompt, max_tokens=800)
-    data = _extract_json(content)
+    data = extract_json_from_llm(content)
     new_subject = (data.get("subject") or "").strip() or subject
     body_plain = (data.get("body_plain") or "").strip()
     if not body_plain:
@@ -190,7 +175,11 @@ def reply_email(message: str, user_id: int | None = None) -> str:
                 break
 
     body_plain = apply_reply_format(
-        content=body_plain,
+        content=strip_reply_footer(
+            content=body_plain,
+            signature=signature,
+            closing=str(template.get("closing")) if template and template.get("closing") is not None else None,
+        ),
         body_template=str(template.get("body_template")) if template else None,
         signature=signature,
         closing=str(template.get("closing")) if template and template.get("closing") is not None else None,
@@ -233,44 +222,18 @@ def reply_email(message: str, user_id: int | None = None) -> str:
     if not bot or not bot.get("token"):
         return "⚠️ Bot 不存在或 token 缺失。"
 
-    cb_confirm = build_callback_data(
-        action="c",
+    msg_id = send_outgoing_preview(
         draft_id=int(draft_id),
-        expires_at=expires_at,
-        nonce=callback_nonce,
         user_id=int(user_id),
-        chat_id=str(chat_id),
         bot_id=int(bot_id),
-    )
-    cb_cancel = build_callback_data(
-        action="x",
-        draft_id=int(draft_id),
-        expires_at=expires_at,
-        nonce=callback_nonce,
-        user_id=int(user_id),
-        chat_id=str(chat_id),
-        bot_id=int(bot_id),
-    )
-    reply_markup = {
-        "inline_keyboard": [[{"text": "✅ Confirm", "callback_data": cb_confirm}, {"text": "❌ Cancel", "callback_data": cb_cancel}]]
-    }
-
-    resp = send_message(
-        _preview_text(to_email=to_email, subject=new_subject, body=body_plain),
         chat_id=str(chat_id),
         token=str(bot["token"]),
-        parse_mode="HTML",
-        reply_markup=reply_markup,
+        text=_preview_text(to_email=to_email, subject=new_subject, body=body_plain),
+        expires_at=expires_at,
+        nonce=str(callback_nonce),
+        source="telegram_message",
+        record_action=False,
     )
-    msg_id = int(resp.get("result", {}).get("message_id") or 0)
-    if msg_id:
-        db.set_preview_delivery(
-            draft_id=int(draft_id),
-            user_id=int(user_id),
-            telegram_bot_id=int(bot_id),
-            telegram_chat_id=str(chat_id),
-            telegram_message_id=msg_id,
-        )
 
     _wlog(user_id=int(user_id), msg=f"✉️ [reply_email] preview sent | draft#{draft_id}")
     if msg_id:
@@ -330,53 +293,13 @@ def outgoing_draft_confirm(message: str, user_id: int | None = None) -> str:
 
     _wlog(user_id=int(user_id), msg=f"✉️ [outgoing] draft#{draft_id} sending")
 
-    try:
-        body_plain = decrypt_draft_body(
-            ciphertext=draft["body_ciphertext"],
-            nonce=draft["body_nonce"],
-            user_id=int(user_id),
-            draft_id=int(draft_id),
-        )
-        raw = build_gmail_raw_message(
-            to_email=str(draft.get("to_email") or ""),
-            subject=str(draft.get("subject") or ""),
-            body_plain=body_plain,
-        )
-        resp = send_email_raw(raw=raw, user_id=int(user_id))
-        gmail_message_id = str(resp.get("id") or "")
-        if not gmail_message_id:
-            raise RuntimeError("missing gmail message id")
-        db.set_send_result_success(draft_id=int(draft_id), user_id=int(user_id), gmail_message_id=gmail_message_id)
-        db.insert_action(
-            draft_id=int(draft_id),
-            user_id=int(user_id),
-            action="send_success",
-            actor_type="system",
-            source="telegram_message",
-            result="ok",
-            meta={"gmail_message_id": gmail_message_id},
-        )
+    ok, gmail_message_id, err = send_outgoing_draft(draft=draft, source="telegram_message")
+    if ok and gmail_message_id:
         _wlog(user_id=int(user_id), msg=f"✉️ [outgoing] draft#{draft_id} sent | gmail_id={gmail_message_id}")
         return "✅ 已发送邮件。"
-    except Exception as e:
-        db.set_send_result_failed(
-            draft_id=int(draft_id),
-            user_id=int(user_id),
-            error_code="gmail_send_error",
-            error_message=str(e)[:400],
-        )
-        db.insert_action(
-            draft_id=int(draft_id),
-            user_id=int(user_id),
-            action="send_failed",
-            actor_type="system",
-            source="telegram_message",
-            result="error",
-            error_code="gmail_send_error",
-            error_message=str(e)[:400],
-        )
-        _wlog(user_id=int(user_id), msg=f"✉️ [outgoing] draft#{draft_id} send_failed | {str(e)[:120]}", level="error")
-        return "⚠️ 发送失败，可回复“重试”或点击 Resend。"
+
+    _wlog(user_id=int(user_id), msg=f"✉️ [outgoing] draft#{draft_id} send_failed | {str(err or '')[:120]}", level="error")
+    return "⚠️ 发送失败，可回复“重试”或点击 Resend。"
 
 
 @register(
@@ -452,28 +375,6 @@ def outgoing_draft_modify(message: str, user_id: int | None = None) -> str:
         _wlog(user_id=int(user_id), msg=f"✉️ [outgoing] draft#{draft_id} to_email updated")
         return f"✅ 已更新收件人：{raw_instruction}"
 
-    body_plain = decrypt_draft_body(
-        ciphertext=draft["body_ciphertext"],
-        nonce=draft["body_nonce"],
-        user_id=int(user_id),
-        draft_id=int(draft_id),
-    )
-    tpl = load_prompt("outgoing/email_edit.txt")
-    prompt = (tpl
-        .replace("{{to_email}}", str(draft.get("to_email") or ""))
-        .replace("{{subject}}", str(draft.get("subject") or ""))
-        .replace("{{body}}", body_plain[:2000])
-        .replace("{{instruction}}", raw_instruction)
-    )
-    content, _ = call_llm(prompt, max_tokens=800)
-    data = _extract_json(content)
-    new_subject = (data.get("subject") or "").strip() or str(draft.get("subject") or "")
-    new_body = (data.get("body_plain") or "").strip()
-    if not new_body:
-        return "⚠️ AI 输出格式错误，无法修改草稿。"
-
-    sender_name = resolve_sender_name(user_id=int(user_id))
-
     settings = db.get_reply_format_settings(int(user_id))
     signature = str(settings.get("signature") or "")
     template = None
@@ -486,12 +387,36 @@ def outgoing_draft_modify(message: str, user_id: int | None = None) -> str:
             if bool(t.get("is_default")):
                 template = t
                 break
+    closing = str(template.get("closing")) if template and template.get("closing") is not None else None
+
+    body_plain = decrypt_draft_body(
+        ciphertext=draft["body_ciphertext"],
+        nonce=draft["body_nonce"],
+        user_id=int(user_id),
+        draft_id=int(draft_id),
+    )
+    body_plain_core = strip_reply_footer(content=body_plain, signature=signature, closing=closing)
+    tpl = load_prompt("outgoing/email_edit.txt")
+    prompt = (tpl
+        .replace("{{to_email}}", str(draft.get("to_email") or ""))
+        .replace("{{subject}}", str(draft.get("subject") or ""))
+        .replace("{{body}}", body_plain_core[:2000])
+        .replace("{{instruction}}", raw_instruction)
+    )
+    content, _ = call_llm(prompt, max_tokens=800)
+    data = extract_json_from_llm(content)
+    new_subject = (data.get("subject") or "").strip() or str(draft.get("subject") or "")
+    new_body = (data.get("body_plain") or "").strip()
+    if not new_body:
+        return "⚠️ AI 输出格式错误，无法修改草稿。"
+
+    sender_name = resolve_sender_name(user_id=int(user_id))
 
     new_body = apply_reply_format(
-        content=new_body,
+        content=strip_reply_footer(content=new_body, signature=signature, closing=closing),
         body_template=str(template.get("body_template")) if template else None,
         signature=signature,
-        closing=str(template.get("closing")) if template and template.get("closing") is not None else None,
+        closing=closing,
     )
     new_body = fill_sender_name(new_body, sender_name=sender_name)
 

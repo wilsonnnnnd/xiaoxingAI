@@ -9,7 +9,7 @@ from app.core.constants import DEFAULT_PROMPTS, INTERNAL_PROMPTS, INTERNAL_PROMP
 
 router = APIRouter()
 
-USER_EDITABLE_PROMPTS = {"chat.txt"}
+USER_EDITABLE_PROMPTS: set[str] = set()
 
 
 def _is_internal_prompt(rel_path: str) -> bool:

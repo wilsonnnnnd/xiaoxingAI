@@ -7,7 +7,6 @@ import {
     processEmail
 } from '../../gmail/api'
 import { gmailFetch, gmailProcess } from '../../gmail/api'
-import { generateBotProfile } from '../../chat/api'
 import { getMe } from '../../users/api'
 import { useHealthCheck } from '../../../hooks/useHealthCheck'
 import { clearDebugCache, getOutgoingTrace, getTelegramEvents, type TelegramEvent } from '../api/outgoing'
@@ -51,7 +50,7 @@ const POLL_QUERIES: [string, string][] = [
 export const DebugPage: React.FC = () => {
     const { t } = useI18n()
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
-    const apiOk = useHealthCheck()
+    const { ok: apiOk } = useHealthCheck()
     const isAdmin = me?.role === 'admin'
 
     // Analyze
@@ -130,11 +129,6 @@ export const DebugPage: React.FC = () => {
         } finally { setGBusy(false) }
     }
 
-    // Profile
-    const [profileText, setProfileText] = useState('')
-    const [profileBusy, setProfileBusy] = useState(false)
-    const [profileResult, setProfileResult] = useState<{ ok: true; tokens: number } | { ok: false; msg: string } | null>(null)
-
     const { data: tgEvents } = useQuery({
         queryKey: ['debug-tg-events'],
         queryFn: () => getTelegramEvents(200),
@@ -174,25 +168,9 @@ export const DebugPage: React.FC = () => {
         traceByUpdateId.set(uid, arr)
     }
 
-    async function generateProfile() {
-        setProfileBusy(true); setProfileResult(null); setProfileText('')
-        try {
-            const d = await generateBotProfile()
-            if (d.ok) {
-                setProfileText(d.profile)
-                setProfileResult({ ok: true, tokens: d.tokens })
-            } else {
-                setProfileResult({ ok: false, msg: (d as { ok: false; msg?: string }).msg || 'Unknown error' })
-            }
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e)
-            setProfileResult({ ok: false, msg })
-        } finally { setProfileBusy(false) }
-    }
-
     if (me && me.role !== 'admin') {
         return (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-8">
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-4 sm:p-8">
                 <div className="text-4xl">🔒</div>
                 <p className="text-lg font-bold text-[#e2e8f0]">{t('error.admin_only')}</p>
                 <p className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</p>
@@ -201,7 +179,7 @@ export const DebugPage: React.FC = () => {
     }
 
     return (
-        <div className="p-5 flex flex-col gap-6 max-w-6xl mx-auto w-full">
+        <div className="p-4 sm:p-5 flex flex-col gap-6 max-w-6xl mx-auto w-full">
             <div className="flex items-center gap-3 px-3 py-1.5 bg-[#1e2330] border border-[#2d3748] rounded-lg text-xs text-[#94a3b8] w-fit">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${apiOk ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />
                 {apiOk ? t('debug.status.ok') : t('debug.status.err')}
@@ -293,7 +271,7 @@ export const DebugPage: React.FC = () => {
                             max={50}
                             value={gMax}
                             onChange={v => setGMax(v)}
-                            className="w-24"
+                            className="w-full sm:w-24"
                         />
                         <div className="flex items-center h-10">
                             <Badge variant="neutral" className="flex items-center gap-2 cursor-pointer py-2">
@@ -311,24 +289,6 @@ export const DebugPage: React.FC = () => {
                         </Badge>
                     </div>
                     <div className={resCls(gRes.state)}>{gRes.state === 'idle' ? t('debug.placeholder.result') : gRes.state === 'requesting' ? t('debug.requesting') : gRes.text}</div>
-                </Card>
-
-                {/* User Profile */}
-                <Card title={`👤 ${t('debug.card.profile')}`} badge="POST /api/telegram/bot/generate_profile" full>
-                    <p className="text-sm text-[#64748b] leading-relaxed -mt-2 mb-2">{t('debug.card.profile_desc')}</p>
-                    <div className="flex items-center gap-4 flex-wrap">
-                        <Button onClick={generateProfile} loading={profileBusy}>{t('debug.btn.generate_profile')}</Button>
-                        {profileResult && (
-                            <Badge variant={profileResult.ok ? 'success' : 'error'}>
-                                {profileResult.ok
-                                    ? (profileResult.tokens === 0 ? t('debug.profile.no_chat') : `✅ ${profileResult.tokens} ${t('debug.profile.tokens')}`)
-                                    : `❌ ${(profileResult as { ok: false; msg: string }).msg}`}
-                            </Badge>
-                        )}
-                    </div>
-                    <div className="bg-[#0b0e14] border border-[#2d3748] rounded-xl p-4 text-xs font-mono whitespace-pre-wrap break-all min-h-[120px] max-h-[400px] overflow-y-auto text-[#e2e8f0] leading-relaxed mt-2">
-                        {profileText || <span className="text-[#475569] italic">{t('debug.profile.empty')}</span>}
-                    </div>
                 </Card>
 
                 <Card title="Outgoing/Reply Debug" full>

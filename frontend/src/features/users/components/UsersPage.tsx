@@ -339,7 +339,7 @@ export const UsersPage: React.FC = () => {
 
   if (me && me.role !== 'admin') {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-8">
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-4 sm:p-8">
         <div className="text-4xl">🔒</div>
         <div className="text-lg font-bold text-[#e2e8f0]">{t('error.admin_only')}</div>
         <div className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</div>
@@ -348,8 +348,8 @@ export const UsersPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
-      <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{t('users.title')}</h1>
           <p className="text-sm text-[#64748b] mt-1">Manage system users and their bots</p>
@@ -375,4 +375,3 @@ export const UsersPage: React.FC = () => {
     </div>
   )
 }
-

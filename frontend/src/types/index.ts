@@ -65,8 +65,6 @@ export interface Config {
   PROMPT_ANALYZE: string
   PROMPT_SUMMARY: string
   PROMPT_TELEGRAM: string
-  PROMPT_CHAT: string
-  PROMPT_PROFILE: string
   UI_LANG: string
 }
 
@@ -90,6 +88,7 @@ export interface User {
   min_priority: string
   max_emails_per_run: number
   poll_interval: number
+  gmail_poll_query: string
   created_at: string
 }
 
@@ -100,7 +99,6 @@ export interface Bot {
   token: string
   chat_id: string
   is_default: boolean
-  chat_prompt_id: number | null
   bot_mode: string
   created_at: string
 }
@@ -113,11 +111,6 @@ export interface DbPrompt {
   content: string
   is_default: boolean
   created_at: string
-}
-
-export interface PersonaGenerateResult {
-  prompt: string
-  tokens: number
 }
 
 export type PersonaConfigData = Record<string, Record<string, string>>

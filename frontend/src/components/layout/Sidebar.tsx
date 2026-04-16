@@ -8,14 +8,17 @@ import { NavItem } from './NavItem'
 
 interface SidebarProps {
   me: AuthUser | null | undefined
+  className?: string
+  onNavigate?: () => void
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0', onNavigate }) => {
   const { t } = useI18n()
   const [skillOpen, setSkillOpen] = useState(false)
   const [imgOk, setImgOk] = useState(true)
   const skillRef = useRef<HTMLDivElement | null>(null)
   const isAdmin = me?.role === 'admin'
+  const isAuthed = !!localStorage.getItem('auth_token')
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -33,9 +36,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
   }
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col bg-[#0f1724] border-r border-[#273347] transition-width duration-200">
+    <aside className={`${className} flex flex-col bg-[#050b16] border-r border-[#1f2a3a] transition-width duration-200`}>
       {/* Brand */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-[#1f2a3a]">
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-[#111827]">
         <div className="w-10 h-10 rounded-full bg-white p-0.5 shrink-0 flex items-center justify-center">
           {imgOk ? (
             <img
@@ -61,11 +64,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
           <div className="text-base font-semibold text-[#e2e8f0] truncate">{t('app.brand')}</div>
           <div className="text-xs text-[#94a3b8] mt-0.5 truncate">{t('sidebar.small')}</div>
         </div>
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={onNavigate}
+            className="ml-auto md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-[#94a3b8] hover:bg-[#0b1220] hover:text-[#e2e8f0] transition-colors"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* User Info */}
       {me && (
-        <div className="px-4 py-2 border-b border-[#1f2a3a] flex items-center gap-2">
+        <div className="px-4 py-3 border-b border-[#111827] flex items-center gap-2">
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#60a5fa] to-[#7c3aed] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
             {me.email[0].toUpperCase()}
           </div>
@@ -80,8 +93,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
 
       {/* Nav */}
       <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3">
-        {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ to, key, end }) => {
+        {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin)
+          .filter(({ to }) => (isAuthed ? true : to === '/home' || to === '/help'))
+          .map(({ to, key, end }) => {
           if (key === 'nav.skill') {
+            if (!isAuthed) return null
             return (
               <div key="skill" className="relative" ref={skillRef}>
                 <button
@@ -95,38 +111,44 @@ export const Sidebar: React.FC<SidebarProps> = ({ me }) => {
                   <div className="mt-1 ml-2 bg-[#071025] border border-[#213347] rounded-md p-1 z-50 shadow-lg">
                     <NavLink
                       to="/skill/gmail"
+                      onClick={() => {
+                        setSkillOpen(false)
+                        onNavigate?.()
+                      }}
                       className={({ isActive }) =>
                         `block px-3 py-1 rounded text-sm transition-colors duration-150 ${isActive ? 'bg-[#071023] text-white font-semibold' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`
                       }
                     >
                       {t('nav.skill.gmail')}
                     </NavLink>
-                    <NavLink
-                      to="/skill/chat"
-                      className={({ isActive }) =>
-                        `block px-3 py-1 rounded text-sm transition-colors duration-150 ${isActive ? 'bg-[#071023] text-white font-semibold' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`
-                      }
-                    >
-                      {t('nav.skill.chat')}
-                    </NavLink>
                   </div>
                 )}
               </div>
             )
           }
-          return <NavItem key={to} to={to} translationKey={key} end={end} />
+          return <NavItem key={to} to={to} translationKey={key} end={end} onClick={onNavigate} />
         })}
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-[#334155] flex flex-col gap-2">
+      <div className="px-4 py-3 border-t border-[#111827] flex flex-col gap-2">
         <LanguageToggle />
-        <button
-          onClick={handleLogout}
-          className="w-full py-1 rounded text-xs text-[#94a3b8] hover:bg-[#334155] hover:text-[#fca5a5] transition-colors"
-        >
-          {t('btn.logout')}
-        </button>
+        {isAuthed ? (
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 rounded-md text-xs text-[#94a3b8] hover:bg-[#0b1220] hover:text-[#fca5a5] transition-colors duration-200"
+          >
+            {t('btn.logout')}
+          </button>
+        ) : (
+          <NavLink
+            to="/login"
+            onClick={onNavigate}
+            className="w-full py-2 rounded-md text-xs text-center text-[#94a3b8] hover:bg-[#0b1220] hover:text-[#e2e8f0] transition-colors duration-200"
+          >
+            {t('btn.login')}
+          </NavLink>
+        )}
       </div>
     </aside>
   )

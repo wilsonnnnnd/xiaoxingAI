@@ -70,7 +70,6 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
           options={[
             { label: t('users.bot.mode.all'), value: 'all' },
             { label: t('users.bot.mode.notify'), value: 'notify' },
-            { label: t('users.bot.mode.chat'), value: 'chat' },
           ]}
         />
         <div className="flex gap-2 mt-1">
@@ -92,7 +91,6 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
           {bot.name}
           {bot.is_default && <span className="text-[10px] bg-[#1d4ed8] text-white px-1.5 py-0 rounded uppercase font-bold">{t('users.bot.default')}</span>}
           {bot.bot_mode === 'notify' && <span className="text-[10px] bg-[#854d0e] text-[#fef08a] px-1.5 py-0 rounded uppercase font-bold">{t('users.bot.mode.notify')}</span>}
-          {bot.bot_mode === 'chat' && <span className="text-[10px] bg-[#312e81] text-[#c4b5fd] px-1.5 py-0 rounded uppercase font-bold">{t('users.bot.mode.chat')}</span>}
         </span>
         <span className="text-xs text-[#64748b] font-mono truncate">{bot.chat_id}</span>
       </div>
@@ -155,7 +153,6 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
         options={[
           { label: t('users.bot.mode.all'), value: 'all' },
           { label: t('users.bot.mode.notify'), value: 'notify' },
-          { label: t('users.bot.mode.chat'), value: 'chat' },
         ]}
       />
       <div className="flex gap-2 mt-1">

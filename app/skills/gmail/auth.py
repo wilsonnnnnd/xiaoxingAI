@@ -5,6 +5,8 @@ from typing import Optional
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
+from app.core import config as app_config
+from app.utils.oauth_state import encode_oauth_state
 
 # 收件处理需要 gmail.modify；发件需要 gmail.send
 SCOPES = [
@@ -74,7 +76,7 @@ def get_oauth_url(redirect_uri: str, user_id: Optional[int] = None) -> str:
         redirect_uri=redirect_uri
     )
     # 将 user_id 编码到 state，callback 中解析以正确保存 token
-    state = str(user_id) if user_id is not None else ""
+    state = encode_oauth_state(user_id=int(user_id), secret=app_config.JWT_SECRET) if user_id is not None else ""
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         prompt="consent",

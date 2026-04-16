@@ -47,8 +47,6 @@ def config_get(user: dict = Depends(auth_mod.require_admin)):
         "PROMPT_ANALYZE":     app_config.PROMPT_ANALYZE,
         "PROMPT_SUMMARY":     app_config.PROMPT_SUMMARY,
         "PROMPT_TELEGRAM":    app_config.PROMPT_TELEGRAM,
-        "PROMPT_CHAT":        app_config.PROMPT_CHAT,
-        "PROMPT_PROFILE":     app_config.PROMPT_PROFILE,
         "UI_LANG":            app_config.UI_LANG,
     }
 

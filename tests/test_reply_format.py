@@ -30,7 +30,26 @@ class TestReplyFormat(unittest.TestCase):
         out = apply_reply_format(content="Hello", body_template=None, signature="Will", closing=None)
         self.assertEqual(out, "Hello\n\nWill")
 
+    def test_strip_footer_removes_closing_and_signature(self) -> None:
+        from app.utils.reply_format import strip_reply_footer
+
+        out = strip_reply_footer(
+            content="Hello\n\nBest regards,\nAdmin",
+            closing="Best regards,",
+            signature="Admin",
+        )
+        self.assertEqual(out, "Hello")
+
+    def test_strip_footer_removes_duplicates(self) -> None:
+        from app.utils.reply_format import strip_reply_footer
+
+        out = strip_reply_footer(
+            content="Hello\n\nBest regards,\nAdmin\n\nThanks,\nAdmin",
+            closing="Thanks,",
+            signature="Admin",
+        )
+        self.assertEqual(out, "Hello")
+
 
 if __name__ == "__main__":
     unittest.main()
-

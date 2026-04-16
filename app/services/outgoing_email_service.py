@@ -1,4 +1,3 @@
-import json
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -10,28 +9,14 @@ from app import db
 from app.core import config
 from app.core.llm import call_llm
 from app.schemas import OutgoingComposeRequest
-from app.core.telegram.client import send_message
-from app.utils.callback_signer import build_callback_data
 from app.utils.crypto import decrypt_draft_body, encrypt_draft_body
+from app.utils.outgoing_json import extract_json_from_llm
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
 from app.utils.prompt_loader import load_prompt
+from app.services.outgoing_preview_service import send_outgoing_preview
 
 
 class OutgoingEmailService:
-    def _extract_json(self, text: str) -> dict:
-        text = text.strip()
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-        text = re.sub(r"\s*```\s*$", "", text, flags=re.MULTILINE)
-        text = text.strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            text = text[start : end + 1]
-        try:
-            val = json.loads(text)
-            return val if isinstance(val, dict) else {}
-        except Exception:
-            return {}
-
     def _validate_email(self, email: str) -> None:
         s = (email or "").strip()
         if not s or "@" not in s:
@@ -123,7 +108,7 @@ class OutgoingEmailService:
         try:
             content, t = call_llm(prompt, max_tokens=800)
             total_tokens += int(t or 0)
-            data = self._extract_json(content)
+            data = extract_json_from_llm(content)
         except Exception as e:
             db.insert_action(
                 draft_id=draft_id,
@@ -184,78 +169,26 @@ class OutgoingEmailService:
                     "请确认是否发送。\n"
                     "（可回复此消息输入新的收件人邮箱以修改 To）"
                 )
-
-                cb_confirm = build_callback_data(
-                    action="c",
-                    draft_id=draft_id,
-                    expires_at=expires_at,
-                    nonce=callback_nonce,
+                send_outgoing_preview(
+                    draft_id=int(draft_id),
                     user_id=int(user["id"]),
-                    chat_id=str(bot["chat_id"]),
                     bot_id=int(bot["id"]),
-                )
-                cb_cancel = build_callback_data(
-                    action="x",
-                    draft_id=draft_id,
-                    expires_at=expires_at,
-                    nonce=callback_nonce,
-                    user_id=int(user["id"]),
-                    chat_id=str(bot["chat_id"]),
-                    bot_id=int(bot["id"]),
-                )
-
-                reply_markup = {
-                    "inline_keyboard": [
-                        [
-                            {"text": "✅ Confirm", "callback_data": cb_confirm},
-                            {"text": "❌ Cancel", "callback_data": cb_cancel},
-                        ]
-                    ]
-                }
-
-                resp = send_message(
-                    text,
                     chat_id=str(bot["chat_id"]),
                     token=str(bot["token"]),
-                    parse_mode="HTML",
-                    reply_markup=reply_markup,
+                    text=str(text),
+                    expires_at=expires_at,
+                    nonce=str(callback_nonce),
+                    source="api",
+                    record_action=True,
+                    cache_payload={
+                        "type": "sent",
+                        "bot_id": int(bot["id"]),
+                        "chat_id": str(bot["chat_id"]),
+                        "message_id": 0,
+                        "draft_id": int(draft_id),
+                        "text": text[:2000],
+                    },
                 )
-                message_id = int(resp.get("result", {}).get("message_id") or 0)
-                if message_id:
-                    db.set_preview_delivery(
-                        draft_id=draft_id,
-                        user_id=int(user["id"]),
-                        telegram_bot_id=int(bot["id"]),
-                        telegram_chat_id=str(bot["chat_id"]),
-                        telegram_message_id=message_id,
-                    )
-                    try:
-                        from app.core import redis_client as rc
-
-                        rc.set_tg_message_cache(
-                            bot_id=int(bot["id"]),
-                            chat_id=str(bot["chat_id"]),
-                            message_id=message_id,
-                            payload={
-                                "type": "sent",
-                                "bot_id": int(bot["id"]),
-                                "chat_id": str(bot["chat_id"]),
-                                "message_id": message_id,
-                                "draft_id": int(draft_id),
-                                "text": text[:2000],
-                            },
-                        )
-                    except Exception:
-                        pass
-                    db.insert_action(
-                        draft_id=draft_id,
-                        user_id=int(user["id"]),
-                        action="preview_sent",
-                        actor_type="system",
-                        source="api",
-                        result="ok",
-                        meta={"bot_id": int(bot["id"]), "message_id": message_id},
-                    )
         except Exception as e:
             db.insert_action(
                 draft_id=draft_id,

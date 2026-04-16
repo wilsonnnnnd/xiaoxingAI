@@ -192,7 +192,7 @@ export const GmailPage: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col h-full p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
+        <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
             <div className="flex items-center gap-3 flex-wrap">
                 <Badge variant={authorized ? 'success' : 'warning'}>
                     {authorized ? '🔑 ' + t('home.auth.ok') : '⚠️ ' + t('home.auth.unauthorized')}
@@ -244,7 +244,7 @@ export const GmailPage: React.FC = () => {
                         <Button variant="telegram" onClick={() => tgMut.mutate()} loading={tgMut.isPending}>{t('home.btn.test_tg')}</Button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <StatItem label={t('home.stat.sent')} value={worker?.total_sent ?? '—'} />
                         <StatItem label={t('home.stat.fetched')} value={worker?.total_fetched ?? '—'} />
                         <StatItem label={t('home.stat.errors')} value={worker?.total_errors ?? '—'} />

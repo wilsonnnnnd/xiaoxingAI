@@ -18,10 +18,10 @@ TELEGRAM_CHAT_ID:   str = _get("TELEGRAM_CHAT_ID")
 
 # Gmail 轮询
 GMAIL_POLL_INTERVAL: int  = int(_get("GMAIL_POLL_INTERVAL", "300"))
-GMAIL_POLL_QUERY:    str  = _get("GMAIL_POLL_QUERY", "is:unread in:inbox")
+GMAIL_POLL_QUERY:    str  = _get("GMAIL_POLL_QUERY", "is:unread in:inbox category:primary")
 GMAIL_POLL_MAX:      int  = int(_get("GMAIL_POLL_MAX", "5"))
 GMAIL_MARK_READ:     bool = _get("GMAIL_MARK_READ", "true").lower() == "true"
-AUTO_START_GMAIL_WORKER: bool = _get("AUTO_START_GMAIL_WORKER", "true").lower() == "true"
+AUTO_START_GMAIL_WORKER: bool = _get("AUTO_START_GMAIL_WORKER", "false").lower() == "true"
 
 # 优先级过滤（空列表 = 全部通知）
 _priority_raw = _get("NOTIFY_MIN_PRIORITY", "")
@@ -47,11 +47,10 @@ ROUTER_API_KEY:   str = _get("ROUTER_API_KEY", "")
 PROMPT_ANALYZE:   str = _get("PROMPT_ANALYZE",  "gmail/email_analysis.txt")
 PROMPT_SUMMARY:   str = _get("PROMPT_SUMMARY",   "gmail/email_summary.txt")
 PROMPT_TELEGRAM:  str = _get("PROMPT_TELEGRAM",  "gmail/telegram_notify.txt")
-PROMPT_CHAT:      str = _get("PROMPT_CHAT",       "chat.txt")
-PROMPT_PROFILE:   str = _get("PROMPT_PROFILE",    "user_profile.txt")
 
 # Redis
 REDIS_URL:        str = _get("REDIS_URL", "redis://localhost:6380")
+REQUIRE_REDIS:    bool = _get("REQUIRE_REDIS", "false").lower() == "true"
 
 # PostgreSQL
 DB_SSLMODE:      str = _get("DB_SSLMODE", "")

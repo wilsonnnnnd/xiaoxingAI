@@ -8,13 +8,13 @@ from app.core import config
 
 from .repositories import (
     user_repo, bot_repo, prompt_repo, log_repo,
-    email_repo, stats_repo, oauth_repo, profile_repo, persona_repo, outgoing_email_repo, reply_format_repo
+    email_repo, stats_repo, oauth_repo, outgoing_email_repo, reply_format_repo
 )
 
 # User
 from .repositories.user_repo import (
     create_user, get_user_by_email, get_user_by_id,
-    list_users, list_worker_enabled_users, update_user
+    list_users, list_worker_enabled_users, update_user, count_users
 )
 
 # Bot
@@ -31,7 +31,7 @@ from .repositories.prompt_repo import (
 
 # Log
 from .repositories.log_repo import (
-    insert_log, get_recent_logs, clear_logs, cleanup_old_logs
+    insert_log, insert_logs_bulk, get_recent_logs, clear_logs, cleanup_old_logs
 )
 
 # Email
@@ -81,58 +81,6 @@ from .repositories.reply_format_repo import (
     get_reply_format_settings,
     upsert_reply_format_settings,
 )
-
-# Profile
-from .repositories.profile_repo import (
-    get_profile, save_profile, delete_profile, get_profile_updated_at
-)
-
-# Persona
-from .repositories.persona_repo import (
-    get_persona_configs, upsert_persona_config
-)
-
-# ── Logic remaining in root (to be refactored later) ─────────────────
-
-def get_active_prompt(ptype: str, user_id: Optional[int] = None, bot_id: Optional[int] = None) -> Optional[str]:
-    """按优先级获取 prompt 内容：bot 绑定 → 用户默认 → 系统内置。"""
-    with _cur() as cur:
-        # 1. Bot 绑定的专属 chat prompt（来自 user_prompts）
-        if bot_id is not None and ptype == "chat":
-            cur.execute(
-                "SELECT p.content FROM user_prompts p"
-                " JOIN bot b ON b.chat_prompt_id = p.id"
-                " WHERE b.id = %s",
-                (bot_id,),
-            )
-            row = cur.fetchone()
-            if row:
-                return row[0]
-        # 2. 用户自定义默认（user_prompts）
-        if user_id is not None:
-            cur.execute(
-                "SELECT content FROM user_prompts"
-                " WHERE user_id = %s AND type = %s AND is_default = TRUE LIMIT 1",
-                (user_id, ptype),
-            )
-            row = cur.fetchone()
-            if row:
-                return row[0]
-        # 3. 系统内置（system_prompts，is_default=TRUE 优先）
-        cur.execute(
-            "SELECT content FROM system_prompts"
-            " WHERE type = %s AND is_default = TRUE LIMIT 1",
-            (ptype,),
-        )
-        row = cur.fetchone()
-        if row:
-            return row[0]
-        cur.execute(
-            "SELECT content FROM system_prompts WHERE type = %s LIMIT 1",
-            (ptype,),
-        )
-        row = cur.fetchone()
-        return row[0] if row else None
 
 def get_stats(user_id: Optional[int] = None) -> Dict[str, Any]:
     with _cur() as cur:

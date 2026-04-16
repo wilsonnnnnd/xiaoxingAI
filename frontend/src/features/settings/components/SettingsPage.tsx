@@ -43,7 +43,7 @@ export const SettingsPage: React.FC = () => {
       ROUTER_MODEL: '',
       ROUTER_API_KEY: '',
       GMAIL_MARK_READ: 'true',
-      GMAIL_POLL_QUERY: 'is:unread in:inbox',
+      GMAIL_POLL_QUERY: 'is:unread in:inbox category:primary',
       UI_LANG: lang,
       min_priority: 'medium',
       max_emails_per_run: 10,
@@ -79,7 +79,7 @@ export const SettingsPage: React.FC = () => {
           ROUTER_MODEL: cfgRaw.ROUTER_MODEL ?? '',
           ROUTER_API_KEY: '',
           GMAIL_MARK_READ: cfgRaw.GMAIL_MARK_READ ?? 'true',
-          GMAIL_POLL_QUERY: cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox',
+          GMAIL_POLL_QUERY: user.gmail_poll_query ?? cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox category:primary',
           UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : cfgRaw.UI_LANG === 'en' ? 'en' : lang,
 
           min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormInput['min_priority']) : 'medium',
@@ -100,7 +100,7 @@ export const SettingsPage: React.FC = () => {
   const onSave = async (data: SettingsFormInput) => {
     try {
       const parsed: SettingsFormValues = settingsSchema.parse(data)
-      const { min_priority, max_emails_per_run, poll_interval, ...globalConfig } = parsed
+      const { min_priority, max_emails_per_run, poll_interval, GMAIL_POLL_QUERY, ...globalConfig } = parsed
 
       await Promise.all([
         isAdmin ? (async () => {
@@ -116,7 +116,7 @@ export const SettingsPage: React.FC = () => {
             setHasRouterKey(!!res.config.HAS_ROUTER_API_KEY)
           }
         })() : Promise.resolve(),
-        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval }) : Promise.resolve(),
+        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval, gmail_poll_query: GMAIL_POLL_QUERY }) : Promise.resolve(),
       ])
 
       toast.success(t('result.saved'))
@@ -138,7 +138,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full p-5 gap-6 min-w-0 max-w-5xl mx-auto w-full">
+    <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-5xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -170,7 +170,7 @@ export const SettingsPage: React.FC = () => {
           {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
           <GmailSettings control={control} />
 
-          <div className="flex items-center gap-3 sticky bottom-0 py-4 bg-[#0f172a]/80 backdrop-blur-md border-t border-[#2d3748] -mx-5 px-5 z-10">
+          <div className="flex items-center gap-3 sticky bottom-0 py-4 bg-[#0f172a]/80 backdrop-blur-md border-t border-[#2d3748] -mx-4 px-4 sm:-mx-5 sm:px-5 z-10">
             <Button
               type="submit"
               loading={isSubmitting}

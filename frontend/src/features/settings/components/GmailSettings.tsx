@@ -11,12 +11,10 @@ interface GmailSettingsProps {
 }
 
 const POLL_QUERIES: [string, string][] = [
-  ['is:unread in:inbox', 'opt.GMAIL_POLL_QUERY.inbox'],
-  ['is:unread in:inbox -category:promotions', 'opt.GMAIL_POLL_QUERY.inbox_no_promo'],
-  ['is:unread in:inbox -category:promotions -category:social', 'opt.GMAIL_POLL_QUERY.inbox_no_promo_social'],
-  ['is:unread in:inbox -category:promotions -category:social -category:updates', 'opt.GMAIL_POLL_QUERY.inbox_no_promo_social_updates'],
+  ['is:unread in:inbox category:primary', 'opt.GMAIL_POLL_QUERY.primary_unread'],
+  ['is:unread in:inbox -category:promotions -category:social -category:updates -category:forums', 'opt.GMAIL_POLL_QUERY.inbox_no_bulk_categories'],
   ['is:unread', 'opt.GMAIL_POLL_QUERY.all_unread'],
-]
+  ]
 
 export const GmailSettings: React.FC<GmailSettingsProps> = ({ control }) => {
   const { t } = useI18n()

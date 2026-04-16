@@ -11,16 +11,16 @@ export const createUser = (data: { email: string; password: string; display_name
 
 export const getUser = (id: number) => api.get<User>(`/users/${id}`).then(r => r.data)
 
-export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled' | 'min_priority' | 'max_emails_per_run' | 'poll_interval'>>) =>
+export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled' | 'min_priority' | 'max_emails_per_run' | 'poll_interval' | 'gmail_poll_query'>>) =>
   api.put<User>(`/users/${id}`, patch).then(r => r.data)
 
 export const listBots = (userId: number) =>
   api.get<{ bots: Bot[] }>(`/users/${userId}/bots`).then(r => r.data.bots)
 
-export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; chat_prompt_id?: number | null; bot_mode?: string }) =>
+export const createBot = (userId: number, data: { name: string; token: string; chat_id: string; bot_mode?: string }) =>
   api.post<Bot>(`/users/${userId}/bots`, data).then(r => r.data)
 
-export const updateBot = (userId: number, botId: number, data: { name?: string; token?: string; chat_id?: string; chat_prompt_id?: number | null; bot_mode?: string }) =>
+export const updateBot = (userId: number, botId: number, data: { name?: string; token?: string; chat_id?: string; bot_mode?: string }) =>
   api.put<Bot>(`/users/${userId}/bots/${botId}`, data).then(r => r.data)
 
 export const deleteBot = (userId: number, botId: number) =>

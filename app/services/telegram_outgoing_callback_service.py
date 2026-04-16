@@ -2,12 +2,9 @@ from datetime import datetime, timezone
 
 from app import db
 from app.core.telegram.client import send_message
-from app.skills.gmail.client import send_email_raw
-from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
-from app.utils.email_mime import build_gmail_raw_message
-from app.utils.crypto import decrypt_draft_body
 from app.utils.callback_signer import parse_callback_data, verify_callback_data
 from app.utils.callback_signer import build_callback_data
+from app.services.outgoing_draft_sender import send_outgoing_draft
 
 
 class TelegramOutgoingCallbackService:
@@ -78,90 +75,43 @@ class TelegramOutgoingCallbackService:
             if not sending:
                 return "✅ 已确认（重复点击无效）。"
 
-            try:
-                db.insert_action(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    action="send_attempt",
-                    actor_type="system",
-                    source="telegram_callback",
-                    result="ok",
-                )
-                if not draft.get("body_ciphertext") or not draft.get("body_nonce"):
-                    raise RuntimeError("draft body missing")
-                body_plain = decrypt_draft_body(
-                    ciphertext=draft["body_ciphertext"],
-                    nonce=draft["body_nonce"],
-                    user_id=int(draft["user_id"]),
-                    draft_id=int(draft["id"]),
-                )
-                body_plain = fill_sender_name(body_plain, sender_name=resolve_sender_name(user_id=int(draft["user_id"])))
-                raw = build_gmail_raw_message(
-                    to_email=str(draft.get("to_email") or ""),
-                    subject=str(draft.get("subject") or ""),
-                    body_plain=body_plain,
-                )
-                resp = send_email_raw(raw=raw, user_id=int(draft["user_id"]))
-                gmail_message_id = str(resp.get("id") or "")
-                if not gmail_message_id:
-                    raise RuntimeError("missing gmail message id")
-                db.set_send_result_success(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    gmail_message_id=gmail_message_id,
-                )
-                db.insert_action(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    action="send_success",
-                    actor_type="system",
-                    source="telegram_callback",
-                    result="ok",
-                    meta={"gmail_message_id": gmail_message_id},
-                )
+            db.insert_action(
+                draft_id=int(draft["id"]),
+                user_id=int(draft["user_id"]),
+                action="send_attempt",
+                actor_type="system",
+                source="telegram_callback",
+                result="ok",
+            )
+            ok, _, _ = send_outgoing_draft(draft=draft, source="telegram_callback")
+            if ok:
                 return "✅ 已发送邮件。"
-            except Exception as e:
-                db.set_send_result_failed(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    error_code="gmail_send_error",
-                    error_message=str(e)[:400],
-                )
-                db.insert_action(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    action="send_failed",
-                    actor_type="system",
-                    source="telegram_callback",
-                    result="error",
-                    error_code="gmail_send_error",
-                    error_message=str(e)[:400],
-                )
-                try:
-                    bot = db.get_bot(int(bot_id))
-                    if bot and bot.get("token"):
-                        cb_resend = build_callback_data(
-                            action="r",
-                            draft_id=int(draft["id"]),
-                            expires_at=expires_at,
-                            nonce=str(draft.get("callback_nonce") or parsed.nonce),
-                            user_id=int(draft["user_id"]),
-                            chat_id=str(chat_id),
-                            bot_id=int(bot_id),
-                        )
-                        reply_markup = {
-                            "inline_keyboard": [[{"text": "🔁 Resend", "callback_data": cb_resend}]]
-                        }
-                        send_message(
-                            "⚠️ 邮件发送失败。你可以点击下方按钮重新发送。",
-                            chat_id=str(chat_id),
-                            token=str(bot["token"]),
-                            parse_mode=None,
-                            reply_markup=reply_markup,
-                        )
-                except Exception:
-                    pass
-                return "⚠️ 发送失败，稍后可点击 Resend 重试。"
+
+            try:
+                bot = db.get_bot(int(bot_id))
+                if bot and bot.get("token"):
+                    cb_resend = build_callback_data(
+                        action="r",
+                        draft_id=int(draft["id"]),
+                        expires_at=expires_at,
+                        nonce=str(draft.get("callback_nonce") or parsed.nonce),
+                        user_id=int(draft["user_id"]),
+                        chat_id=str(chat_id),
+                        bot_id=int(bot_id),
+                    )
+                    reply_markup = {
+                        "inline_keyboard": [[{"text": "🔁 Resend", "callback_data": cb_resend}]]
+                    }
+                    send_message(
+                        "⚠️ 邮件发送失败。你可以点击下方按钮重新发送。",
+                        chat_id=str(chat_id),
+                        token=str(bot["token"]),
+                        parse_mode=None,
+                        reply_markup=reply_markup,
+                    )
+            except Exception:
+                pass
+            return "⚠️ 发送失败，稍后可点击 Resend 重试。"
 
         if parsed.action == "x":
             changed = db.cancel_draft(draft_id=int(draft["id"]), user_id=int(draft["user_id"]))
@@ -183,55 +133,11 @@ class TelegramOutgoingCallbackService:
                     result="ok",
                     meta={"resend": True},
                 )
-                body_plain = decrypt_draft_body(
-                    ciphertext=draft["body_ciphertext"],
-                    nonce=draft["body_nonce"],
-                    user_id=int(draft["user_id"]),
-                    draft_id=int(draft["id"]),
-                )
-                body_plain = fill_sender_name(body_plain, sender_name=resolve_sender_name(user_id=int(draft["user_id"])))
-                raw = build_gmail_raw_message(
-                    to_email=str(draft.get("to_email") or ""),
-                    subject=str(draft.get("subject") or ""),
-                    body_plain=body_plain,
-                )
-                resp = send_email_raw(raw=raw, user_id=int(draft["user_id"]))
-                gmail_message_id = str(resp.get("id") or "")
-                if not gmail_message_id:
-                    raise RuntimeError("missing gmail message id")
-                db.set_send_result_success(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    gmail_message_id=gmail_message_id,
-                )
-                db.insert_action(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    action="send_success",
-                    actor_type="system",
-                    source="telegram_callback",
-                    result="ok",
-                    meta={"gmail_message_id": gmail_message_id, "resend": True},
-                )
+                ok, _, _ = send_outgoing_draft(draft=draft, source="telegram_callback", resend=True)
+                if not ok:
+                    raise RuntimeError("send failed")
                 return "✅ 已重新发送邮件。"
-            except Exception as e:
-                db.set_send_result_failed(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    error_code="gmail_send_error",
-                    error_message=str(e)[:400],
-                )
-                db.insert_action(
-                    draft_id=int(draft["id"]),
-                    user_id=int(draft["user_id"]),
-                    action="send_failed",
-                    actor_type="system",
-                    source="telegram_callback",
-                    result="error",
-                    error_code="gmail_send_error",
-                    error_message=str(e)[:400],
-                    meta={"resend": True},
-                )
+            except Exception:
                 return "⚠️ 重新发送失败，请稍后再试。"
 
         return "ℹ️ 当前暂不支持此操作。"

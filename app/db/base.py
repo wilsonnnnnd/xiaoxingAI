@@ -6,15 +6,15 @@ from app.core import config
 class LogType(str, enum.Enum):
     """日志来源类型，便于后续分类筛选"""
     EMAIL = "email"
-    CHAT  = "chat"
 
 # 系统内置 Prompt 文件映射
 _SYSTEM_PROMPTS = [
-    ("对话回复",      "chat",           "chat.txt"),
-    ("用户画像生成",  "user_profile",   "user_profile.txt"),
     ("邮件分析",      "email_analysis", "gmail/email_analysis.txt"),
     ("邮件摘要",      "email_summary",  "gmail/email_summary.txt"),
     ("Telegram通知",  "telegram_notify","gmail/telegram_notify.txt"),
+    ("Outgoing Email", "outgoing_email", "outgoing/email_compose.txt"),
+    ("Email Edit", "email_edit", "outgoing/email_edit.txt"),
+    ("Email Reply Compose", "email_reply_compose", "outgoing/email_reply_compose.txt"),
 ]
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -32,7 +32,7 @@ def init_db() -> None:
         if not has_user_table and config.DB_ALLOW_LEGACY_DROP:
             # 旧表清理（顺序：先子表后父表）
             for tbl in [
-                "worker_stats", "email_records", "user_profile",
+                "worker_stats", "email_records",
                 "worker_logs", "sender", "oauth_tokens",
             ]:
                 cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
@@ -53,6 +53,33 @@ def init_db() -> None:
                 updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
             )
         """)
+
+        # ── user_settings（per-user 设置，使用 user_id 关联） ────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id            BIGINT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+                worker_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+                min_priority       VARCHAR NOT NULL DEFAULT 'medium',
+                max_emails_per_run INTEGER NOT NULL DEFAULT 5,
+                poll_interval      INTEGER NOT NULL DEFAULT 300,
+                gmail_poll_query   TEXT NOT NULL DEFAULT '',
+                created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        cur.execute(
+            "INSERT INTO user_settings (user_id, worker_enabled, min_priority, max_emails_per_run, poll_interval, gmail_poll_query)"
+            " SELECT id, worker_enabled, min_priority, max_emails_per_run, poll_interval, %s"
+            " FROM \"user\""
+            " ON CONFLICT (user_id) DO NOTHING",
+            (config.GMAIL_POLL_QUERY,),
+        )
+        cur.execute(
+            "UPDATE user_settings SET gmail_poll_query = %s"
+            " WHERE gmail_poll_query IS NULL OR gmail_poll_query = ''",
+            (config.GMAIL_POLL_QUERY,),
+        )
 
         # ── system_prompts ───────────────────────────────────────
         cur.execute("""
@@ -90,7 +117,6 @@ def init_db() -> None:
                 token          TEXT NOT NULL,
                 chat_id        VARCHAR NOT NULL,
                 is_default     BOOLEAN NOT NULL DEFAULT FALSE,
-                chat_prompt_id BIGINT REFERENCES user_prompts(id) ON DELETE SET NULL,
                 bot_mode       VARCHAR NOT NULL DEFAULT 'all',
                 created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
@@ -99,6 +125,9 @@ def init_db() -> None:
         cur.execute(
             "ALTER TABLE bot ADD COLUMN IF NOT EXISTS bot_mode VARCHAR NOT NULL DEFAULT 'all'"
         )
+        cur.execute("ALTER TABLE bot DROP CONSTRAINT IF EXISTS bot_chat_prompt_id_fkey")
+        cur.execute("ALTER TABLE bot DROP COLUMN IF EXISTS chat_prompt_id")
+        cur.execute("UPDATE bot SET bot_mode = 'notify' WHERE bot_mode = 'chat'")
 
         # ── oauth_tokens ─────────────────────────────────────────
         cur.execute("""
@@ -227,14 +256,7 @@ def init_db() -> None:
             )
         """)
 
-        # ── user_profile ──────────────────────────────────────────
-        cur.execute(f"""
-            CREATE TABLE IF NOT EXISTS user_profile (
-                bot_id     BIGINT PRIMARY KEY REFERENCES bot(id) ON DELETE CASCADE,
-                profile    TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT {_TS_EXPR}
-            )
-        """)
+        cur.execute("DROP TABLE IF EXISTS user_profile CASCADE")
 
         # ── log ───────────────────────────────────────────────────
         cur.execute(f"""
@@ -249,6 +271,8 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT {_TS_EXPR}
             )
         """)
+
+        cur.execute("DELETE FROM system_prompts WHERE type = 'persona_config'")
 
     _migrate_prompts_split()
 
@@ -297,11 +321,6 @@ def _migrate_prompts_split() -> None:
         """)
 
         cur.execute("ALTER TABLE bot DROP CONSTRAINT IF EXISTS bot_chat_prompt_id_fkey")
-        cur.execute("""
-            ALTER TABLE bot ADD CONSTRAINT bot_chat_prompt_id_fkey
-            FOREIGN KEY (chat_prompt_id) REFERENCES user_prompts(id) ON DELETE SET NULL
-        """)
-
         cur.execute("DROP TABLE IF EXISTS prompts CASCADE")
 
 def _init_system_prompts() -> None:

@@ -21,3 +21,5 @@ frontend/.env.local
 /test
 vercel.json
 .github/prompts/
+doc/ui-guide.md
+doc/backend-guide.md

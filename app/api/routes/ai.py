@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+from app.api.http import run_http
 
 from app.core import config as app_config
 from app.core.llm import call_llm
@@ -11,38 +12,28 @@ router = APIRouter()
 @router.get("/ai/ping")
 def ai_ping():
     """测试 LLM 连接：发送最小 prompt，验证 API 可达且返回正常"""
-    try:
+    def _run():
         reply, _ = call_llm("Reply with the single word: pong", max_tokens=10)
         return {"ok": True, "backend": app_config.LLM_BACKEND, "reply": reply.strip()}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+
+    return run_http(_run, error_status=502)
 
 
 @router.post("/ai/analyze")
 def ai_analyze(payload: EmailRequest):
-    try:
-        result = analyze_email(payload.subject, payload.body)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"analyze failed: {str(e)}")
+    return run_http(lambda: analyze_email(payload.subject, payload.body), error_prefix="analyze failed")
 
 
 @router.post("/ai/summary")
 def ai_summary(payload: EmailRequest):
-    try:
+    def _run():
         analysis = analyze_email(payload.subject, payload.body)
-        result = summarize_email(payload.subject, payload.body, analysis["result"])
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"summary failed: {str(e)}")
+        return summarize_email(payload.subject, payload.body, analysis["result"])
+
+    return run_http(_run, error_prefix="summary failed")
 
 
 @router.post("/ai/process")
 def ai_process(payload: EmailRequest):
     """完整流程：分析 → 摘要 → 生成 Telegram 通知"""
-    try:
-        result = process_email(payload.subject, payload.body)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"process failed: {str(e)}")
-
+    return run_http(lambda: process_email(payload.subject, payload.body), error_prefix="process failed")

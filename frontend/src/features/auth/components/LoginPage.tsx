@@ -19,7 +19,7 @@ export const LoginPage: React.FC = () => {
       const data = await login(email, password)
       localStorage.setItem('auth_token', data.access_token)
       navigate('/home', { replace: true })
-    } catch (err: unknown) {
+    } catch {
       // Error handled by global interceptor
     } finally {
       setBusy(false)

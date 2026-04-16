@@ -28,16 +28,6 @@ def _normalize_chat_completions_url(url: str) -> str:
     return f"{u}/chat/completions"
 
 
-def _warn_on_common_url_typos(url: str) -> None:
-    u = url.lower()
-    if "aliyuncs.comm" in u or "aliyuncs.commm" in u:
-        logger.warning("[llm] URL 可能拼写错误（.comm）: %s", url)
-    if "complletions" in u:
-        logger.warning("[llm] URL 可能拼写错误（complletions）: %s", url)
-    if u.startswith("http://") and "dashscope" in u:
-        logger.warning("[llm] DashScope 建议使用 https: %s", url)
-
-
 def _api_key_fingerprint(api_key: str) -> str:
     k = (api_key or "").strip()
     if not k:
@@ -103,9 +93,8 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
     url = _normalize_chat_completions_url(url)
     if raw_url and url != raw_url:
         logger.info("[llm] normalize url | %s -> %s", raw_url, url)
-    _warn_on_common_url_typos(url)
     logger.info(
-        "[llm] request | purpose=%s model=%s url=%s api_key=%s src=%s",
+        "[llm] request | purpose=%s model=%s url=%s key=%s keysrc=%s",
         purpose or "-",
         model,
         url,

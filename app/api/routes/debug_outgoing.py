@@ -9,6 +9,7 @@ from app.core.auth import require_admin
 from app.core import redis_client as rc
 from app.core import telegram_debug, outgoing_debug
 from app.utils.crypto import decrypt_draft_body
+from app.utils.outgoing_json import extract_json_from_llm
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
 from app.utils.prompt_loader import load_prompt
 from app.core.llm import call_llm
@@ -101,24 +102,6 @@ def debug_clear_cache(payload: ClearCachePayload):
     return {"redis": res, "cleared_traces": cleared}
 
 
-def _extract_json(text: str) -> dict:
-    import json
-    import re
-
-    text = (text or "").strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\s*```\s*$", "", text, flags=re.MULTILINE)
-    text = text.strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start : end + 1]
-    try:
-        v = json.loads(text)
-        return v if isinstance(v, dict) else {}
-    except Exception:
-        return {}
-
-
 class SimulateReplyPayload(BaseModel):
     user_id: int
     email_id: str
@@ -152,7 +135,7 @@ def debug_simulate_reply(payload: SimulateReplyPayload):
     )
 
     content, tokens = call_llm(prompt, max_tokens=800)
-    data = _extract_json(content)
+    data = extract_json_from_llm(content)
     base_subject = str(record.get("subject") or "").strip()
     default_subject = base_subject if base_subject.lower().startswith("re:") else f"Re: {base_subject}" if base_subject else "Re:"
     new_subject = (data.get("subject") or "").strip() or default_subject

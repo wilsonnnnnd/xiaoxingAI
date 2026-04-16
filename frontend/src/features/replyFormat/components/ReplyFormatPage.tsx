@@ -75,7 +75,7 @@ export const ReplyFormatPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">{t('reply_format.title')}</h1>
@@ -83,7 +83,7 @@ export const ReplyFormatPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-[#1e2330] border border-[#2d3748] rounded-xl p-5">
+      <div className="bg-[#1e2330] border border-[#2d3748] rounded-xl p-4 sm:p-5">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <TemplateList
             title={t('reply_format.templates')}

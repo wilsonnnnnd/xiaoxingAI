@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useI18n } from '../../../i18n/useI18n'
 import { listPrompts, getPrompt, savePrompt, deletePrompt } from '../api'
@@ -19,31 +19,23 @@ const DEFAULT_FILES = new Set([
   'outgoing/email_compose.txt',
   'outgoing/email_edit.txt',
   'outgoing/email_reply_compose.txt',
-  'chat.txt',
-  'user_profile.txt',
 ])
 
 const ASSIGN_KEYS = [
   { id: 'PROMPT_ANALYZE', label: 'Email Analysis', default: 'gmail/email_analysis.txt' },
   { id: 'PROMPT_SUMMARY', label: 'Email Summary', default: 'gmail/email_summary.txt' },
   { id: 'PROMPT_TELEGRAM', label: 'Telegram Format', default: 'gmail/telegram_notify.txt' },
-  { id: 'PROMPT_CHAT', label: 'Bot Chat', default: 'chat.txt' },
-  { id: 'PROMPT_PROFILE', label: 'User Profile', default: 'user_profile.txt' },
   { id: 'OUTGOING/EMAIL_COMPOSE', label: 'Outgoing Email', default: 'outgoing/email_compose.txt' },
   { id: 'OUTGOING/EMAIL_EDIT', label: 'Email Edit', default: 'outgoing/email_edit.txt' },
   { id: 'OUTGOING/EMAIL_REPLY_COMPOSE', label: 'Email Reply Compose', default: 'outgoing/email_reply_compose.txt' },
 ] as const
 
-const USER_FILE_LABELS: Record<string, string> = {
-  'chat.txt': '🤖 Chat',
-}
+const USER_FILE_LABELS: Record<string, string> = {}
 
 const ADMIN_FILE_LABELS: Record<string, string> = {
   'gmail/email_analysis.txt': '📊 Analyze',
   'gmail/email_summary.txt': '📝 Summary',
   'gmail/telegram_notify.txt': '✈️ Telegram',
-  'chat.txt': '🤖 Chat',
-  'user_profile.txt': '👤 Profile',
   'outgoing/email_compose.txt': '✉️ Outgoing Compose',
   'outgoing/email_edit.txt': '🛠️ Outgoing Edit',
   'outgoing/email_reply_compose.txt': '↩️ Outgoing Reply',
@@ -70,22 +62,21 @@ export const PromptsPage: React.FC = () => {
 
   const isAdmin = me?.role === 'admin'
   const fileLabels = isAdmin ? ADMIN_FILE_LABELS : USER_FILE_LABELS
-  const allowedSet = new Set(Object.keys(USER_FILE_LABELS))
+  const allowedSet = useMemo(() => new Set(Object.keys(USER_FILE_LABELS)), [])
   const canEditCurrent = !!current && (isAdmin || allowedSet.has(current))
 
-  async function loadFiles(target?: string) {
-    try {
-      const d = await listPrompts()
-      const visible = isAdmin ? d.files : d.files.filter(f => allowedSet.has(f))
-      const visibleSet = new Set(visible)
-      setFiles(visible)
-      setCustom(new Set((d.custom ?? []).filter(f => visibleSet.has(f))))
-      const sel = (target && visible.includes(target)) ? target : visible[0]
-      if (sel) switchTo(sel, visible)
-    } catch { /* ignore */ }
-  }
+  const currentRef = useRef<string | null>(null)
+  const isDirtyRef = useRef(false)
 
-  const loadFile = async (filename: string) => {
+  useEffect(() => {
+    currentRef.current = current
+  }, [current])
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty
+  }, [isDirty])
+
+  const loadFile = useCallback(async (filename: string) => {
     setLoading(true)
     try {
       const d = await getPrompt(filename)
@@ -97,19 +88,50 @@ export const PromptsPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  function switchTo(filename: string, fileList?: string[]) {
+  const switchTo = useCallback((filename: string, fileList?: string[]) => {
     const list = fileList ?? files
     if (!list.includes(filename)) return
     if (filename === current) return
     if (isDirty && !confirm(t('prompts.confirm.discard'))) return
     loadFile(filename)
-  }
+  }, [current, files, isDirty, loadFile, t])
+
+  const refreshFiles = useCallback(async (target?: string) => {
+    try {
+      const d = await listPrompts()
+      const visible = isAdmin ? d.files : d.files.filter(f => allowedSet.has(f))
+      const visibleSet = new Set(visible)
+      setFiles(visible)
+      setCustom(new Set((d.custom ?? []).filter(f => visibleSet.has(f))))
+      const prev = currentRef.current
+      const sel = (target && visible.includes(target))
+        ? target
+        : (prev && visible.includes(prev))
+          ? prev
+          : (visible[0] ?? null)
+
+      if (!sel) {
+        setCurrent(null)
+        setContent('')
+        setSavedContent('')
+        return
+      }
+
+      if (prev && sel !== prev && isDirtyRef.current && visible.includes(prev)) {
+        return
+      }
+
+      if (sel !== prev) {
+        loadFile(sel)
+      }
+    } catch { /* ignore */ }
+  }, [allowedSet, isAdmin, loadFile])
 
   useEffect(() => {
     if (!me) return
-    loadFiles()
+    refreshFiles()
     if (!isAdmin) return
     getConfig()
       .then(cfg => {
@@ -122,9 +144,9 @@ export const PromptsPage: React.FC = () => {
         setAssignment(asgn)
       })
       .catch(() => {})
-  }, [me, isAdmin])
+  }, [isAdmin, me, refreshFiles])
 
-  async function handleSave() {
+  const handleSave = useCallback(async () => {
     if (!current) return
     if (!canEditCurrent) return
     setSaving(true)
@@ -138,7 +160,7 @@ export const PromptsPage: React.FC = () => {
     } finally {
       setSaving(false)
     }
-  }
+  }, [canEditCurrent, content, current, t])
 
   async function handleDelete() {
     if (!current) return
@@ -149,7 +171,7 @@ export const PromptsPage: React.FC = () => {
       setSavedContent('')
       setCurrent(null)
       setCustom(prev => { const n = new Set(prev); n.delete(current); return n })
-      await loadFiles(files.find(f => DEFAULT_FILES.has(f)))
+      await refreshFiles(files.find(f => DEFAULT_FILES.has(f)))
       toast.success(t('prompts.deleted'))
     } catch {
       /* handled globally */
@@ -195,7 +217,7 @@ export const PromptsPage: React.FC = () => {
       await savePrompt(name, '# Write your prompt here\n')
       setShowNewForm(false)
       setNewFileName('')
-      await loadFiles(name)
+      await refreshFiles(name)
       toast.success(t('prompts.created'))
     } catch {
       /* handled globally */
@@ -210,10 +232,10 @@ export const PromptsPage: React.FC = () => {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  })
+  }, [handleSave])
 
   return (
-    <div className="flex flex-col h-full p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">{t('header.title.prompts')}</h1>
@@ -243,12 +265,12 @@ export const PromptsPage: React.FC = () => {
 
       <div className="flex flex-col gap-0">
         <div className="flex items-end justify-between gap-4">
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-nowrap gap-1 overflow-x-auto sm:flex-wrap">
             {files.map(f => (
               <button
                 key={f}
                 onClick={() => switchTo(f)}
-                className={`px-4 py-2 text-xs font-mono transition-all rounded-t-lg border-x border-t ${f === current
+                className={`shrink-0 px-4 py-2 text-xs font-mono transition-all rounded-t-lg border-x border-t whitespace-nowrap ${f === current
                   ? 'bg-[#1e2330] text-[#60a5fa] border-[#2d3748] font-bold'
                   : 'bg-[#0f172a] text-[#64748b] border-transparent hover:text-[#94a3b8]'
                   }`}
@@ -270,7 +292,7 @@ export const PromptsPage: React.FC = () => {
         </div>
 
         {isAdmin && showNewForm && (
-          <div className="flex items-center gap-3 p-4 bg-[#0b0e14] border border-[#2d3748] rounded-b-lg mb-4 animate-in slide-in-from-top-2 duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3 p-4 bg-[#0b0e14] border border-[#2d3748] rounded-b-lg mb-4 animate-in slide-in-from-top-2 duration-200">
             <InputField
               autoFocus
               label={t('prompts.label.filename')}
@@ -279,7 +301,7 @@ export const PromptsPage: React.FC = () => {
               placeholder="my_prompt.txt"
               className="flex-1 font-mono"
             />
-            <div className="flex items-end gap-2 h-full">
+            <div className="flex items-end gap-2">
               <Button onClick={handleCreate} loading={creating}>{t('prompts.btn.create')}</Button>
               <Button variant="primary" className="bg-[#334155] text-white" onClick={() => { setShowNewForm(false); setNewFileName('') }}>{t('prompts.btn.cancel')}</Button>
             </div>
@@ -302,7 +324,7 @@ export const PromptsPage: React.FC = () => {
           </div>
           
           <textarea
-            className="w-full min-h-[500px] bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 text-sm text-[#e2e8f0] font-mono leading-relaxed resize-y outline-none focus:border-[#6366f1] transition-colors tab-size-2"
+            className="w-full min-h-[320px] sm:min-h-[500px] bg-[#0b0e14] border border-[#2d3748] rounded-lg p-4 text-sm text-[#e2e8f0] font-mono leading-relaxed resize-y outline-none focus:border-[#6366f1] transition-colors tab-size-2"
             value={content}
             disabled={loading || !canEditCurrent}
             onChange={e => setContent(e.target.value)}

@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 from ..session import _cur
 from ..base import LogType
+from psycopg2.extras import execute_values
 
 def insert_log(
     ts: str,
@@ -15,6 +16,29 @@ def insert_log(
             "INSERT INTO log (user_id, ts, level, log_type, tokens, msg)"
             " VALUES (%s, %s, %s, %s, %s, %s)",
             (user_id, ts, level, str(log_type.value), tokens, msg),
+        )
+
+
+def insert_logs_bulk(rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        return
+    values = [
+        (
+            r.get("user_id"),
+            r["ts"],
+            r["level"],
+            r["log_type"],
+            int(r.get("tokens") or 0),
+            r["msg"],
+        )
+        for r in rows
+    ]
+    with _cur() as cur:
+        execute_values(
+            cur,
+            "INSERT INTO log (user_id, ts, level, log_type, tokens, msg) VALUES %s",
+            values,
+            page_size=1000,
         )
 
 def get_recent_logs(
