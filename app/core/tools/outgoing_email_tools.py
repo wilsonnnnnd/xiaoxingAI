@@ -75,7 +75,7 @@ def reply_email(message: str, user_id: int | None = None) -> str:
         return "【缺少上下文，无法定位要回复的邮件】"
 
     record = db.get_email_record(email_id, user_id=user_id)
-    if not record:
+    if not record or not str(record.get("body") or "").strip():
         try:
             from app.skills.gmail.client import fetch_email_by_id
 

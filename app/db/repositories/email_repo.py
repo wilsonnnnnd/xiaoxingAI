@@ -32,6 +32,10 @@ def save_email_record(
     user_id: Optional[int] = None,
 ) -> None:
     """保存邮件处理记录（upsert by user_id+email_id）。"""
+    body = ""
+    analysis = {}
+    summary = {}
+    telegram_msg = ""
     with _cur() as cur:
         cur.execute(
             """INSERT INTO email_records

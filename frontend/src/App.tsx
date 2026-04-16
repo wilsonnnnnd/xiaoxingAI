@@ -4,6 +4,8 @@ import Layout from './components/Layout'
 import Home from './pages/Home'
 import Help from './pages/Help'
 import Skill from './pages/Skill'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
 import { GmailPage } from './features/gmail'
 import { LoginPage } from './features/auth'
 import { SettingsPage } from './features/settings'
@@ -22,6 +24,8 @@ export default function App() {
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
         <Route path="help" element={<Help />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
+        <Route path="terms" element={<TermsOfService />} />
         <Route path="skill" element={<Skill />} />
         <Route path="skill/gmail" element={<GmailPage />} />
         <Route path="settings" element={<SettingsPage />} />
