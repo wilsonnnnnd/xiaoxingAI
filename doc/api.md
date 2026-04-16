@@ -62,8 +62,6 @@ Interactive docs: http://127.0.0.1:8000/docs
 |------|------|------|
 | GET | `/config` | Read current runtime config |
 | POST | `/config` | Update .env and hot reload |
-| GET | `/admin/persona-config` | Get system persona config |
-| PUT | `/admin/persona-config` | Update system persona config |
 | GET | `/db/stats` | Get database statistics |
 
 ## 7. AI Processing
@@ -99,21 +97,12 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/gmail/process` | Process fetched Gmail messages |
 | GET | `/gmail/workstatus` | Get Gmail work status |
 
-## 10. Telegram Bot and Chat
+## 10. Telegram Tools
 
 | Method | Path | Description |
 |------|------|------|
-| POST | `/telegram/bot/start` | Start all registered Telegram bots |
-| POST | `/telegram/bot/stop` | Stop all Telegram bots |
-| GET | `/telegram/bot/status` | Get Telegram bot status |
-| POST | `/telegram/bot/clear_history` | Clear all chat history |
-| GET | `/telegram/bot/profile` | Get user memory profile |
-| DELETE | `/telegram/bot/profile` | Delete user memory profile |
-| POST | `/telegram/bot/generate_profile` | Generate the memory profile manually |
 | POST | `/telegram/test` | Send a Telegram test message |
 | GET | `/telegram/chat_id` | Get Telegram chat ID |
-| POST | `/chat/generate_persona_prompt` | Generate a persona prompt chat |
-| GET | `/chat/workstatus` | Get chat work status |
 
 ---
 
@@ -134,4 +123,3 @@ Common HTTP status codes:
 - `422` — validation failed
 - `500` — internal server error
 - `502` — LLM backend is not reachable
-

@@ -157,8 +157,6 @@ export const en: Record<string, string> = {
     "home.worker.log_filter.chat": "Chat",
     "home.tg.test_ok": "Telegram OK — test message sent!",
     "home.oauth_success": "Google OAuth authorized! token.json saved.",
-    "home.card.bot_worker": "Telegram Bot Chat",
-    "home.card.bot_worker_desc": "Listen for messages from Telegram Bot and reply via local AI. Send any message to the Bot to chat.",
     "home.btn.bot_start": "Start Bot",
     "home.btn.bot_stop": "Stop Bot",
     "home.btn.bot_clear": "Clear History",

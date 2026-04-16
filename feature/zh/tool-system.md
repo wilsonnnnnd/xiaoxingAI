@@ -2,7 +2,7 @@
 
 ## 概述
 
-Telegram Bot 可根据用户消息的意图调用内置工具。轻量 Router LLM 负责决定调用哪些工具；Router 不可达时自动降级为关键词匹配。
+小星提供一组“工具”，供 LLM 在受控范围内获取真实数据（DB/Gmail）或执行受控动作（发信草稿工作流）。轻量 Router LLM 负责决定调用哪些工具；Router 不可达时自动降级为关键词匹配。
 
 ## 可用工具
 
@@ -28,13 +28,15 @@ Telegram Bot 可根据用户消息的意图调用内置工具。轻量 Router LL
 
 ### 主路由：Router LLM
 
-第二个较小的 LLM（推荐 Qwen2.5-1.5B，端口 8002）读取用户消息并决定调用哪些工具。路由 Prompt 从 `app/prompts/tools/router.txt` 热重载，修改即时生效，无需重启。
+第二个较小的 LLM 读取用户消息并决定调用哪些工具。
 
 `.env` 配置：
 ```
 ROUTER_API_URL=http://127.0.0.1:8002/v1/chat/completions
 ROUTER_MODEL=local-router
 ```
+
+路由 Prompt 建议作为 internal 配置放在 `app/prompts/tools/router.txt`。即使该文件不存在，系统也可以通过下方“关键词降级”正常工作。
 
 ### 备用路由：关键词匹配
 
@@ -57,9 +59,9 @@ Router LLM 不可达时自动降级：
 
 ## 添加新工具
 
-1. 在 `app/core/tools/` 中创建新文件（如 `my_tool.py`），实现返回 `(result_str, token_count)` 的函数
-2. 在 `app/core/tools/__init__.py` 中注册该工具
-3. 更新 `app/prompts/tools/router.txt`，描述何时调用新工具
+1. 在 `app/core/tools/` 中创建新文件（如 `my_tool.py`），实现工具函数
+2. 使用 `@register(...)` 装饰器注册（由 `load_tools()` 导入触发）
+3.（可选）如果使用 Router LLM 路由，更新 router prompt 描述何时调用新工具
 
 ## 相关文档
 

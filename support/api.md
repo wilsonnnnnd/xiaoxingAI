@@ -62,8 +62,6 @@ Interactive docs: http://127.0.0.1:8000/docs
 |--------|------|-------------|
 | GET | `/config` | Read current runtime config |
 | POST | `/config` | Update .env and hot-reload |
-| GET | `/admin/persona-config` | Get persona config |
-| PUT | `/admin/persona-config` | Update persona config |
 | GET | `/db/stats` | Database statistics |
 
 ## 7. AI Processing
@@ -99,21 +97,12 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/gmail/process` | Process fetched Gmail |
 | GET | `/gmail/workstatus` | Gmail processing status |
 
-## 10. Telegram Bot & Chat
+## 10. Telegram Tools
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/telegram/bot/start` | Start all registered bots |
-| POST | `/telegram/bot/stop` | Stop all bots |
-| GET | `/telegram/bot/status` | Bot worker status |
-| POST | `/telegram/bot/clear_history` | Clear all chat history |
-| GET | `/telegram/bot/profile` | Get user memory profile |
-| DELETE | `/telegram/bot/profile` | Delete user memory profile |
-| POST | `/telegram/bot/generate_profile` | Manually trigger profile generation |
 | POST | `/telegram/test` | Send test Telegram message |
 | GET | `/telegram/chat_id` | Get Telegram Chat ID |
-| POST | `/chat/generate_persona_prompt` | Generate persona prompt chat |
-| GET | `/chat/workstatus` | Chat processing status |
 
 ---
 

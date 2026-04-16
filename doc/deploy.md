@@ -113,8 +113,8 @@ At least set these values:
 
 ```env
 ADMIN_USER=admin@example.com
-ADMIN_PASSWORD=ChangeMe123!
-JWT_SECRET=please-change-this-secret
+ADMIN_PASSWORD=<change-me>
+JWT_SECRET=<please-change-this-secret>
 POSTGRES_DSN=postgresql://xiaoxing_user:your_password@127.0.0.1:5432/xiaoxing
 REDIS_URL=redis://127.0.0.1:6379
 FRONTEND_URL=https://your-domain.com
@@ -124,7 +124,8 @@ If you use OpenAI, also add:
 
 ```env
 LLM_BACKEND=openai
-OPENAI_API_KEY=your_openai_key
+LLM_API_KEY=<your_openai_key>
+OPENAI_API_KEY=<legacy_alias_optional>
 ```
 
 If you use a local model, make sure the model service is running and the URL in `.env` is correct.

@@ -2,54 +2,33 @@
 
 ## Overview
 
-All LLM prompts used by Xiaoxing are editable from the web UI. There are two types: system built-in prompts (shared across all users) and per-user custom prompts.
+Xiaoxing prompts are plain text files stored under `app/prompts/`. The backend reads these files at runtime (via `app/utils/prompt_loader.py`), so edits take effect without restarting the server.
 
-## Prompt Types
+The web UI provides a prompt editor page that edits these files through the `/prompts` API.
 
-| Type key | Used for |
-|----------|---------|
-| `chat` | Bot conversation persona (assignable per-bot) |
-| `email_analysis` | Gmail email classification and priority |
-| `email_summary` | Email summary generation |
-| `telegram_notify` | Telegram notification message composition |
-| `user_profile` | Memory extraction from chat history |
-| `router` _(hidden)_ | Tool dispatch routing — not shown in the UI editor |
+## Prompt Files (current)
 
-## Built-in Prompts
+Common built-in prompts:
 
-Located in `app/prompts/`. Imported into the database on first startup. Editable from **Prompts** page (admin only).
+- `gmail/email_analysis.txt` — classify priority and extract key fields
+- `gmail/email_summary.txt` — generate a structured summary
+- `gmail/telegram_notify.txt` — render Telegram HTML notification
+- `outgoing/email_reply_compose.txt` — compose a reply draft (content only; no closing/signature)
+- `outgoing/email_edit.txt` — modify an existing draft (content only; no closing/signature)
+- `outgoing/email_compose.txt` — compose a new outgoing email
 
-Changes take effect immediately — all prompts are **hot-reloaded** on each LLM call (no restart needed).
+## Visibility Rules (web UI)
 
-## Custom Prompts (Chat Personas)
+- Non-admin users only see a small allowlist of prompts
+- Admin users can see and edit all non-internal prompts
+- Prompts under `app/prompts/tools/` are treated as internal and hidden from the `/prompts` file API
 
-Users can create their own chat persona prompts via the Persona Generator (Skills → Chat). These are stored in `user_prompts` with `type = 'chat'` and scoped to that user.
+See:
 
-Each bot can have one custom prompt assigned:
-- Skills → Chat → Prompt Management → select bot → Assign
-- When assigned, the prompt replaces the default Xiaoxing description in the chat system prompt
-- The `[身份设定]` header (if present) is parsed and injected as explicit identity statements
-
-## `router.txt` Special Handling
-
-The `router.txt` prompt drives the Tool Routing system. It is:
-- Stored at `app/prompts/tools/router.txt`
-- Excluded from the UI prompt editor (not a user-facing setting)
-- Hot-reloaded on every routing call
-
-## Prompt Variables
-
-Prompts use Python `str.format()` substitution. Available variables per prompt type:
-
-| Prompt | Variables |
-|--------|-----------|
-| `chat.txt` | `{persona_section}`, `{profile_section}`, `{db_context_section}`, `{history}`, `{message}` |
-| `user_profile.txt` | `{existing_profile}`, `{chat_history}` |
-| `email_analysis.txt` | `{email_body}` |
-| `email_summary.txt` | `{email_body}` |
-| `telegram_notify.txt` | `{analysis}`, `{summary}` |
+- `app/core/constants.py` (`USER_VISIBLE_PROMPTS`)
+- `app/api/routes/prompts.py` (`_is_internal_prompt`)
 
 ## Related
 
-- [Chat Persona →](persona.md)
 - [Tool System →](tool-system.md)
+- [Gmail Pipeline →](gmail.md)
