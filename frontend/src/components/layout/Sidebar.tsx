@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
       {/* Nav */}
       <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3">
         {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin)
-          .filter(({ to }) => (isAuthed ? true : to === '/home' || to === '/help'))
+          .filter(({ to }) => (isAuthed ? true : to === '/home' || to === '/help' || to === '/privacy' || to === '/terms'))
           .map(({ to, key, end }) => {
           if (key === 'nav.skill') {
             if (!isAuthed) return null

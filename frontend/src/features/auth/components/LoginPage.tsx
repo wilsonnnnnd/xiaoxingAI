@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../i18n/useI18n'
 import { login } from '../api'
 import { Button } from '../../../components/common/Button'
@@ -62,6 +62,12 @@ export const LoginPage: React.FC = () => {
             {t('login.btn')}
           </Button>
         </form>
+
+        <div className="flex items-center justify-center gap-4 text-xs text-[#64748b]">
+          <Link to="/privacy" className="hover:underline">{t('nav.privacy')}</Link>
+          <span className="opacity-40">•</span>
+          <Link to="/terms" className="hover:underline">{t('nav.terms')}</Link>
+        </div>
       </div>
     </div>
   )
