@@ -1,8 +1,15 @@
-name: Deploy to Server
+name: Deploy to Alibaba Cloud ECS
 
 on:
-  pull_request_target:
-    types: [closed]
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -19,23 +26,42 @@ jobs:
           port: ${{ secrets.PORT }}
           script: |
             set -e
-            export PATH="/home/ubuntu/.nvm/versions/node/v22.22.2/bin:$PATH"
-            cd ~/xiaoxingAI
+
+            echo "📂 Go to project"
+            cd /root/xiaoxingAI
 
             echo "📥 Pull latest code"
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
-            echo "🐍 Install Python dependencies"
-            .venv/bin/pip install -r requirements.txt --quiet
+            echo "🐍 Install backend dependencies"
+            source /root/xiaoxingAI/.venv/bin/activate
+            pip install -r requirements.txt
 
-            echo "🏗 Build frontend"
-            cd frontend
-            npm ci --silent
+            echo "🧱 Build frontend"
+            cd /root/xiaoxingAI/frontend
+            npm install
             npm run build
-            cd ..
 
-            echo "🔄 Restart backend"
-            sudo systemctl restart xiaoxingai
+            echo "🔁 Restart backend"
+            systemctl restart xiaoxing
 
-            echo "✅ Deploy complete"
-            sudo systemctl status xiaoxingai --no-pager | tail -5
+            echo "🔁 Reload nginx"
+            nginx -t
+            systemctl reload nginx
+
+            echo "⏳ Wait for backend to become ready"
+            for i in {1..15}; do
+              if curl -fsS http://127.0.0.1:8000/health; then
+                echo "✅ Backend is ready"
+                break
+              fi
+              echo "Waiting... ($i)"
+              sleep 2
+            done
+
+            echo "🔍 Final service status"
+            systemctl status xiaoxing --no-pager
+
+            echo "✅ HTTPS check"
+            curl -k -I https://127.0.0.1 || true
