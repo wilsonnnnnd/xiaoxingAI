@@ -44,7 +44,7 @@ def _build_headers() -> dict:
     return headers
 
 
-def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
+def call_llm(prompt: str, max_tokens: int = 512, use_cache: bool = True) -> tuple:
     """调用主 LLM（chat/email 等场景）。"""
     main_key = config.LLM_API_KEY or config.OPENAI_API_KEY
     main_key_src = "LLM_API_KEY" if config.LLM_API_KEY else ("OPENAI_API_KEY" if config.OPENAI_API_KEY else "none")
@@ -53,6 +53,7 @@ def call_llm(prompt: str, max_tokens: int = 512) -> tuple:
         config.LLM_MODEL,
         prompt,
         max_tokens,
+        use_cache=use_cache,
         api_key=main_key,
         purpose="main",
         api_key_source=main_key_src,

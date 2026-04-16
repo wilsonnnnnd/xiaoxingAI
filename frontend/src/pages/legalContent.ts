@@ -12,7 +12,9 @@ export interface LegalDoc {
   sections: LegalSection[]
 }
 
-const effectiveDate = new Date().toLocaleDateString();
+export const legalHostDomain = 'https://xiaoxingai.online'
+export const legalPolicyVersion = '2026-04-17'
+const effectiveDate = '2026-04-17'
 const contactEmail = 'wilson.ding.wm@gmail.com'
 
 export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
@@ -24,7 +26,8 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
         {
           title: '1. 概述',
           paragraphs: [
-            '本隐私政策说明小星 AI（“我们”）在你使用本服务时如何收集、使用与保护你的信息。',
+            `本隐私政策适用于小星 AI（“我们”）在 ${legalHostDomain} 上提供的网页应用与相关服务（“服务”）。`,
+            '我们不会出售你的个人信息。',
           ],
         },
         {
@@ -34,23 +37,25 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
             '授权后，服务会根据你配置的 Gmail 搜索语句（query）读取匹配的邮件，用于分析与通知。',
           ],
           bullets: [
-            '我们可能会读取邮件主题、发件人、时间与邮件正文内容，以便完成分析与生成通知。',
+            '我们可能会访问邮件主题、发件人、时间、邮件 ID、以及为完成分析与生成通知所必需的邮件正文内容。',
             '我们不会无差别读取你的整个邮箱；读取范围由你配置的 query 决定。',
             '我们不会下载或保存附件用于分析。',
           ],
         },
         {
-          title: '3. 数据最小化与不保存邮件内容',
+          title: '3. Google 用户数据的存储与保留',
           paragraphs: [
-            '我们不会保存你的 Gmail 邮件正文内容。邮件内容仅用于即时分析与向你发送通知。',
-            '为保障服务正常运行与去重，我们可能会保存必要的最小元数据，例如邮件 ID、处理状态、时间戳，以及你的配置（轮询间隔、query 等）。',
+            '我们遵循数据最小化原则。',
+            '我们不会在数据库中保存你的 Gmail 邮件正文内容；邮件正文仅用于即时分析与向你发送通知。',
+            '为保障服务正常运行（例如避免重复处理），我们可能会存储必要的最小元数据，例如邮件 ID、处理状态、时间戳，以及你的配置（轮询间隔、query 等）。',
             '我们会将你的 Google OAuth Token 加密存储在数据库中，以便服务代表你访问 Gmail。你可以随时在 Google 账号安全设置中撤销授权。',
+            '为提升性能，系统可能使用短期缓存来保存 AI 生成的结果（例如摘要/通知文案）。该类缓存为短期保留并会自动过期。',
           ],
         },
         {
           title: '4. 我们如何使用信息',
           bullets: [
-            '分析未读邮件并生成结构化摘要/标签，用于通知展示。',
+            '在你授权后读取匹配邮件，用于分析与生成结构化摘要/标签（用于通知展示）。',
             '通过 Telegram 向你推送通知或草稿预览（如你已配置 Telegram）。',
             '提供账户登录、权限隔离、故障排查与安全防护。',
           ],
@@ -58,7 +63,13 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
         {
           title: '5. 分享与第三方',
           paragraphs: [
-            '我们不会出售你的个人信息。我们仅在提供服务所必需的范围内，或在法律要求下，与第三方共享必要信息。',
+            '我们仅在提供服务所必需的范围内共享信息，例如：',
+          ],
+          bullets: [
+            'Google：用于完成 OAuth 授权与访问 Gmail API。',
+            'Telegram：当你配置 Telegram 时，我们会向 Telegram 发送通知消息或交互回调。',
+            'LLM 服务提供方：用于生成分析与摘要（可能是你自托管的模型服务或第三方 API）。',
+            '基础设施与运维服务：用于托管、监控与安全防护。',
           ],
         },
         {
@@ -74,7 +85,14 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
           ],
         },
         {
-          title: '8. 你的选择',
+          title: '8. 变更与通知',
+          paragraphs: [
+            '如果我们变更了服务如何访问、使用、存储或共享 Google 用户数据，我们会更新本隐私政策并进行提示。',
+            '提示方式包括在应用界面显著位置展示更新提示，并更新本页面的生效日期。',
+          ],
+        },
+        {
+          title: '9. 你的选择',
           bullets: [
             '你可以在 Google 账号安全设置中随时撤销 Gmail 授权。',
             '你可以在 Gmail 功能页停止轮询。',
@@ -82,7 +100,7 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
           ],
         },
         {
-          title: '9. 联系方式',
+          title: '10. 联系方式',
           paragraphs: [`如对本隐私政策有疑问，请联系：${contactEmail}`],
         },
       ],
@@ -96,7 +114,8 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
       {
         title: '1. Overview',
         paragraphs: [
-          'This Privacy Policy explains how Xiaoxing AI ("we", "us", "our") collects, uses, and protects your information when you use the Service.',
+          `This Privacy Policy applies to Xiaoxing AI ("we", "us", "our") provided on ${legalHostDomain} (the "Service").`,
+          'We do not sell your personal data.',
         ],
       },
       {
@@ -106,17 +125,19 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
           'After authorization, the Service reads Gmail messages that match your configured Gmail search query for analysis and notifications.',
         ],
         bullets: [
-          'We may access email subject, sender, timestamp, and message content required to analyze and generate notifications.',
+          'We may access email subject, sender, timestamp, message ID, and message content required to analyze and generate notifications.',
           'We do not access your entire mailbox indiscriminately; access is limited by the query you configure.',
           'We do not download or store attachments for analysis.',
         ],
       },
       {
-        title: '3. Data Minimization and No Email Content Storage',
+        title: '3. Storage and Retention of Google User Data',
         paragraphs: [
-          'We do not store the body/content of your Gmail messages. Message content is processed only to generate analysis and notifications.',
+          'We follow a data minimization approach.',
+          'We do not store the body/content of your Gmail messages in our database. Message content is processed only to generate analysis and notifications.',
           'To operate the Service reliably and prevent duplicate processing, we may store minimal metadata such as message IDs, processing status, timestamps, and your configuration (poll interval, query, etc.).',
           'We store your Google OAuth tokens encrypted so the Service can access Gmail on your behalf. You can revoke access at any time in your Google Account security settings.',
+          'For performance, the Service may use short-lived caches to store AI-generated outputs (e.g., summaries/notification text). These caches expire automatically.',
         ],
       },
       {
@@ -130,7 +151,13 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
       {
         title: '5. Sharing',
         paragraphs: [
-          'We do not sell your personal data. We share data only as necessary to provide the Service or comply with legal obligations.',
+          'We share data only as necessary to provide the Service or comply with legal obligations, for example with:',
+        ],
+        bullets: [
+          'Google (OAuth and Gmail API).',
+          'Telegram (to deliver notifications and handle interactive callbacks, if enabled by you).',
+          'LLM providers you configure (self-hosted model endpoints or third-party APIs) to generate analyses and drafts.',
+          'Infrastructure and security providers for hosting and monitoring.',
         ],
       },
       {
@@ -146,7 +173,14 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
         ],
       },
       {
-        title: '8. Your Choices',
+        title: '8. Changes and Notice',
+        paragraphs: [
+          'If we change how the Service accesses, uses, stores, or shares Google user data, we will update this Privacy Policy and provide notice.',
+          'Notice may be provided by prominently displaying an update notice in the app interface and updating the effective date shown on this page.',
+        ],
+      },
+      {
+        title: '9. Your Choices',
         bullets: [
           'Revoke Gmail access any time from your Google Account security settings.',
           'Stop Gmail polling from the Gmail feature page.',
@@ -154,7 +188,7 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
         ],
       },
       {
-        title: '9. Contact',
+        title: '10. Contact',
         paragraphs: [`If you have questions about this Privacy Policy, contact: ${contactEmail}`],
       },
     ],
@@ -190,7 +224,9 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
         },
         {
           title: '4. 隐私与数据',
-          paragraphs: ['我们如何处理数据请参见《隐私政策》。'],
+          paragraphs: [
+            `我们如何访问、使用、存储或共享 Google 用户数据，请参见本应用的《隐私政策》（${legalHostDomain}/privacy）。`,
+          ],
         },
         {
           title: '5. 服务可用性',
@@ -217,7 +253,13 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
           ],
         },
         {
-          title: '9. 联系方式',
+          title: '9. 条款更新',
+          paragraphs: [
+            '我们可能不时更新本条款。若更新涉及我们如何处理 Google 用户数据，我们会在应用界面显著位置提示，并更新本页面的生效日期。',
+          ],
+        },
+        {
+          title: '10. 联系方式',
           paragraphs: [`如对本条款有疑问，请联系：${contactEmail}`],
         },
       ],
@@ -251,7 +293,9 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
       },
       {
         title: '4. Data and Privacy',
-        paragraphs: ['Please review the Privacy Policy for how data is handled.'],
+        paragraphs: [
+          `Please review the Privacy Policy for how Google user data is accessed, used, stored, or shared (${legalHostDomain}/privacy).`,
+        ],
       },
       {
         title: '5. Service Availability',
@@ -276,7 +320,13 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
         ],
       },
       {
-        title: '9. Contact',
+        title: '9. Updates to Terms',
+        paragraphs: [
+          'We may update these Terms from time to time. If an update changes how we handle Google user data, we will provide notice by prominently displaying an update notice in the app interface and updating the effective date on this page.',
+        ],
+      },
+      {
+        title: '10. Contact',
         paragraphs: [`For questions about these Terms, contact: ${contactEmail}`],
       },
     ],

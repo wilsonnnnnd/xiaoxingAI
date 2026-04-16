@@ -152,7 +152,7 @@ def reply_email(message: str, user_id: int | None = None) -> str:
         .replace("{{user_reply}}", user_reply)
     )
 
-    content, tokens = call_llm(prompt, max_tokens=800)
+    content, tokens = call_llm(prompt, max_tokens=800, use_cache=False)
     data = extract_json_from_llm(content)
     new_subject = (data.get("subject") or "").strip() or subject
     body_plain = (data.get("body_plain") or "").strip()
@@ -403,7 +403,7 @@ def outgoing_draft_modify(message: str, user_id: int | None = None) -> str:
         .replace("{{body}}", body_plain_core[:2000])
         .replace("{{instruction}}", raw_instruction)
     )
-    content, _ = call_llm(prompt, max_tokens=800)
+    content, _ = call_llm(prompt, max_tokens=800, use_cache=False)
     data = extract_json_from_llm(content)
     new_subject = (data.get("subject") or "").strip() or str(draft.get("subject") or "")
     new_body = (data.get("body_plain") or "").strip()

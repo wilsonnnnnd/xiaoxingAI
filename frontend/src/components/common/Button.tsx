@@ -19,6 +19,7 @@ export const Button: React.FC<ButtonProps> = ({
   return (
     <button
       disabled={disabled || loading}
+      aria-busy={loading ? 'true' : undefined}
       className={`${baseCls} ${variantCls} ${className}`}
       {...props}
     >

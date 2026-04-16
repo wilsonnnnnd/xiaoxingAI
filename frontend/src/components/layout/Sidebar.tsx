@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
             type="button"
             onClick={onNavigate}
             className="ml-auto md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-[#94a3b8] hover:bg-[#0b1220] hover:text-[#e2e8f0] transition-colors"
-            aria-label="Close"
+            aria-label={t('a11y.close_navigation')}
           >
             ✕
           </button>
@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
       )}
 
       {/* Nav */}
-      <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3">
+      <nav className="flex-1 py-4 overflow-y-auto flex flex-col gap-1 px-2 pr-3" aria-label={t('a11y.primary_navigation')}>
         {NAV_CONFIG.filter(({ adminOnly }) => !adminOnly || isAdmin)
           .filter(({ to }) => (isAuthed ? true : to === '/home' || to === '/help' || to === '/privacy' || to === '/terms'))
           .map(({ to, key, end }) => {
@@ -101,22 +101,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
             return (
               <div key="skill" className="relative" ref={skillRef}>
                 <button
+                  type="button"
                   onClick={() => setSkillOpen(v => !v)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out ${skillOpen ? 'bg-[#3b82f6] text-white font-medium' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`}
+                  aria-haspopup="menu"
+                  aria-expanded={skillOpen}
+                  aria-controls="nav-skill-menu"
                 >
                   <span className="flex items-center gap-2">{t('nav.skill')}</span>
                   <span className="text-xs text-[#94a3b8]">{skillOpen ? '▾' : '▸'}</span>
                 </button>
                 {skillOpen && (
-                  <div className="mt-1 ml-2 bg-[#071025] border border-[#213347] rounded-md p-1 z-50 shadow-lg">
+                  <div id="nav-skill-menu" role="menu" className="mt-1 ml-2 bg-[#071025] border border-[#213347] rounded-md p-1 z-50 shadow-lg">
                     <NavLink
                       to="/skill/gmail"
                       onClick={() => {
                         setSkillOpen(false)
                         onNavigate?.()
                       }}
+                      role="menuitem"
                       className={({ isActive }) =>
-                        `block px-3 py-1 rounded text-sm transition-colors duration-150 ${isActive ? 'bg-[#071023] text-white font-semibold' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`
+                        `block px-3 py-1 rounded text-sm transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#60a5fa] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] ${isActive ? 'bg-[#071023] text-white font-semibold' : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'}`
                       }
                     >
                       {t('nav.skill.gmail')}
@@ -132,6 +137,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-[#111827] flex flex-col gap-2">
+        <div className="flex items-center justify-center gap-4 text-[11px] text-[#64748b]">
+          <NavLink
+            to="/privacy"
+            onClick={onNavigate}
+            className="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#60a5fa] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] rounded"
+          >
+            {t('nav.privacy')}
+          </NavLink>
+          <NavLink
+            to="/terms"
+            onClick={onNavigate}
+            className="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#60a5fa] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] rounded"
+          >
+            {t('nav.terms')}
+          </NavLink>
+        </div>
         <LanguageToggle />
         {isAuthed ? (
           <button

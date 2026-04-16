@@ -20,7 +20,7 @@ def analyze_email(subject: str, body: str) -> Dict[str, Any]:
     template = load_prompt(config.PROMPT_ANALYZE)
     prompt = template.format(subject=subject, body=body)
 
-    raw_result, tokens = call_llm(prompt)
+    raw_result, tokens = call_llm(prompt, use_cache=False)
     parsed = extract_json_from_text(raw_result)
 
     return {
@@ -47,7 +47,7 @@ def summarize_email(
         date=date,
         analysis=json.dumps(analysis, ensure_ascii=False, indent=2),
     )
-    raw, tokens = call_llm(prompt, max_tokens=512)
+    raw, tokens = call_llm(prompt, max_tokens=512, use_cache=False)
     parsed = extract_json_from_text(raw)
     return {"type": "summary", "result": parsed, "raw": raw, "tokens": tokens}
 
@@ -101,7 +101,7 @@ def write_telegram_message(
         date=date,
         summary=json.dumps(summary, ensure_ascii=False, indent=2),
     )
-    raw_msg, tg_tokens = call_llm(prompt, max_tokens=800)
+    raw_msg, tg_tokens = call_llm(prompt, max_tokens=800, use_cache=False)
     message = _sanitize_tg_html(raw_msg.strip())
     if email_id:
         gmail_url = f"https://mail.google.com/mail/u/0/#inbox/{email_id}"
