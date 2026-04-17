@@ -93,6 +93,7 @@ def fetch_email(message: str, user_id=None) -> str:
                 sender=email.get("from", ""),
                 date=email.get("date", ""),
                 email_id=email.get("id", ""),
+                user_id=int(user_id) if user_id is not None else None,
             )
             analysis = result.get("analysis", {})
             summary  = result.get("summary", {})

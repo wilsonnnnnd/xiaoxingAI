@@ -26,11 +26,11 @@ def _truncate(text: str, max_chars: int, suffix: str = "") -> Tuple[str, bool]:
     return t[:max_chars] + suffix, True
 
 
-def analyze_email(subject: str, body_excerpt: str, snippet: str = "") -> Dict[str, Any]:
+def analyze_email(subject: str, body_excerpt: str, snippet: str = "", user_id: int | None = None) -> Dict[str, Any]:
     """步骤 1：分析邮件分类、优先级、关键词等"""
     body_excerpt, _ = _truncate(body_excerpt, MAX_BODY_CHARS, suffix="\n...[内容过长，已截断]")
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
-    template = load_prompt(config.PROMPT_ANALYZE)
+    template = load_prompt(config.PROMPT_ANALYZE, user_id=user_id)
     prompt = template.format(subject=subject, body_excerpt=body_excerpt, snippet=snippet)
 
     raw_result, tokens = call_llm(prompt, max_tokens=256, use_cache=False)
@@ -57,11 +57,12 @@ def summarize_email(
     date: str = "",
     snippet: str = "",
     body_excerpt: str = "",
+    user_id: int | None = None,
 ) -> Dict[str, Any]:
     """步骤 2：基于邮件原文和分析结果，提取结构化摘要"""
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
     body_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
-    template = load_prompt(config.PROMPT_SUMMARY)
+    template = load_prompt(config.PROMPT_SUMMARY, user_id=user_id)
     prompt = template.format(
         subject=subject,
         sender=sender,
@@ -130,9 +131,10 @@ def write_telegram_message(
     sender: str = "",
     date: str = "",
     email_id: str = "",
+    user_id: int | None = None,
 ) -> tuple[str, int]:
     """步骤 3：让 AI 根据摘要数据撰写 Telegram 消息文案（HTML 格式）"""
-    template = load_prompt(config.PROMPT_TELEGRAM)
+    template = load_prompt(config.PROMPT_TELEGRAM, user_id=user_id)
     prompt = template.format(
         subject=subject,
         sender=sender,
@@ -154,6 +156,7 @@ def process_email(
     sender: str = "",
     date: str = "",
     email_id: str = "",
+    user_id: int | None = None,
 ) -> Dict[str, Any]:
     """
     完整邮件处理流程：分析 → 摘要 → AI 撰写 Telegram 文案（3 次 LLM 调用）
@@ -164,7 +167,7 @@ def process_email(
     summary_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
 
     try:
-        analysis = analyze_email(subject, body_excerpt, snippet=snippet_short)
+        analysis = analyze_email(subject, body_excerpt, snippet=snippet_short, user_id=user_id)
     except Exception as e:
         raise RuntimeError(f"[步骤1-分析] {str(e)}")
 
@@ -176,6 +179,7 @@ def process_email(
             date=date,
             snippet=snippet_short,
             body_excerpt=summary_excerpt,
+            user_id=user_id,
         )
     except Exception as e:
         raise RuntimeError(f"[步骤2-摘要] {str(e)}")
@@ -184,6 +188,7 @@ def process_email(
         telegram_message, tg_tokens = write_telegram_message(
             subject, summary["result"],
             sender=sender, date=date, email_id=email_id,
+            user_id=user_id,
         )
     except Exception as e:
         raise RuntimeError(f"[步骤3-Telegram文案] {str(e)}")
