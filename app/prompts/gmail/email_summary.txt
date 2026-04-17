@@ -6,12 +6,14 @@
 要求：
 1. 只返回合法 JSON，不要有任何解释、前缀、后缀或 Markdown
 2. 所有字段值均为纯文本，不要加任何符号或格式
-3. summary 简洁清晰，尽量 20 字以内
-4. key_points 提取 2 到 3 个最重要的信息，没有则返回空数组
-5. 如果没有对应字段，返回空字符串
-6. 分类翻译：job=求职招聘，finance=财务账单，social=社交沟通，spam=广告垃圾，other=其他
-7. 优先级翻译：high=高，medium=中，low=低
-8. sender 和 date 直接使用输入中提供的值，不要修改
+3. summary 为中文一句话摘要，尽量 20 字以内；不确定则返回空字符串
+4. key_points 只提取 2 到 3 个最重要的信息；没有则返回空数组；禁止编造
+5. category / priority / action_needed 必须与分析结果保持一致，不得推理新增
+6. category_zh / priority_zh 必须仅依据分析结果翻译，不得自创
+   - category 翻译：job=求职招聘，finance=财务账单，social=社交沟通，spam=广告垃圾，other=其他
+   - priority 翻译：high=高，medium=中，low=低
+7. sender 和 date 直接使用输入中提供的值，不要修改；若为空则返回空字符串
+8. 只能输出指定字段，禁止新增字段
 
 下面是输入数据：
 
@@ -24,8 +26,11 @@
 收件时间：
 {date}
 
-邮件正文：
-{body}
+Snippet（可能为空，最多 400 字）：
+{snippet}
+
+正文节选（可能为空/已截断，最多 1200 字）：
+{body_excerpt}
 
 分析结果（JSON）：
 {analysis}
@@ -33,14 +38,13 @@
 请按以下格式输出：
 
 {{
-  "category_zh": "分类中文名称",
-  "priority_zh": "优先级中文名称",
+  "category": "job | finance | social | spam | other",
+  "priority": "high | medium | low",
+  "category_zh": "求职招聘 | 财务账单 | 社交沟通 | 广告垃圾 | 其他",
+  "priority_zh": "高 | 中 | 低",
   "summary": "一句话摘要",
   "key_points": ["要点1", "要点2", "要点3（如有）"],
-  "sender": "发件人，直接使用输入值",
-  "date": "收件时间，直接使用输入值",
-  "time": "邮件正文中提及的时间信息，没有则为空字符串",
-  "location": "地点信息，没有则为空字符串",
-  "person": "关键人物，没有则为空字符串",
-  "suggested_action": "建议操作，不需要则为空字符串"
+  "action_needed": false,
+  "sender": "发件人（原样）",
+  "date": "收件时间（原样）"
 }}

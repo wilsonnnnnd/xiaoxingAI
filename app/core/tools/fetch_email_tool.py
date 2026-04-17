@@ -88,14 +88,15 @@ def fetch_email(message: str, user_id=None) -> str:
         try:
             result = process_email(
                 subj,
-                email.get("body") or email.get("snippet", ""),
+                email.get("body", ""),
+                snippet=email.get("snippet", ""),
                 sender=email.get("from", ""),
                 date=email.get("date", ""),
                 email_id=email.get("id", ""),
             )
             analysis = result.get("analysis", {})
             summary  = result.get("summary", {})
-            brief    = summary.get("brief", "") or result.get("telegram_message", "")[:200]
+            brief    = summary.get("summary", "") or result.get("telegram_message", "")[:200]
             priority = analysis.get("priority", "unknown")
             parts.append(
                 f"{i}. [{priority}] {subj}\n"

@@ -9,8 +9,7 @@
   "category": "job | finance | social | spam | other",
   "priority": "high | medium | low",
   "summary": "一句话总结邮件内容",
-  "action_needed": true,
-  "suggested_action": "如果需要操作，给出建议，否则为空字符串"
+  "action_needed": true
 }}
 
 分类说明：
@@ -30,12 +29,16 @@
 2. 不要输出任何解释
 3. 不要使用 Markdown
 4. summary 简洁清晰，尽量 20 字以内
-5. suggested_action 如果不需要操作，返回空字符串
+5. 只能输出以上 4 个字段，禁止新增字段
+6. 禁止编造：如果无法确定，summary 返回空字符串；category=other；priority=low；action_needed=false
 
 下面是邮件内容：
 
 主题：
 {subject}
 
-正文：
-{body}
+Snippet（可能为空，最多 400 字）：
+{snippet}
+
+正文节选（可能已截断，最多 6000 字）：
+{body_excerpt}

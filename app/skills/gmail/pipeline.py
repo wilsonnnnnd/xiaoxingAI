@@ -4,24 +4,43 @@ Gmail AI 处理流水线 — Gmail Skill
 """
 import json
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from app.core import config
 from app.core.llm import call_llm
-from app.utils.json_parser import extract_json_from_text
+from app.utils.json_parser import extract_json_with_repair
 from app.utils.prompt_loader import load_prompt
 
 
-MAX_BODY_CHARS = 4000   # 超出此长度截断，避免 LLM 上下文溢出
+MAX_BODY_CHARS = 6000   # 超出此长度截断，避免 LLM 上下文溢出
+SUMMARY_BODY_CHARS = 1200
+MAX_SNIPPET_CHARS = 400
 
 
-def analyze_email(subject: str, body: str) -> Dict[str, Any]:
+def _truncate(text: str, max_chars: int, suffix: str = "") -> Tuple[str, bool]:
+    t = (text or "").strip()
+    if not t:
+        return "", False
+    if len(t) <= max_chars:
+        return t, False
+    return t[:max_chars] + suffix, True
+
+
+def analyze_email(subject: str, body_excerpt: str, snippet: str = "") -> Dict[str, Any]:
     """步骤 1：分析邮件分类、优先级、关键词等"""
+    body_excerpt, _ = _truncate(body_excerpt, MAX_BODY_CHARS, suffix="\n...[内容过长，已截断]")
+    snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
     template = load_prompt(config.PROMPT_ANALYZE)
-    prompt = template.format(subject=subject, body=body)
+    prompt = template.format(subject=subject, body_excerpt=body_excerpt, snippet=snippet)
 
-    raw_result, tokens = call_llm(prompt, use_cache=False)
-    parsed = extract_json_from_text(raw_result)
+    raw_result, tokens = call_llm(prompt, max_tokens=256, use_cache=False)
+    schema_hint = """{
+  "category": "other",
+  "priority": "low",
+  "summary": "",
+  "action_needed": false
+}"""
+    parsed = extract_json_with_repair(raw_result, schema_hint=schema_hint, max_repair_tokens=128)
 
     return {
         "type":   "analysis",
@@ -33,22 +52,41 @@ def analyze_email(subject: str, body: str) -> Dict[str, Any]:
 
 def summarize_email(
     subject: str,
-    body: str,
     analysis: Dict[str, Any],
     sender: str = "",
     date: str = "",
+    snippet: str = "",
+    body_excerpt: str = "",
 ) -> Dict[str, Any]:
     """步骤 2：基于邮件原文和分析结果，提取结构化摘要"""
+    snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
+    body_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
     template = load_prompt(config.PROMPT_SUMMARY)
     prompt = template.format(
         subject=subject,
-        body=body,
         sender=sender,
         date=date,
         analysis=json.dumps(analysis, ensure_ascii=False, indent=2),
+        snippet=snippet,
+        body_excerpt=body_excerpt,
     )
-    raw, tokens = call_llm(prompt, max_tokens=512, use_cache=False)
-    parsed = extract_json_from_text(raw)
+    raw, tokens = call_llm(prompt, max_tokens=256, use_cache=False)
+    schema_defaults = {
+        "category": str(analysis.get("category") or "other"),
+        "priority": str(analysis.get("priority") or "low"),
+        "category_zh": "",
+        "priority_zh": "",
+        "summary": "",
+        "key_points": [],
+        "action_needed": bool(analysis.get("action_needed") or False),
+        "sender": "",
+        "date": "",
+    }
+    parsed = extract_json_with_repair(
+        raw,
+        schema_hint=json.dumps(schema_defaults, ensure_ascii=False, indent=2),
+        max_repair_tokens=192,
+    )
     return {"type": "summary", "result": parsed, "raw": raw, "tokens": tokens}
 
 
@@ -112,6 +150,7 @@ def write_telegram_message(
 def process_email(
     subject: str,
     body: str,
+    snippet: str = "",
     sender: str = "",
     date: str = "",
     email_id: str = "",
@@ -119,17 +158,25 @@ def process_email(
     """
     完整邮件处理流程：分析 → 摘要 → AI 撰写 Telegram 文案（3 次 LLM 调用）
     """
-    # 截断过长正文，避免超出 LLM 上下文窗口
-    if len(body) > MAX_BODY_CHARS:
-        body = body[:MAX_BODY_CHARS] + "\n...[内容过长，已截断]"
+    snippet_short, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
+    effective_body = (body or "").strip() or snippet_short
+    body_excerpt, _ = _truncate(effective_body, MAX_BODY_CHARS, suffix="\n...[内容过长，已截断]")
+    summary_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
 
     try:
-        analysis = analyze_email(subject, body)
+        analysis = analyze_email(subject, body_excerpt, snippet=snippet_short)
     except Exception as e:
         raise RuntimeError(f"[步骤1-分析] {str(e)}")
 
     try:
-        summary = summarize_email(subject, body, analysis["result"], sender=sender, date=date)
+        summary = summarize_email(
+            subject,
+            analysis["result"],
+            sender=sender,
+            date=date,
+            snippet=snippet_short,
+            body_excerpt=summary_excerpt,
+        )
     except Exception as e:
         raise RuntimeError(f"[步骤2-摘要] {str(e)}")
 

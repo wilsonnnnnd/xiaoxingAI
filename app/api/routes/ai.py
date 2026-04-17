@@ -21,14 +21,18 @@ def ai_ping():
 
 @router.post("/ai/analyze")
 def ai_analyze(payload: EmailRequest):
-    return run_http(lambda: analyze_email(payload.subject, payload.body), error_prefix="analyze failed")
+    return run_http(
+        lambda: analyze_email(payload.subject, payload.body, snippet=(payload.body or "")[:400]),
+        error_prefix="analyze failed",
+    )
 
 
 @router.post("/ai/summary")
 def ai_summary(payload: EmailRequest):
     def _run():
-        analysis = analyze_email(payload.subject, payload.body)
-        return summarize_email(payload.subject, payload.body, analysis["result"])
+        body = payload.body or ""
+        analysis = analyze_email(payload.subject, body, snippet=body[:400])
+        return summarize_email(payload.subject, analysis["result"], snippet=body[:400], body_excerpt=body[:1200])
 
     return run_http(_run, error_prefix="summary failed")
 

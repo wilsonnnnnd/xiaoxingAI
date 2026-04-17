@@ -30,7 +30,8 @@ class GmailService:
             try:
                 processed = process_email(
                     email["subject"],
-                    email["body"] or email["snippet"],
+                    email.get("body", ""),
+                    snippet=email.get("snippet", ""),
                     sender=email.get("from", ""),
                     date=email.get("date", ""),
                     email_id=email.get("id", ""),
