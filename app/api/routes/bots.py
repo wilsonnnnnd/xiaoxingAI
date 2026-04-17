@@ -58,7 +58,7 @@ def bot_delete(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Bot 不存在")
-    db.delete_bot(bot_id)
+    db.delete_bot(bot_id, user_id)
     return {"ok": True}
 
 
@@ -69,5 +69,5 @@ def bot_set_default(user_id: int, bot_id: int, user: dict = Depends(auth_mod.cur
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Bot 不存在")
-    db.set_default_bot(user_id, bot_id)
+    db.set_default_bot(bot_id, user_id)
     return {"ok": True}
