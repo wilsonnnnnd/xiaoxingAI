@@ -57,7 +57,7 @@ def get_credentials(user_id: Optional[int] = None) -> Credentials:
 
     uid_hint = f" (user_id={user_id})" if user_id else ""
     raise RuntimeError(
-        f"未找到有效授权{uid_hint}，请先访问 /gmail/auth 完成 Google OAuth 授权"
+        f"未找到有效授权{uid_hint}，请先访问 /api/gmail/auth 完成 Google OAuth 授权"
     )
 
 

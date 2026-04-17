@@ -140,7 +140,6 @@ app.include_router(reply_format.router, prefix=API_PREFIX)
 # ─────────────────────────────────────────
 
 @app.get("/api/gmail/auth/url")
-@app.get("/gmail/auth/url")
 def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_user)):
     """返回 Gmail OAuth 授权 URL（JSON）。前端用此接口获取 URL 后由 JS 跳转，可携带 user_id。"""
     try:
@@ -152,7 +151,6 @@ def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_u
 
 
 @app.get("/api/gmail/auth")
-@app.get("/gmail/auth")
 def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
     """跳转到 Google OAuth 授权页面（浏览器直接跳转的兼容路由，无 JWT 时 user_id=None）"""
     user_id = user["id"] if user else None
@@ -165,7 +163,6 @@ def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_cur
 
 
 @app.get("/api/gmail/callback")
-@app.get("/gmail/callback")
 def gmail_callback(request: Request, code: str,
                    state: Optional[str] = None,
                    user: Optional[dict] = Depends(auth_mod.get_current_user_or_none)):
@@ -190,7 +187,6 @@ def gmail_callback(request: Request, code: str,
 # ─────────────────────────────────────────
 
 @app.post("/api/worker/start")
-@app.post("/worker/start")
 async def worker_start():
     """启动自动轮询 Worker"""
     try:
@@ -201,7 +197,6 @@ async def worker_start():
 
 
 @app.post("/api/worker/stop")
-@app.post("/worker/stop")
 def worker_stop():
     """停止自动轮询 Worker"""
     stopped = worker.stop()
@@ -209,7 +204,6 @@ def worker_stop():
 
 
 @app.get("/api/worker/status")
-@app.get("/worker/status")
 def worker_status():
     """获取 Worker 当前状态和统计"""
     return worker.get_status()
@@ -221,7 +215,6 @@ def worker_status():
 
 
 @app.post("/api/worker/poll")
-@app.post("/worker/poll")
 async def worker_poll():
     """立即触发一次轮询（无论 worker 是否在运行）"""
     try:
@@ -234,7 +227,6 @@ async def worker_poll():
 
 
 @app.websocket("/api/ws/worker/status")
-@app.websocket("/ws/worker/status")
 async def ws_worker_status(websocket: WebSocket):
     await websocket.accept()
     from app.core.realtime import ws as ws_pub
@@ -255,7 +247,6 @@ async def ws_worker_status(websocket: WebSocket):
 
 # Backwards-compatible wrappers exposing explicit endpoints for separated statuses
 @app.get("/api/gmail/workstatus")
-@app.get("/gmail/workstatus")
 def gmail_work_status():
     """Wrapper for Gmail worker status (frontend-friendly name)."""
     return worker.get_status()
