@@ -10,7 +10,7 @@ export default function Layout() {
   const location = useLocation()
   const { t } = useI18n()
   const token = localStorage.getItem('auth_token')
-  const isPublic = location.pathname === '/' || location.pathname === '/home' || location.pathname === '/help' || location.pathname === '/privacy' || location.pathname === '/terms'
+  const isPublic = location.pathname === '/' || location.pathname === '/home' || location.pathname === '/help' || location.pathname === '/privacy' || location.pathname === '/terms' || location.pathname === '/oauth/complete'
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [legalNoticeOpen, setLegalNoticeOpen] = useState(() => {
     try {
@@ -24,7 +24,7 @@ export default function Layout() {
     queryKey: ['me'],
     queryFn: getMe,
     staleTime: 120_000,
-    enabled: !!token,
+    enabled: !!token && location.pathname !== '/oauth/complete',
   })
 
   if (!token && !isPublic) {

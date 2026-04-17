@@ -9,7 +9,13 @@ load_dotenv(_ENV_PATH)
 
 
 def _get(key: str, default: str = "") -> str:
-    return os.environ.get(key, default).strip()
+    v = os.environ.get(key, default)
+    if v is None:
+        return ""
+    s = str(v).strip()
+    while s and s[0] in {"`", '"', "'"} and s[-1] == s[0]:
+        s = s[1:-1].strip()
+    return s
 
 
 # Telegram
