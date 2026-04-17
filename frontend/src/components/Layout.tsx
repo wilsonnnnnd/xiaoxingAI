@@ -62,7 +62,7 @@ export default function Layout() {
         </div>
       </div>
 
-      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto bg-[#0f172a] flex flex-col min-w-0 focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto bg-[#0f172a] flex flex-col min-w-0 focus:outline-none">
         {legalNoticeOpen && (
           <div className="px-4 py-3 border-b border-[#1f2a3a] bg-[#0b1220]">
             <div className="max-w-5xl mx-auto w-full flex items-start justify-between gap-3">
