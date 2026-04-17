@@ -6,20 +6,20 @@ from app.core.telegram.client import send_message
 from app.skills.gmail.client import fetch_emails, mark_as_read
 
 class GmailService:
-    def fetch(self, payload: GmailFetchRequest) -> dict:
+    def fetch(self, payload: GmailFetchRequest, *, user_id: int) -> dict:
         """从 Gmail 拉取邮件列表（不做 AI 处理）"""
         try:
-            emails = fetch_emails(query=payload.query, max_results=payload.max_results)
+            emails = fetch_emails(query=payload.query, max_results=payload.max_results, user_id=user_id)
             return {"count": len(emails), "emails": emails}
         except RuntimeError as e:
             raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"拉取失败: {str(e)}")
 
-    def process(self, payload: GmailProcessRequest) -> dict:
+    def process(self, payload: GmailProcessRequest, *, user_id: int) -> dict:
         """从 Gmail 拉取邮件并对每封执行完整 AI 处理流程"""
         try:
-            emails = fetch_emails(query=payload.query, max_results=payload.max_results)
+            emails = fetch_emails(query=payload.query, max_results=payload.max_results, user_id=user_id)
         except RuntimeError as e:
             raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
@@ -35,6 +35,7 @@ class GmailService:
                     sender=email.get("from", ""),
                     date=email.get("date", ""),
                     email_id=email.get("id", ""),
+                    user_id=user_id,
                 )
                 processed["id"]   = email["id"]
                 processed["from"] = email["from"]
@@ -47,7 +48,7 @@ class GmailService:
                     sent = True
 
                 if payload.mark_read and email["id"]:
-                    mark_as_read(email["id"])
+                    mark_as_read(email["id"], user_id=user_id)
 
                 if email.get("id"):
                     db.save_email_record(
@@ -62,6 +63,7 @@ class GmailService:
                         tokens=processed.get("tokens", 0),
                         priority=processed.get("analysis", {}).get("priority", ""),
                         sent_telegram=sent,
+                        user_id=user_id,
                     )
 
                 results.append({"status": "ok", **processed})

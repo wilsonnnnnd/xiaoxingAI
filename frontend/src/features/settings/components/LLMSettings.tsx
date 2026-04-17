@@ -56,7 +56,7 @@ export const LLMSettings: React.FC<LLMSettingsProps> = ({ control, disabled, has
           autoComplete="off"
         />
 
-        <div className="col-span-full h-px bg-[#2d3748]" />
+        <div className="col-span-full h-px bg-white/60" />
 
         <FormInput
           name="ROUTER_MODEL"

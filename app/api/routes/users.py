@@ -47,6 +47,8 @@ async def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(au
         raise HTTPException(status_code=404, detail="用户不存在")
     updates = payload.model_dump(exclude_unset=True)
     if updates:
+        if "worker_enabled" in updates and updates["worker_enabled"] is True and user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="邮箱助手需要管理员授权开启")
         db.update_user(user_id, **updates)
         if "worker_enabled" in updates:
             if updates["worker_enabled"]:

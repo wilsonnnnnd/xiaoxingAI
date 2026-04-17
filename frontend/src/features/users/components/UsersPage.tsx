@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useI18n } from '../../../i18n/useI18n'
 import {
-  listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe,
+    listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe, getTelegramChatId,
 } from '../api'
 import type { User, Bot } from '../../../types'
 import { Card } from '../../../components/common/Card'
@@ -23,12 +23,13 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
     const qc = useQueryClient()
     const [editing, setEditing] = useState(false)
     const [form, setForm] = useState({ name: bot.name, token: bot.token, chat_id: bot.chat_id, bot_mode: bot.bot_mode ?? 'all' })
+    const [gettingChatId, setGettingChatId] = useState(false)
 
     const key = ['bots', userId]
 
     const updateMut = useMutation({
         mutationFn: () => updateBot(userId, bot.id, form),
-        onSuccess: () => { 
+        onSuccess: () => {
             qc.invalidateQueries({ queryKey: key })
             setEditing(false)
             toast.success(t('result.saved'))
@@ -53,7 +54,7 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
 
     if (editing) {
         return (
-            <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-4 flex flex-col gap-3">
+            <div className="rounded-[24px] border border-white/70 bg-[rgba(255,255,255,0.72)] p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03] backdrop-blur-xl flex flex-col gap-3">
                 <InputField
                     label={t('users.bot.name')}
                     value={form.name}
@@ -68,8 +69,38 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
                 <InputField
                     label={t('users.bot.chat_id')}
                     value={form.chat_id}
-                    onChange={v => setForm(f => ({ ...f, chat_id: v }))}
+                    disabled
+                    placeholder={t('users.bot.hint.btn_get_chat_id')}
                 />
+
+                <div className="flex gap-2 -mt-1">
+                    <Button
+                        variant="primary"
+                        className="text-xs px-3 py-1.5 bg-[rgba(217,235,255,0.82)] text-[#0b3c5d] border border-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:brightness-[1.02]"
+                        loading={gettingChatId}
+                        disabled={!form.token || gettingChatId}
+                        onClick={async () => {
+                            const token = form.token.trim()
+                            if (!token) return
+                            setGettingChatId(true)
+                            try {
+                                const res = await getTelegramChatId(token)
+                                const chatId = (res?.chat_id ?? '').toString().trim()
+                                if (!chatId) {
+                                    toast.error(t('users.bot.hint.no_chat_id'))
+                                    return
+                                }
+                                setForm(f => ({ ...f, chat_id: chatId }))
+                                toast.success(t('users.bot.hint.filled'))
+                            } finally {
+                                setGettingChatId(false)
+                            }
+                        }}
+                    >
+                        {t('users.bot.hint.btn_get_chat_id')}
+                    </Button>
+                </div>
+
                 <Select
                     label="Mode"
                     value={form.bot_mode}
@@ -80,11 +111,16 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
                         { label: t('users.bot.mode.chat'), value: 'chat' },
                     ]}
                 />
-                <div className="flex gap-2">
+
+                <div className="flex gap-2 pt-1">
                     <Button onClick={() => updateMut.mutate()} loading={updateMut.isPending}>
                         {t('users.btn.save')}
                     </Button>
-                    <Button variant="primary" className="bg-[#334155]" onClick={() => setEditing(false)}>
+                    <Button
+                        variant="ghost"
+                        className="text-slate-600 hover:text-slate-900 hover:bg-[rgba(255,255,255,0.55)]"
+                        onClick={() => setEditing(false)}
+                    >
                         {t('users.btn.cancel')}
                     </Button>
                 </div>
@@ -93,28 +129,63 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
     }
 
     return (
-        <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-3 flex items-center justify-between gap-3">
-            <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-sm text-[#e2e8f0] font-medium flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 rounded-[22px] border border-white/70 bg-[rgba(255,255,255,0.72)] p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03] backdrop-blur-xl">
+            <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
                     {bot.name}
-                    {bot.is_default && <span className="text-[10px] bg-[#1d4ed8] text-white px-1.5 py-0 rounded font-bold uppercase">{t('users.bot.default')}</span>}
-                    {bot.bot_mode === 'notify' && <span className="text-[10px] bg-[#854d0e] text-[#fef08a] px-1.5 py-0 rounded font-bold uppercase">{t('users.bot.mode.notify')}</span>}
-                    {bot.bot_mode === 'chat' && <span className="text-[10px] bg-[#312e81] text-[#c4b5fd] px-1.5 py-0 rounded font-bold uppercase">{t('users.bot.mode.chat')}</span>}
+
+                    {bot.is_default && (
+                        <span className="rounded-md border border-white/80 bg-[rgba(217,235,255,0.82)] px-1.5 py-0 text-[10px] font-bold uppercase text-[#0b3c5d] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                            {t('users.bot.default')}
+                        </span>
+                    )}
+
+                    {bot.bot_mode === 'notify' && (
+                        <span className="rounded-md border border-white/70 bg-[rgba(255,243,205,0.82)] px-1.5 py-0 text-[10px] font-bold uppercase text-amber-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                            {t('users.bot.mode.notify')}
+                        </span>
+                    )}
+
+                    {bot.bot_mode === 'chat' && (
+                        <span className="rounded-md border border-white/70 bg-[rgba(232,238,255,0.86)] px-1.5 py-0 text-[10px] font-bold uppercase text-indigo-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                            {t('users.bot.mode.chat')}
+                        </span>
+                    )}
                 </span>
-                <span className="text-xs text-[#64748b] font-mono truncate">{bot.chat_id}</span>
+
+                <span className="truncate font-mono text-xs text-slate-500">
+                    {bot.chat_id}
+                </span>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+
+            <div className="flex shrink-0 items-center gap-1">
                 {!bot.is_default && (
-                    <Button variant="primary" className="px-2 py-1 text-xs bg-[#334155] text-[#94a3b8]" onClick={() => defaultMut.mutate()} loading={defaultMut.isPending}>
+                    <Button
+                        variant="ghost"
+                        className="px-2 py-1 text-xs text-slate-600 hover:bg-[rgba(217,235,255,0.55)] hover:text-slate-900"
+                        onClick={() => defaultMut.mutate()}
+                        loading={defaultMut.isPending}
+                    >
                         {t('users.bot.btn.set_default')}
                     </Button>
                 )}
-                <Button variant="primary" className="px-2 py-1 text-xs bg-[#334155] text-[#94a3b8]" onClick={() => setEditing(true)}>
+
+                <Button
+                    variant="ghost"
+                    className="px-2 py-1 text-xs text-slate-600 hover:bg-[rgba(255,255,255,0.55)] hover:text-slate-900"
+                    onClick={() => setEditing(true)}
+                >
                     {t('users.btn.edit')}
                 </Button>
-                <Button variant="primary" className="px-2 py-1 text-xs bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5]" onClick={() => {
-                    if (confirm(t('users.bot.confirm_delete'))) deleteMut.mutate()
-                }} loading={deleteMut.isPending}>
+
+                <Button
+                    variant="ghost"
+                    className="px-2 py-1 text-xs text-rose-500 hover:bg-[rgba(255,240,242,0.8)] hover:text-rose-600"
+                    onClick={() => {
+                        if (confirm(t('users.bot.confirm_delete'))) deleteMut.mutate()
+                    }}
+                    loading={deleteMut.isPending}
+                >
                     {t('users.bot.btn.delete')}
                 </Button>
             </div>
@@ -128,10 +199,11 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
     const { t } = useI18n()
     const qc = useQueryClient()
     const [form, setForm] = useState({ name: '', token: '', chat_id: '', bot_mode: 'all' })
+    const [gettingChatId, setGettingChatId] = useState(false)
 
     const createMut = useMutation({
         mutationFn: () => createBot(userId, form),
-        onSuccess: () => { 
+        onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['bots', userId] })
             onDone()
             toast.success(t('users.bot.btn.add'))
@@ -139,23 +211,78 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
     })
 
     return (
-        <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 rounded-[24px] border border-white/70 bg-[rgba(255,255,255,0.72)] p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03] backdrop-blur-xl">
+            <div className="rounded-[18px] border border-white/70 bg-[rgba(255,255,255,0.52)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <div className="text-xs leading-relaxed text-slate-500">
+                    <div className="font-semibold text-slate-700">
+                        {t('users.bot.hint.title')}
+                    </div>
+                    <ol className="mt-1 flex list-decimal flex-col gap-0.5 pl-5">
+                        <li>
+                            {t('users.bot.hint.step1')}{' '}
+                            <a
+                                href="https://t.me/BotFather"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#0b3c5d] underline decoration-[rgba(11,60,93,0.28)] underline-offset-2 hover:text-slate-900"
+                            >
+                                BotFather
+                            </a>
+                        </li>
+                        <li>{t('users.bot.hint.step2')}</li>
+                        <li>{t('users.bot.hint.step3')}</li>
+                    </ol>
+                </div>
+            </div>
+
             <InputField
                 label={t('users.bot.name')}
                 value={form.name}
                 onChange={v => setForm(f => ({ ...f, name: v }))}
             />
+
             <InputField
                 label={t('users.bot.token')}
                 value={form.token}
                 onChange={v => setForm(f => ({ ...f, token: v }))}
                 className="font-mono text-xs"
             />
+
             <InputField
                 label={t('users.bot.chat_id')}
                 value={form.chat_id}
-                onChange={v => setForm(f => ({ ...f, chat_id: v }))}
+                disabled
+                placeholder={t('users.bot.hint.btn_get_chat_id')}
             />
+
+            <div className="flex gap-2 -mt-1">
+                <Button
+                    variant="primary"
+                    className="px-3 py-1.5 text-xs bg-[rgba(217,235,255,0.82)] text-[#0b3c5d] border border-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:brightness-[1.02]"
+                    loading={gettingChatId}
+                    disabled={!form.token || gettingChatId}
+                    onClick={async () => {
+                        const token = form.token.trim()
+                        if (!token) return
+                        setGettingChatId(true)
+                        try {
+                            const res = await getTelegramChatId(token)
+                            const chatId = (res?.chat_id ?? '').toString().trim()
+                            if (!chatId) {
+                                toast.error(t('users.bot.hint.no_chat_id'))
+                                return
+                            }
+                            setForm(f => ({ ...f, chat_id: chatId }))
+                            toast.success(t('users.bot.hint.filled'))
+                        } finally {
+                            setGettingChatId(false)
+                        }
+                    }}
+                >
+                    {t('users.bot.hint.btn_get_chat_id')}
+                </Button>
+            </div>
+
             <Select
                 label="Mode"
                 value={form.bot_mode}
@@ -166,11 +293,21 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
                     { label: t('users.bot.mode.chat'), value: 'chat' },
                 ]}
             />
-            <div className="flex gap-2">
-                <Button onClick={() => createMut.mutate()} loading={createMut.isPending} disabled={!form.name || !form.token || !form.chat_id}>
+
+            <div className="flex gap-2 pt-1">
+                <Button
+                    onClick={() => createMut.mutate()}
+                    loading={createMut.isPending}
+                    disabled={!form.name || !form.token || !form.chat_id}
+                >
                     {t('users.bot.btn.add')}
                 </Button>
-                <Button variant="primary" className="bg-[#334155]" onClick={onDone}>
+
+                <Button
+                    variant="ghost"
+                    className="text-slate-600 hover:bg-[rgba(255,255,255,0.55)] hover:text-slate-900"
+                    onClick={onDone}
+                >
                     {t('users.btn.cancel')}
                 </Button>
             </div>
@@ -206,36 +343,56 @@ const UserPanel: React.FC<{ user: User }> = ({ user }) => {
     }
 
     return (
-        <div className="bg-[#1a2235] border border-[#2d3748] rounded-xl overflow-hidden">
+        <div className="overflow-hidden rounded-[28px] border border-white/80 bg-[rgba(255,255,255,0.82)] shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03] backdrop-blur-xl">
             <button
                 onClick={() => setOpen(v => !v)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1e293b] transition-colors"
+                className="w-full flex items-center justify-between px-5 py-4 transition-all hover:bg-[rgba(255,255,255,0.42)]"
             >
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#334155] flex items-center justify-center text-sm font-bold text-[#94a3b8]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-[rgba(217,235,255,0.82)] text-sm font-bold text-[#0b3c5d] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                         {user.email[0].toUpperCase()}
                     </div>
+
                     <div className="text-left">
-                        <div className="text-sm font-semibold text-[#e2e8f0]">{user.email}</div>
-                        <div className="text-xs text-[#64748b] mt-0.5 flex items-center gap-2">
-                            <span className="uppercase">{user.role}</span>
-                            {user.worker_enabled && <span className="text-[#22c55e]">● {t('users.enabled')}</span>}
+                        <div className="text-sm font-semibold text-slate-900">
+                            {user.email}
+                        </div>
+
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                            <span className="uppercase tracking-[0.08em] text-slate-400">
+                                {user.role}
+                            </span>
+                            {user.worker_enabled && (
+                                <span className="text-emerald-500">
+                                    ● {t('users.enabled')}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
-                <span className="text-[#64748b] transition-transform duration-200" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+
+                <span
+                    className="text-slate-400 transition-transform duration-200"
+                    style={{ transform: open ? 'rotate(180deg)' : 'none' }}
+                >
+                    ▾
+                </span>
             </button>
 
             {open && (
-                <div className="border-t border-[#2d3748] px-6 py-5 flex flex-col gap-6 animate-in slide-in-from-top-2 duration-200">
+                <div className="flex flex-col gap-6 border-t border-white/70 px-6 py-5 animate-in slide-in-from-top-2 duration-200">
                     <div className="flex flex-col gap-4">
-                        <h3 className="text-[10px] font-bold text-[#475569] uppercase tracking-widest">{t('users.section.settings')}</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                            {t('users.section.settings')}
+                        </h3>
+
                         <div className="flex items-center gap-4">
                             <Switch
                                 label={t('users.enabled')}
                                 checked={workerEnabled}
                                 onChange={setWorkerEnabled}
                             />
+
                             <Button
                                 onClick={handleSave}
                                 loading={saving}
@@ -248,23 +405,32 @@ const UserPanel: React.FC<{ user: User }> = ({ user }) => {
                     </div>
 
                     <div className="flex flex-col gap-4">
-                        <h3 className="text-[10px] font-bold text-[#475569] uppercase tracking-widest">{t('users.section.bots')}</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                            {t('users.section.bots')}
+                        </h3>
+
                         {botsLoading ? (
-                            <p className="text-xs text-[#64748b] py-2">{t('prompts.loading')}</p>
+                            <p className="py-2 text-xs text-slate-500">
+                                {t('prompts.loading')}
+                            </p>
                         ) : bots && bots.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {bots.map(bot => <BotRow key={bot.id} bot={bot} userId={user.id} />)}
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {bots.map(bot => (
+                                    <BotRow key={bot.id} bot={bot} userId={user.id} />
+                                ))}
                             </div>
                         ) : (
-                            <p className="text-xs text-[#64748b] py-2 italic">{t('users.bots.empty')}</p>
+                            <p className="py-2 text-xs italic text-slate-500">
+                                {t('users.bots.empty')}
+                            </p>
                         )}
+
                         {addingBot ? (
                             <AddBotForm userId={user.id} onDone={() => setAddingBot(false)} />
                         ) : (
                             <Button
                                 onClick={() => setAddingBot(true)}
-                                variant="primary"
-                                className="self-start px-4 py-1.5 text-xs bg-[#334155] text-[#e2e8f0]"
+                                className="self-start px-4 py-1.5 text-xs"
                             >
                                 ＋ {t('users.bot.btn.add')}
                             </Button>
@@ -287,91 +453,137 @@ const addUserSchema = z.object({
 type AddUserFormValues = z.infer<typeof addUserSchema>
 
 const AddUserForm: React.FC<{ onDone: () => void }> = ({ onDone }) => {
-  const { t } = useI18n()
-  const qc = useQueryClient()
-  
-  const { control, handleSubmit, formState: { isSubmitting } } = useForm<AddUserFormValues>({
-    resolver: zodResolver(addUserSchema),
-    defaultValues: { email: '', password: '', display_name: '' }
-  })
+    const { t } = useI18n()
+    const qc = useQueryClient()
 
-  const createMut = useMutation({
-    mutationFn: (data: AddUserFormValues) => createUser(data),
-    onSuccess: () => { 
-        qc.invalidateQueries({ queryKey: ['users'] })
-        onDone()
-        toast.success(t('users.add.confirm'))
-    },
-  })
+    const { control, handleSubmit, formState: { isSubmitting } } = useForm<AddUserFormValues>({
+        resolver: zodResolver(addUserSchema),
+        defaultValues: { email: '', password: '', display_name: '' }
+    })
 
-  return (
-    <Card title={t('users.add.title')}>
-      <form onSubmit={handleSubmit((data) => createMut.mutate(data))} className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <FormInput name="email" control={control} label={t('users.email')} type="email" placeholder="user@example.com" />
-          <FormInput name="display_name" control={control} label={t('users.add.display_name')} placeholder={t('users.add.display_name_hint')} />
-          <FormInput name="password" control={control} label={t('login.password')} type="password" placeholder="至少4个字符" />
-        </div>
-        <div className="flex items-center gap-3">
-          <Button type="submit" loading={isSubmitting || createMut.isPending}>
-            {t('users.add.confirm')}
-          </Button>
-          <Button variant="primary" className="bg-[#334155]" onClick={onDone}>
-            {t('users.btn.cancel')}
-          </Button>
-        </div>
-      </form>
-    </Card>
-  )
+    const createMut = useMutation({
+        mutationFn: (data: AddUserFormValues) => createUser(data),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['users'] })
+            onDone()
+            toast.success(t('users.add.confirm'))
+        },
+    })
+
+    return (
+        <Card title={t('users.add.title')}>
+            <form
+                onSubmit={handleSubmit((data) => createMut.mutate(data))}
+                className="flex flex-col gap-5"
+            >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <FormInput
+                        name="email"
+                        control={control}
+                        label={t('users.email')}
+                        type="email"
+                        placeholder="user@example.com"
+                    />
+                    <FormInput
+                        name="display_name"
+                        control={control}
+                        label={t('users.add.display_name')}
+                        placeholder={t('users.add.display_name_hint')}
+                    />
+                    <FormInput
+                        name="password"
+                        control={control}
+                        label={t('login.password')}
+                        type="password"
+                        placeholder="至少4个字符"
+                    />
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                    <Button
+                        type="submit"
+                        loading={isSubmitting || createMut.isPending}
+                    >
+                        {t('users.add.confirm')}
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        className="text-slate-600 hover:bg-[rgba(255,255,255,0.55)] hover:text-slate-900"
+                        onClick={onDone}
+                    >
+                        {t('users.btn.cancel')}
+                    </Button>
+                </div>
+            </form>
+        </Card>
+    )
 }
 
 // ── Page ─────────────────────────────────────────────────────────
 
 export const UsersPage: React.FC = () => {
-  const { t } = useI18n()
-  const [addingUser, setAddingUser] = useState(false)
+    const { t } = useI18n()
+    const [addingUser, setAddingUser] = useState(false)
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
-  const { data: users, isLoading } = useQuery({
-    queryKey: ['users'],
-    queryFn: listUsers,
-  })
+    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
+    const { data: users, isLoading } = useQuery({
+        queryKey: ['users'],
+        queryFn: listUsers,
+    })
 
-  if (me && me.role !== 'admin') {
+    if (me && me.role !== 'admin') {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center sm:p-10">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/80 bg-[rgba(217,235,255,0.82)] text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                    🔒
+                </div>
+
+                <div className="text-lg font-semibold text-slate-900">
+                    {t('error.admin_only')}
+                </div>
+
+                <div className="max-w-sm text-sm leading-relaxed text-slate-500">
+                    {t('error.admin_only_hint')}
+                </div>
+            </div>
+        )
+    }
+
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-4 sm:p-8">
-        <div className="text-4xl">🔒</div>
-        <div className="text-lg font-bold text-[#e2e8f0]">{t('error.admin_only')}</div>
-        <div className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</div>
-      </div>
-    )
-  }
+        <div className="flex h-full w-full max-w-6xl min-w-0 flex-col gap-6 mx-auto px-4 py-6 sm:px-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                        {t('users.title')}
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-500">
+                        Manage system users and their bots
+                    </p>
+                </div>
 
-  return (
-    <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-6xl mx-auto w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">{t('users.title')}</h1>
-          <p className="text-sm text-[#64748b] mt-1">Manage system users and their bots</p>
+                {!addingUser && (
+                    <Button onClick={() => setAddingUser(true)}>
+                        ＋ {t('users.add.title')}
+                    </Button>
+                )}
+            </div>
+
+            {addingUser && <AddUserForm onDone={() => setAddingUser(false)} />}
+
+            <Card title={t('users.list.title')}>
+                {isLoading ? (
+                    <p className="py-8 text-center text-sm text-slate-500">
+                        {t('prompts.loading')}
+                    </p>
+                ) : (
+                    <div className="flex flex-col gap-4">
+                        {users?.map(user => (
+                            <UserPanel key={user.id} user={user} />
+                        ))}
+                    </div>
+                )}
+            </Card>
         </div>
-        {!addingUser && (
-          <Button onClick={() => setAddingUser(true)}>
-            ＋ {t('users.add.title')}
-          </Button>
-        )}
-      </div>
-
-      {addingUser && <AddUserForm onDone={() => setAddingUser(false)} />}
-
-      <Card title={t('users.list.title')}>
-        {isLoading ? (
-            <p className="text-sm text-[#64748b] py-8 text-center">{t('prompts.loading')}</p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {users?.map(user => <UserPanel key={user.id} user={user} />)}
-          </div>
-        )}
-      </Card>
-    </div>
-  )
+    )
 }

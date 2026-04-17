@@ -172,7 +172,7 @@ export const DebugPage: React.FC = () => {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-4 sm:p-8">
                 <div className="text-4xl">🔒</div>
-                <p className="text-lg font-bold text-[#e2e8f0]">{t('error.admin_only')}</p>
+                <p className="text-lg font-semibold text-[#0f172a]">{t('error.admin_only')}</p>
                 <p className="text-sm text-[#64748b]">{t('error.admin_only_hint')}</p>
             </div>
         )
@@ -180,57 +180,58 @@ export const DebugPage: React.FC = () => {
 
     return (
         <div className="p-4 sm:p-5 flex flex-col gap-6 max-w-6xl mx-auto w-full">
-            <div className="flex items-center gap-3 px-3 py-1.5 bg-[#1e2330] border border-[#2d3748] rounded-lg text-xs text-[#94a3b8] w-fit">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${apiOk ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-white border border-[#e2e8f0] rounded-lg text-xs text-[#64748b] w-fit shadow-sm">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${apiOk ? 'bg-[#10b981]' : 'bg-[#ef4444]'}`} />
                 {apiOk ? t('debug.status.ok') : t('debug.status.err')}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Analyze */}
-                <Card title={t('debug.card.analyze')} badge="POST /api/ai/analyze">
+                <Card title={t('debug.card.analyze')} subtitle="POST /api/ai/analyze">
                     <InputField label={t('debug.label.subject')} value={aSubject} onChange={setASubject} />
                     <InputField label={t('debug.label.body')} value={aBody} onChange={setABody} multi rows={4} />
                     <div className="flex items-center gap-2 flex-wrap">
                         <Button onClick={runAnalyze} loading={aBusy}>{t('debug.btn.send')}</Button>
-                        <Button variant="primary" onClick={() => { setASubject(SAMPLE.subject); setABody(SAMPLE.body) }} className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe]">
+                        <Button variant="secondary" onClick={() => { setASubject(SAMPLE.subject); setABody(SAMPLE.body) }}>
                             {t('debug.btn.fill_sample')}
                         </Button>
                     </div>
-                    <div className={resCls(aRes.state)}>{aRes.state === 'idle' ? t('debug.placeholder.result') : aRes.state === 'requesting' ? t('debug.requesting') : aRes.text}</div>
+                    <div className={`${resCls(aRes.state)} mt-3`}>{aRes.state === 'idle' ? t('debug.placeholder.result') : aRes.state === 'requesting' ? t('debug.requesting') : aRes.text}</div>
                 </Card>
 
                 {/* Summary */}
-                <Card title={t('debug.card.summary')} badge="POST /api/ai/summary">
+                <Card title={t('debug.card.summary')} subtitle="POST /api/ai/summary">
                     <InputField label={t('debug.label.subject')} value={sSubject} onChange={setSSubject} />
                     <InputField label={t('debug.label.body')} value={sBody} onChange={setSBody} multi rows={4} />
                     <div className="flex items-center gap-2 flex-wrap">
                         <Button onClick={runSummary} loading={sBusy}>{t('debug.btn.send')}</Button>
-                        <Button variant="primary" onClick={() => { setSSubject(SAMPLE.subject); setSBody(SAMPLE.body) }} className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe]">
+                        <Button variant="secondary" onClick={() => { setSSubject(SAMPLE.subject); setSBody(SAMPLE.body) }}>
                             {t('debug.btn.fill_sample')}
                         </Button>
                     </div>
-                    <div className={resCls(sRes.state)}>{sRes.state === 'idle' ? t('debug.placeholder.result') : sRes.state === 'requesting' ? t('debug.requesting') : sRes.text}</div>
+                    <div className={`${resCls(sRes.state)} mt-3`}>{sRes.state === 'idle' ? t('debug.placeholder.result') : sRes.state === 'requesting' ? t('debug.requesting') : sRes.text}</div>
                 </Card>
 
                 {/* Full pipeline */}
-                <Card title={t('debug.card.pipeline')} badge="POST /api/ai/process" full>
+                <div className="md:col-span-2">
+                <Card title={t('debug.card.pipeline')} subtitle="POST /api/ai/process">
                     <div className="flex gap-2 items-center text-[10px] text-[#475569] font-bold uppercase tracking-widest flex-wrap mb-2">
                         {(['debug.step.receive', 'debug.step.analyze', 'debug.step.summarize', 'debug.step.telegram'] as const).map((k, i) => (
                             <span key={k} className="flex items-center gap-2">
-                                <span className="px-2 py-0.5 bg-[#0b0e14] border border-[#2d3748] rounded">{t(k)}</span>
-                                {i < 3 && <span className="text-[#2d3748]">→</span>}
+                                <span className="px-2 py-0.5 bg-[#f8fafc] border border-[#e2e8f0] rounded">{t(k)}</span>
+                                {i < 3 && <span className="text-[#cbd5e1]">→</span>}
                             </span>
                         ))}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
                         <InputField label={t('debug.label.subject')} value={pSubject} onChange={setPSubject} />
-                        <Button variant="primary" onClick={() => { setPSubject(SAMPLE.subject); setPBody(SAMPLE.body) }} className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe] h-10">
+                        <Button variant="secondary" onClick={() => { setPSubject(SAMPLE.subject); setPBody(SAMPLE.body) }} className="h-10">
                             {t('debug.btn.fill_sample')}
                         </Button>
                     </div>
                     <InputField label={t('debug.label.body')} value={pBody} onChange={setPBody} multi rows={4} />
                     <div className="flex items-center gap-2">
-                        <Button variant="telegram" onClick={runProcess} loading={pBusy}>{t('debug.btn.run_pipeline')}</Button>
+                        <Button variant="primary" onClick={runProcess} loading={pBusy}>{t('debug.btn.run_pipeline')}</Button>
                     </div>
                     {pData && (
                         <div className="flex flex-col gap-4 mt-2">
@@ -248,15 +249,17 @@ export const DebugPage: React.FC = () => {
                                     {pData.telegram_message || '(empty)'}
                                 </div>
                             )}
-                            {pTab === 'analysis' && <div className={resCls('ok')}>{JSON.stringify(pData.analysis, null, 2)}</div>}
-                            {pTab === 'summary' && <div className={resCls('ok')}>{JSON.stringify(pData.summary, null, 2)}</div>}
-                            {pTab === 'raw' && <div className={resCls('ok')}>{JSON.stringify(pData, null, 2)}</div>}
+                            {pTab === 'analysis' && <div className={`${resCls('ok')} mt-3`}>{JSON.stringify(pData.analysis, null, 2)}</div>}
+                            {pTab === 'summary' && <div className={`${resCls('ok')} mt-3`}>{JSON.stringify(pData.summary, null, 2)}</div>}
+                            {pTab === 'raw' && <div className={`${resCls('ok')} mt-3`}>{JSON.stringify(pData, null, 2)}</div>}
                         </div>
                     )}
                 </Card>
+                </div>
 
                 {/* Gmail fetch */}
-                <Card title={t('debug.card.gmail_fetch')} full>
+                <div className="md:col-span-2">
+                <Card title={t('debug.card.gmail_fetch')}>
                     <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-4 items-end">
                         <Select
                             label={t('debug.label.gmail_query')}
@@ -276,24 +279,26 @@ export const DebugPage: React.FC = () => {
                         <div className="flex items-center h-10">
                             <Badge variant="neutral" className="flex items-center gap-2 cursor-pointer py-2">
                                 <input type="checkbox" id="mark-read" checked={gMarkRead} onChange={e => setGMarkRead(e.target.checked)} className="accent-[#6366f1]" />
-                                <label htmlFor="mark-read" className="text-[#e2e8f0] cursor-pointer select-none">{t('debug.label.mark_read')}</label>
+                                <label htmlFor="mark-read" className="text-[#0f172a] cursor-pointer select-none">{t('debug.label.mark_read')}</label>
                             </Badge>
                         </div>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap mt-2">
                         <Button onClick={() => gmailCall(false)} loading={gBusy}>{t('debug.btn.fetch_only')}</Button>
-                        <Button variant="telegram" onClick={() => gmailCall(true)} loading={gBusy}>{t('debug.btn.fetch_process')}</Button>
+                        <Button variant="primary" onClick={() => gmailCall(true)} loading={gBusy}>{t('debug.btn.fetch_process')}</Button>
                         <Badge variant="neutral" className="flex items-center gap-2 cursor-pointer py-2">
                             <input type="checkbox" id="send-tg" checked={gSendTg} onChange={e => setGSendTg(e.target.checked)} className="accent-[#6366f1]" />
-                            <label htmlFor="send-tg" className="text-[#e2e8f0] cursor-pointer select-none">{t('debug.label.send_telegram')}</label>
+                            <label htmlFor="send-tg" className="text-[#0f172a] cursor-pointer select-none">{t('debug.label.send_telegram')}</label>
                         </Badge>
-                    </div>
-                    <div className={resCls(gRes.state)}>{gRes.state === 'idle' ? t('debug.placeholder.result') : gRes.state === 'requesting' ? t('debug.requesting') : gRes.text}</div>
+                        </div>
+                    <div className={`${resCls(gRes.state)} mt-3`}>{gRes.state === 'idle' ? t('debug.placeholder.result') : gRes.state === 'requesting' ? t('debug.requesting') : gRes.text}</div>
                 </Card>
+                </div>
 
-                <Card title="Outgoing/Reply Debug" full>
+                <div className="md:col-span-2">
+                <Card title="Outgoing/Reply Debug">
                     <div className="flex items-center gap-2 mb-2">
-                        <Button variant="primary" onClick={runClearCache} loading={clearBusy} className="bg-[#16213e] text-[#94a3b8] hover:text-[#c7d2fe]">清理缓存</Button>
+                        <Button variant="secondary" onClick={runClearCache} loading={clearBusy}>清理缓存</Button>
                     </div>
                     {clearRes.state !== 'idle' && (
                         <div className={`mb-3 ${resCls(clearRes.state)}`}>{clearRes.state === 'requesting' ? t('debug.requesting') : clearRes.text}</div>
@@ -326,6 +331,7 @@ export const DebugPage: React.FC = () => {
                         })}
                     </div>
                 </Card>
+                </div>
             </div>
         </div>
     )

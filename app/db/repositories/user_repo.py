@@ -9,7 +9,9 @@ def _row_to_user(r: tuple) -> Dict[str, Any]:
         "worker_enabled": r[4], "min_priority": r[5],
         "max_emails_per_run": r[6], "poll_interval": r[7],
         "gmail_poll_query": r[8],
-        "created_at": str(r[9]), "updated_at": str(r[10]),
+        "notify_lang": r[9],
+        "ui_lang": r[10],
+        "created_at": str(r[11]), "updated_at": str(r[12]),
     }
 
 def _row_to_user_full(r: tuple) -> Dict[str, Any]:
@@ -19,7 +21,9 @@ def _row_to_user_full(r: tuple) -> Dict[str, Any]:
         "password_hash": r[4], "worker_enabled": r[5],
         "min_priority": r[6], "max_emails_per_run": r[7], "poll_interval": r[8],
         "gmail_poll_query": r[9],
-        "created_at": str(r[10]), "updated_at": str(r[11]),
+        "notify_lang": r[10],
+        "ui_lang": r[11],
+        "created_at": str(r[12]), "updated_at": str(r[13]),
     }
 
 
@@ -32,6 +36,8 @@ _SELECT_USER_FULL = """
         COALESCE(s.max_emails_per_run, u.max_emails_per_run) AS max_emails_per_run,
         COALESCE(s.poll_interval, u.poll_interval) AS poll_interval,
         COALESCE(NULLIF(s.gmail_poll_query, ''), %s) AS gmail_poll_query,
+        COALESCE(NULLIF(s.notify_lang, ''), 'en') AS notify_lang,
+        COALESCE(NULLIF(s.ui_lang, ''), 'en') AS ui_lang,
         u.created_at, u.updated_at
     FROM "user" u
     LEFT JOIN user_settings s ON s.user_id = u.id
@@ -46,6 +52,8 @@ _SELECT_USER_PUBLIC = """
         COALESCE(s.max_emails_per_run, u.max_emails_per_run) AS max_emails_per_run,
         COALESCE(s.poll_interval, u.poll_interval) AS poll_interval,
         COALESCE(NULLIF(s.gmail_poll_query, ''), %s) AS gmail_poll_query,
+        COALESCE(NULLIF(s.notify_lang, ''), 'en') AS notify_lang,
+        COALESCE(NULLIF(s.ui_lang, ''), 'en') AS ui_lang,
         u.created_at, u.updated_at
     FROM "user" u
     LEFT JOIN user_settings s ON s.user_id = u.id
@@ -56,6 +64,8 @@ def create_user(
     display_name: Optional[str] = None,
     role: str = "user",
     password_hash: Optional[str] = None,
+    notify_lang: str = "en",
+    ui_lang: str = "en",
 ) -> Dict[str, Any]:
     with _cur() as cur:
         cur.execute(
@@ -68,10 +78,10 @@ def create_user(
 
         cur.execute(
             """INSERT INTO user_settings
-               (user_id, worker_enabled, min_priority, max_emails_per_run, poll_interval, gmail_poll_query)
-               VALUES (%s, %s, %s, %s, %s, %s)
+               (user_id, worker_enabled, min_priority, max_emails_per_run, poll_interval, gmail_poll_query, notify_lang, ui_lang)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (user_id) DO NOTHING""",
-            (user_id, False, "medium", 5, 300, config.GMAIL_POLL_QUERY),
+            (user_id, False, "medium", 5, 300, config.GMAIL_POLL_QUERY, (notify_lang or "en"), (ui_lang or "en")),
         )
 
         cur.execute(
@@ -106,6 +116,14 @@ def list_users() -> List[Dict[str, Any]]:
         )
         return [_row_to_user_full(r) for r in cur.fetchall()]
 
+def list_admin_users() -> List[Dict[str, Any]]:
+    with _cur() as cur:
+        cur.execute(
+            _SELECT_USER_PUBLIC + " WHERE u.role = 'admin' ORDER BY u.id",
+            (config.GMAIL_POLL_QUERY,),
+        )
+        return [_row_to_user(r) for r in cur.fetchall()]
+
 def list_worker_enabled_users() -> List[Dict[str, Any]]:
     """返回所有 worker_enabled=TRUE 的用户（启动时用于恢复 Worker）。"""
     with _cur() as cur:
@@ -127,7 +145,7 @@ def update_user(user_id: int, **fields: Any) -> Optional[Dict[str, Any]]:
     with _cur() as cur:
         user_allowed = {"display_name", "role", "password_hash"}
         settings_allowed = {
-            "worker_enabled", "min_priority", "max_emails_per_run", "poll_interval", "gmail_poll_query",
+            "worker_enabled", "min_priority", "max_emails_per_run", "poll_interval", "gmail_poll_query", "notify_lang", "ui_lang",
         }
 
         user_updates = {k: v for k, v in fields.items() if k in user_allowed}

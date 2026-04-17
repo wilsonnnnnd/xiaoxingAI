@@ -1,7 +1,12 @@
 import React from 'react'
 import { useI18n } from '../../i18n/useI18n'
+import { updateUser } from '../../features/users/api'
 
-export const LanguageToggle: React.FC = () => {
+type LanguageToggleProps = {
+  userId?: number | null
+}
+
+export const LanguageToggle: React.FC<LanguageToggleProps> = ({ userId }) => {
   const { lang, setLang } = useI18n()
   
   return (
@@ -9,11 +14,19 @@ export const LanguageToggle: React.FC = () => {
       {(['en', 'zh'] as const).map(l => (
         <button
           key={l}
-          onClick={() => setLang(l)}
-          className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${lang === l
-              ? 'bg-[#3b82f6] text-white'
-              : 'text-[#94a3b8] hover:bg-[#334155]'
-            }`}
+          onClick={() => {
+            setLang(l)
+            if (userId) {
+              updateUser(Number(userId), { ui_lang: l }).catch(() => {})
+            }
+          }}
+          className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
+            lang === l
+              // ✅ 选中状态（浅蓝 + 深色字）
+              ? 'bg-[rgba(217,235,255,0.9)] text-[#0b3c5d] border border-sky-200/70'
+              // ✅ 未选中（轻灰 + 轻 hover）
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+          }`}
         >
           {l === 'en' ? 'EN' : '中文'}
         </button>

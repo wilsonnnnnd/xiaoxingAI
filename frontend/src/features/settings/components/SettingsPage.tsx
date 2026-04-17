@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useI18n } from '../../../i18n/useI18n'
 import { Button } from '../../../components/common/Button'
 import { Select } from '../../../components/common/Select'
+import { Surface } from '../../../components/common/Surface'
+import { Badge } from '../../../components/common/Badge'
 import { useConfirmDiscard } from '../../../hooks/useConfirmDiscard'
 import { getConfig, saveConfig } from '../api'
 import { getMe, getUser, updateUser } from '../../users'
@@ -18,7 +20,7 @@ import { ChangePasswordCard } from './ChangePasswordCard'
 import toast from 'react-hot-toast'
 
 export const SettingsPage: React.FC = () => {
-  const { t, lang, setLang } = useI18n()
+  const { t, lang } = useI18n()
   const [myId, setMyId] = useState<number | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [hasLlmKey, setHasLlmKey] = useState(false)
@@ -44,7 +46,7 @@ export const SettingsPage: React.FC = () => {
       ROUTER_API_KEY: '',
       GMAIL_MARK_READ: 'true',
       GMAIL_POLL_QUERY: 'is:unread in:inbox category:primary',
-      UI_LANG: lang,
+      NOTIFY_LANG: 'en',
       min_priority: 'medium',
       max_emails_per_run: 10,
       poll_interval: 300,
@@ -53,7 +55,7 @@ export const SettingsPage: React.FC = () => {
 
   useConfirmDiscard(isDirty, t('prompts.confirm.discard'))
 
-  const currentUiLang = watch('UI_LANG')
+  const currentNotifyLang = watch('NOTIFY_LANG')
 
   useEffect(() => {
     async function loadData() {
@@ -80,7 +82,7 @@ export const SettingsPage: React.FC = () => {
           ROUTER_API_KEY: '',
           GMAIL_MARK_READ: cfgRaw.GMAIL_MARK_READ ?? 'true',
           GMAIL_POLL_QUERY: user.gmail_poll_query ?? cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox category:primary',
-          UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : cfgRaw.UI_LANG === 'en' ? 'en' : lang,
+          NOTIFY_LANG: user.notify_lang === 'zh' ? 'zh' : user.notify_lang === 'en' ? 'en' : 'en',
 
           min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormInput['min_priority']) : 'medium',
           max_emails_per_run: user.max_emails_per_run ?? 10,
@@ -100,7 +102,7 @@ export const SettingsPage: React.FC = () => {
   const onSave = async (data: SettingsFormInput) => {
     try {
       const parsed: SettingsFormValues = settingsSchema.parse(data)
-      const { min_priority, max_emails_per_run, poll_interval, GMAIL_POLL_QUERY, ...globalConfig } = parsed
+      const { min_priority, max_emails_per_run, poll_interval, GMAIL_POLL_QUERY, NOTIFY_LANG, ...globalConfig } = parsed
 
       await Promise.all([
         isAdmin ? (async () => {
@@ -116,13 +118,10 @@ export const SettingsPage: React.FC = () => {
             setHasRouterKey(!!res.config.HAS_ROUTER_API_KEY)
           }
         })() : Promise.resolve(),
-        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval, gmail_poll_query: GMAIL_POLL_QUERY }) : Promise.resolve(),
+        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval, gmail_poll_query: GMAIL_POLL_QUERY, notify_lang: NOTIFY_LANG }) : Promise.resolve(),
       ])
 
       toast.success(t('result.saved'))
-      if (parsed.UI_LANG !== lang) {
-        setLang(parsed.UI_LANG)
-      }
       reset({ ...parsed, LLM_API_KEY: '', ROUTER_API_KEY: '' })
     } catch {
       /* handled globally */
@@ -139,65 +138,52 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-5xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">{t('header.title.settings')}</h1>
-          <p className="text-sm text-[#64748b] mt-1">{t('header.subtitle.settings')}</p>
-        </div>
-        <div className="flex flex-col gap-1 items-end shrink-0">
+      <Surface title={t('header.title.settings')} eyebrow={t('nav.settings')} badge={t('header.subtitle.settings')}>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
+
           <Select
-            label={t('label.ui_lang')}
-            value={currentUiLang}
+            label={t('label.notify_lang')}
+            value={currentNotifyLang}
             onChange={(e) => {
               const newLang = e.target.value as 'en' | 'zh'
-              setValue('UI_LANG', newLang, { shouldDirty: true })
+              setValue('NOTIFY_LANG', newLang, { shouldDirty: true })
             }}
-            className="min-w-[120px]"
+            className="min-w-[160px]"
             options={[
               { label: 'English', value: 'en' },
               { label: '中文', value: 'zh' },
             ]}
           />
         </div>
-      </div>
 
-      <div className="flex flex-col gap-6">
-        <ConnectionTests />
-        <ChangePasswordCard />
+        <div className="mt-6 flex flex-col gap-6">
+          <ConnectionTests />
+          <ChangePasswordCard />
 
-        <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
-          {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
-          <GmailSettings control={control} />
+          <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
+            {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
+            <GmailSettings control={control} />
 
-          <div className="flex items-center gap-3 sticky bottom-0 py-4 bg-[#0f172a]/80 backdrop-blur-md border-t border-[#2d3748] -mx-4 px-4 sm:-mx-5 sm:px-5 z-10">
-            <Button
-              type="submit"
-              loading={isSubmitting}
-              disabled={!isDirty}
-              className="px-8 py-2.5"
-            >
-              {t('btn.save')}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              className="bg-[#334155] hover:bg-[#475569] px-6 py-2.5"
-              onClick={() => reset()}
-              disabled={!isDirty || isSubmitting}
-            >
-              {t('btn.reload')}
-            </Button>
-            {isDirty && (
-              <span className="text-xs text-[#fbbf24] ml-2 animate-pulse">
-                ● You have unsaved changes
-              </span>
-            )}
-          </div>
-        </form>
+            <div className="sticky bottom-0 -mx-5 px-5 sm:-mx-6 sm:px-6 py-4 bg-white/62 backdrop-blur-xl border-t border-white/60 z-10">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button type="submit" loading={isSubmitting} disabled={!isDirty} className="px-8 py-2.5">
+                  {t('btn.save')}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => reset()} disabled={!isDirty || isSubmitting} className="px-6 py-2.5">
+                  {t('btn.reload')}
+                </Button>
+                {isDirty && (
+                  <Badge variant="warning" className="py-2 px-3">
+                    {t('settings.unsaved')}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </form>
 
-        {myId && <BotSettings userId={myId} />}
-      </div>
+          {myId && <BotSettings userId={myId} />}
+        </div>
+      </Surface>
     </div>
   )
 }

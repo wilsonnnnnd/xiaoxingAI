@@ -14,56 +14,64 @@ const POLL_QUERIES: [string, string][] = [
   ['is:unread in:inbox category:primary', 'opt.GMAIL_POLL_QUERY.primary_unread'],
   ['is:unread in:inbox -category:promotions -category:social -category:updates -category:forums', 'opt.GMAIL_POLL_QUERY.inbox_no_bulk_categories'],
   ['is:unread', 'opt.GMAIL_POLL_QUERY.all_unread'],
-  ]
+]
 
 export const GmailSettings: React.FC<GmailSettingsProps> = ({ control }) => {
   const { t } = useI18n()
 
   return (
-    <Card title={t('card.gmail')}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormSelect
-          name="min_priority"
-          control={control}
-          label={t('users.min_priority')}
-          options={[
-            { label: t('opt.priority.high'), value: 'high' },
-            { label: t('opt.priority.medium'), value: 'medium' },
-            { label: t('opt.priority.low'), value: 'low' },
-          ]}
-        />
-        <FormInput
-          name="max_emails_per_run"
-          control={control}
-          label={t('users.max_emails')}
-          type="number"
-          min={1}
-          max={100}
-        />
-        <FormInput
-          name="poll_interval"
-          control={control}
-          label={t('users.poll_interval')}
-          type="number"
-          min={60}
-          step={60}
-        />
-        <FormSelect
-          name="GMAIL_MARK_READ"
-          control={control}
-          label={t('label.GMAIL_MARK_READ')}
-          options={[
-            { label: t('opt.GMAIL_MARK_READ.true'), value: 'true' },
-            { label: t('opt.GMAIL_MARK_READ.false'), value: 'false' },
-          ]}
-        />
-        <FormSelect
-          name="GMAIL_POLL_QUERY"
-          control={control}
-          label={t('label.GMAIL_POLL_QUERY')}
-          className="col-span-full"
-          options={POLL_QUERIES.map(([value, key]) => ({ label: t(key), value }))}
-        />
+    <Card title={t('card.gmail')} subtitle={t('settings.gmail.config')}>
+      <div className="flex flex-col gap-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormSelect
+            name="min_priority"
+            control={control}
+            label={t('users.min_priority')}
+            options={[
+              { label: t('opt.priority.high'), value: 'high' },
+              { label: t('opt.priority.medium'), value: 'medium' },
+              { label: t('opt.priority.low'), value: 'low' },
+            ]}
+          />
+
+          <FormInput
+            name="max_emails_per_run"
+            control={control}
+            label={t('users.max_emails')}
+            type="number"
+            min={1}
+            max={100}
+          />
+
+          <FormInput
+            name="poll_interval"
+            control={control}
+            label={t('users.poll_interval')}
+            type="number"
+            min={60}
+            step={60}
+          />
+
+          <FormSelect
+            name="GMAIL_MARK_READ"
+            control={control}
+            label={t('label.GMAIL_MARK_READ')}
+            options={[
+              { label: t('opt.GMAIL_MARK_READ.true'), value: 'true' },
+              { label: t('opt.GMAIL_MARK_READ.false'), value: 'false' },
+            ]}
+          />
+
+          <div className="sm:col-span-2">
+            <FormSelect
+              name="GMAIL_POLL_QUERY"
+              control={control}
+              label={t('label.GMAIL_POLL_QUERY')}
+              className="col-span-full"
+              options={POLL_QUERIES.map(([value, key]) => ({ label: t(key), value }))}
+            />
+          </div>
+        </div>
       </div>
     </Card>
   )

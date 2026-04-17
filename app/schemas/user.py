@@ -13,3 +13,5 @@ class UserUpdate(BaseModel):
     max_emails_per_run: Optional[int] = None
     poll_interval: Optional[int] = None
     gmail_poll_query: Optional[str] = None
+    ui_lang: Optional[str] = None
+    notify_lang: Optional[str] = None

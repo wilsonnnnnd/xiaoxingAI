@@ -8,6 +8,7 @@ from typing import Any, Dict, Tuple
 
 from app.core import config
 from app.core.llm import call_llm
+from app.skills.gmail.telegram_format import render_telegram_message
 from app.utils.json_parser import extract_json_with_repair
 from app.utils.prompt_loader import load_prompt
 
@@ -24,6 +25,28 @@ def _truncate(text: str, max_chars: int, suffix: str = "") -> Tuple[str, bool]:
     if len(t) <= max_chars:
         return t, False
     return t[:max_chars] + suffix, True
+
+
+def _get_notify_lang(user_id: int | None) -> str:
+    if user_id is None:
+        return "en"
+    try:
+        from app import db
+    except Exception:
+        return "en"
+    try:
+        with db._cur() as cur:
+            cur.execute("SELECT notify_lang FROM user_settings WHERE user_id = %s", (int(user_id),))
+            row = cur.fetchone()
+            v = str(row[0] or "").strip().lower() if row else ""
+            return v if v in {"en", "zh"} else "en"
+    except Exception:
+        return "en"
+
+def _cjk_count(text: str) -> int:
+    if not text:
+        return 0
+    return len(re.findall(r"[\u4e00-\u9fff]", text))
 
 
 def analyze_email(subject: str, body_excerpt: str, snippet: str = "", user_id: int | None = None) -> Dict[str, Any]:
@@ -88,6 +111,23 @@ def summarize_email(
         schema_hint=json.dumps(schema_defaults, ensure_ascii=False, indent=2),
         max_repair_tokens=192,
     )
+
+    s = str(parsed.get("summary") or "")
+    kp = parsed.get("key_points")
+    kp_text = " ".join([str(x) for x in kp]) if isinstance(kp, list) else ""
+    if _cjk_count(s + " " + kp_text) >= 3:
+        try:
+            raw2, tokens2 = call_llm(prompt, max_tokens=256, use_cache=False)
+            parsed2 = extract_json_with_repair(
+                raw2,
+                schema_hint=json.dumps(schema_defaults, ensure_ascii=False, indent=2),
+                max_repair_tokens=192,
+            )
+            parsed = parsed2
+            tokens = int(tokens or 0) + int(tokens2 or 0)
+            raw = raw2
+        except Exception:
+            pass
     return {"type": "summary", "result": parsed, "raw": raw, "tokens": tokens}
 
 
@@ -133,20 +173,21 @@ def write_telegram_message(
     email_id: str = "",
     user_id: int | None = None,
 ) -> tuple[str, int]:
-    """步骤 3：让 AI 根据摘要数据撰写 Telegram 消息文案（HTML 格式）"""
-    template = load_prompt(config.PROMPT_TELEGRAM, user_id=user_id)
-    prompt = template.format(
+    """步骤 3：根据摘要数据生成 Telegram 消息文案（HTML 格式，无 LLM 调用）"""
+    notify_lang = _get_notify_lang(user_id)
+    message = render_telegram_message(
         subject=subject,
         sender=sender,
         date=date,
-        summary=json.dumps(summary, ensure_ascii=False, indent=2),
+        summary=summary,
+        notify_lang=notify_lang,
     )
-    raw_msg, tg_tokens = call_llm(prompt, max_tokens=800, use_cache=False)
-    message = _sanitize_tg_html(raw_msg.strip())
     if email_id:
         gmail_url = f"https://mail.google.com/mail/u/0/#inbox/{email_id}"
-        message += f'\n\n<a href="{gmail_url}">📧 在 Gmail 中查看</a>'
-    return message, tg_tokens
+        link_text = "📧 View in Gmail" if notify_lang == "en" else "📧 在 Gmail 中查看"
+        message += f'\n\n<a href="{gmail_url}">{link_text}</a>'
+    message = _sanitize_tg_html(message)
+    return message, 0
 
 
 def process_email(

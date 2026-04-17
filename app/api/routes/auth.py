@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app import db
 from app.core import auth as auth_mod
 from app.core.rate_limit import RateLimiter
-from app.schemas import AdminLoginRequest, ChangePasswordRequest
+from app.schemas import AdminLoginRequest, ChangePasswordRequest, RegisterRequest
+from app.services.admin_notify import notify_admin_new_user
 
 router = APIRouter()
 
 logger = logging.getLogger("main")
 _login_limiter = RateLimiter(limit=10, window_secs=900, prefix="rl:login")
+_register_limiter = RateLimiter(limit=5, window_secs=900, prefix="rl:register")
 
 
 @router.post("/auth/login")
@@ -31,6 +33,41 @@ def admin_login(payload: AdminLoginRequest, request: Request):
     token = auth_mod.create_access_token(user)
     _login_limiter.reset(key)
     logger.info("[auth] 登录成功: %s (role=%s)", payload.email, user["role"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/auth/register")
+def auth_register(payload: RegisterRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    key = f"{ip}:{(payload.email or '').strip().lower()}"
+    n = _register_limiter.hit(key)
+    if n > 5:
+        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+
+    email = (payload.email or "").strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+    if not payload.password or len(payload.password) < 4:
+        raise HTTPException(status_code=400, detail="密码至少 4 个字符")
+    if db.get_user_by_email(email):
+        raise HTTPException(status_code=409, detail="该邮箱已被注册")
+
+    new_user = db.create_user(
+        email=email,
+        display_name=(payload.display_name or "").strip() or None,
+        role="user",
+        password_hash=auth_mod.hash_password(payload.password),
+        ui_lang=((payload.ui_lang or "").strip().lower() in {"zh", "en"} and (payload.ui_lang or "").strip().lower()) or "en",
+        notify_lang=((payload.notify_lang or "").strip().lower() in {"zh", "en"} and (payload.notify_lang or "").strip().lower()) or "en",
+    )
+    try:
+        notify_admin_new_user(user=new_user)
+    except Exception:
+        pass
+
+    token = auth_mod.create_access_token(db.get_user_by_email(email) or {})
+    _register_limiter.reset(key)
+    logger.info("[auth] 注册成功: %s", email)
     return {"access_token": token, "token_type": "bearer"}
 
 

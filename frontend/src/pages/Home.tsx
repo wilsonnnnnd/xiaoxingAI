@@ -8,6 +8,130 @@ import { useWorkerStatus } from '../hooks/useWorkerStatus'
 import { DEVELOPER } from '../constants/developer'
 import { GitHubIcon, GlobeIcon, LinkedInIcon, MailIcon } from '../components/common/Icons'
 
+type SurfaceProps = {
+    className?: string
+    children: React.ReactNode
+}
+
+function Surface({ className = '', children }: SurfaceProps) {
+    return (
+        <div
+            className={[
+                'rounded-[24px] border border-white/70 bg-white/72 backdrop-blur-xl',
+                'ring-1 ring-black/[0.03]',
+                'shadow-[0_8px_24px_rgba(15,23,42,0.04)]',
+                'bg-[linear-gradient(180deg,rgba(255,255,255,0.32),rgba(255,255,255,0.1)_42%,transparent)]',
+                className,
+            ].join(' ')}
+        >
+            {children}
+        </div>
+    )
+}
+
+type StatCardProps = {
+    label: string
+    value: string
+    suffix?: string
+    note?: string
+}
+
+function StatCard({ label, value, suffix, note }: StatCardProps) {
+    return (
+        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</div>
+
+            <div className="mt-4 flex items-end gap-2">
+                <div className="text-4xl font-semibold tracking-[-0.05em] text-slate-900 tabular-nums sm:text-5xl">
+                    {value}
+                </div>
+                {suffix ? <div className="pb-1 text-lg font-semibold text-slate-500">{suffix}</div> : null}
+            </div>
+
+            {note ? <div className="mt-4 text-xs leading-5 text-slate-500">{note}</div> : null}
+        </Surface>
+    )
+}
+
+type StatusCardProps = {
+    label: string
+    statusText: string
+    state?: 'ok' | 'err' | 'muted'
+}
+
+function StatusCard({ label, statusText, state = 'muted' }: StatusCardProps) {
+    return (
+        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</div>
+
+            <div className="mt-4 flex items-center gap-3">
+                <span
+                    className={[
+                        'h-2.5 w-2.5 rounded-full shrink-0',
+                        state === 'ok'
+                            ? 'bg-emerald-500'
+                            : state === 'err'
+                                ? 'bg-rose-500'
+                                : 'bg-slate-300',
+                    ].join(' ')}
+                />
+                <span className="text-sm text-slate-600">{statusText}</span>
+            </div>
+        </Surface>
+    )
+}
+
+type InfoCardProps = {
+    title: string
+    body: string
+}
+
+function InfoCard({ title, body }: InfoCardProps) {
+    return (
+        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+            <div className="text-sm font-semibold tracking-[-0.01em] text-slate-900">{title}</div>
+            <p className="mt-2 text-sm leading-7 text-slate-600">{body}</p>
+        </Surface>
+    )
+}
+
+type StepCardProps = {
+    step: string
+    body: string
+}
+
+function StepCard({ step, body }: StepCardProps) {
+    return (
+        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{step}</div>
+            <p className="mt-3 text-sm leading-7 text-slate-600">{body}</p>
+        </Surface>
+    )
+}
+
+function FooterLink({ href, title, label, children }: { href: string; title: string; label: string; children: React.ReactNode }) {
+    return (
+        <a
+            href={href}
+            target={href.startsWith('mailto:') ? undefined : '_blank'}
+            rel={href.startsWith('mailto:') ? undefined : 'noreferrer'}
+            className={[
+                'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold',
+                'border border-white/70 bg-white/72 backdrop-blur-xl',
+                'text-slate-600 ring-1 ring-black/[0.03]',
+                'shadow-[0_6px_18px_rgba(15,23,42,0.04)]',
+                'transition-all duration-200 hover:bg-white/82 hover:text-slate-900',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(217,235,255,0.9)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(248,250,252,1)]',
+            ].join(' ')}
+            aria-label={label}
+            title={title}
+        >
+            {children}
+            {label}
+        </a>
+    )
+}
+
 export default function Home() {
     const { t } = useI18n()
     const qc = useQueryClient()
@@ -23,219 +147,203 @@ export default function Home() {
 
     const displayUsers = userCount == null ? null : userCount + 10
     const usersText = displayUsers == null ? '—' : String(displayUsers)
-    const apiStatusText = apiOk === true ? t('home.status.ok') : apiOk === false ? t('home.status.err') : t('home.status.checking')
+    const apiStatusText =
+        apiOk === true ? t('home.status.ok') : apiOk === false ? t('home.status.err') : t('home.status.checking')
     const workerText = gmailWorker?.running ? t('home.worker.running') : t('home.worker.stopped')
 
     return (
-        <div className="relative min-h-full p-4 sm:p-8">
-            <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[680px] h-[680px] rounded-full blur-3xl opacity-20 bg-gradient-to-br from-[#60a5fa] via-[#6366f1] to-[#22c55e]" />
+        <div
+            className="relative min-h-screen px-4 py-6 sm:px-8 sm:py-8
+            bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,252,255,0.96)_52%,rgba(246,249,253,0.95)_100%)]
+            "
+        >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(217,235,255,0.45),transparent_70%)]" >
+
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,252,255,0.96)_52%,rgba(246,249,253,0.95)_100%)]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(217,235,255,0.45),transparent_70%)]" />
             </div>
 
-            <div className="relative max-w-5xl mx-auto w-full">
-                <div className="text-center pt-6 sm:pt-10">
-                    <h1 className="text-4xl font-bold text-white tracking-tight mb-4">{t('home.intro.title')}</h1>
-                    <p className="text-base sm:text-lg text-[#94a3b8] mb-6 leading-relaxed">{t('home.intro.subtitle')}</p>
-                </div>
-
-                <div className="flex justify-center gap-3 mb-8 flex-wrap mt-6">
-                    {isAuthed ? (
-                        <Link to="/skill" className="px-4 py-2 rounded-lg bg-[#6366f1] hover:bg-[#4f46e5] active:bg-[#4338ca] text-white font-semibold transition-colors duration-200">
-                            {t('home.intro.open_skill')}
-                        </Link>
-                    ) : (
-                        <Link to="/login" className="px-4 py-2 rounded-lg bg-[#22c55e] hover:bg-[#16a34a] active:bg-[#15803d] text-white font-semibold transition-colors duration-200">
-                            {t('btn.login')}
-                        </Link>
-                    )}
-
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="relative overflow-hidden rounded-2xl border border-[#1f2a3a] bg-[#0b1220]">
-                        <div className="absolute inset-0 opacity-30 bg-gradient-to-br from-[#60a5fa] via-[#6366f1] to-[#22c55e]" />
-                        <div className="relative p-5 text-left">
-                            <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.stats.users')}</div>
-                            <div className="mt-2 flex items-end justify-end gap-2">
-                                <div className="text-6xl font-extrabold tabular-nums tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-[#cbd5e1] drop-shadow-[0_10px_18px_rgba(0,0,0,0.35)]">
-                                    {usersText}
-                                </div>
-                                {displayUsers != null && (
-                                    <div className="pb-2 text-xl font-bold text-[#e2e8f0] opacity-90">+</div>
-                                )}
+            <div className="relative mx-auto max-w-6xl">
+                <section className="pt-4 sm:pt-8">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="max-w-3xl">
+                            <div
+                                className={[
+                                    'inline-flex items-center gap-2 rounded-full px-3 py-1',
+                                    'border border-white/70 bg-white/72 backdrop-blur-xl',
+                                    'text-[11px] uppercase tracking-[0.22em] text-slate-600',
+                                    'ring-1 ring-black/[0.03] shadow-[0_6px_18px_rgba(15,23,42,0.04)]',
+                                ].join(' ')}
+                            >
+                                <span className="inline-block h-2 w-2 rounded-full bg-[rgba(217,235,255,1)]" />
+                                Product Surface
                             </div>
+
+                            <h1 className="mt-4 max-w-2xl text-4xl font-semibold leading-[0.96] tracking-[-0.06em] text-slate-900 sm:text-5xl">
+                                {t('home.intro.title')}
+                            </h1>
+
+                            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-[15px]">
+                                {t('home.intro.subtitle')}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                            {isAuthed ? (
+                                <Link
+                                    to="/skill"
+                                    className={[
+                                        'inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold',
+                                        'bg-[rgba(217,235,255,0.92)] text-[#0b3c5d]',
+                                        'border border-white/80 ring-1 ring-black/[0.03]',
+                                        'shadow-[0_8px_20px_rgba(15,23,42,0.04)]',
+                                        'transition-all duration-200 hover:brightness-[1.02]',
+                                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(217,235,255,0.9)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(248,250,252,1)]',
+                                    ].join(' ')}
+                                >
+                                    {t('home.intro.open_skill')}
+                                </Link>
+                            ) : (
+                                <Link
+                                    to="/login"
+                                    className={[
+                                        'inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold',
+                                        'bg-[rgba(217,235,255,0.92)] text-[#0b3c5d]',
+                                        'border border-white/80 ring-1 ring-black/[0.03]',
+                                        'shadow-[0_8px_20px_rgba(15,23,42,0.04)]',
+                                        'transition-all duration-200 hover:brightness-[1.02]',
+                                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(217,235,255,0.9)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(248,250,252,1)]',
+                                    ].join(' ')}
+                                >
+                                    {t('btn.login')}
+                                </Link>
+                            )}
                         </div>
                     </div>
+                </section>
 
-                    <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5 text-left">
-                        <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.stats.service')}</div>
-                        <div className="mt-3 flex items-center gap-2">
-                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${apiOk === true ? 'bg-[#22c55e]' : apiOk === false ? 'bg-[#ef4444]' : 'bg-[#64748b]'}`} />
-                            <span className="text-sm text-[#94a3b8]">{apiStatusText}</span>
-                        </div>
+                <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <StatCard
+                        label={t('home.stats.users')}
+                        value={usersText}
+                        suffix={displayUsers != null ? '+' : undefined}
+                        note={t('home.section.what.subtitle')}
+                    />
+
+                    <StatusCard
+                        label={t('home.stats.service')}
+                        statusText={apiStatusText}
+                        state={apiOk === true ? 'ok' : apiOk === false ? 'err' : 'muted'}
+                    />
+
+                    <StatusCard
+                        label={t('home.stats.gmail_worker')}
+                        statusText={isAuthed ? workerText : t('home.stats.login_required')}
+                        state={isAuthed && gmailWorker?.running ? 'ok' : 'muted'}
+                    />
+                </section>
+
+                <section className="mt-12">
+                    <div className="max-w-2xl">
+                        <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-900">{t('home.section.what.title')}</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-600">{t('home.section.what.subtitle')}</p>
                     </div>
 
-                    <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5 text-left">
-                        <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.stats.gmail_worker')}</div>
-                        {isAuthed ? (
-                            <div className="mt-3 flex items-center gap-2">
-                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${gmailWorker?.running ? 'bg-[#22c55e]' : 'bg-[#64748b]'}`} />
-                                <span className="text-sm text-[#94a3b8]">{workerText}</span>
-                            </div>
-                        ) : (
-                            <div className="mt-3 text-sm text-[#64748b]">{t('home.stats.login_required')}</div>
-                        )}
+                    <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                        <InfoCard title={t('home.what.gmail.title')} body={t('home.what.gmail.body')} />
+                        <InfoCard title={t('home.what.telegram.title')} body={t('home.what.telegram.body')} />
+                        <InfoCard title={t('home.what.outgoing.title')} body={t('home.what.outgoing.body')} />
                     </div>
-                </div>
+                </section>
 
-                <div className="mt-12 text-left">
-                    <h2 className="text-xl font-bold text-white">{t('home.section.what.title')}</h2>
-                    <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.section.what.subtitle')}</p>
-                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-sm font-bold text-white">{t('home.what.gmail.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.what.gmail.body')}</p>
-                        </div>
-                        <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-sm font-bold text-white">{t('home.what.telegram.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.what.telegram.body')}</p>
-                        </div>
-                        <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-sm font-bold text-white">{t('home.what.outgoing.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.what.outgoing.body')}</p>
-                        </div>
+                <section className="mt-12">
+                    <div className="max-w-2xl">
+                        <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-900">{t('home.section.how.title')}</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-600">{t('home.section.how.subtitle')}</p>
                     </div>
-                </div>
 
-                <div className="mt-10 text-left">
-                    <h2 className="text-xl font-bold text-white">{t('home.section.how.title')}</h2>
-                    <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.section.how.subtitle')}</p>
-                    <ol className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <li className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.how.step1.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.how.step1.body')}</p>
+                    <ol className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <li>
+                            <StepCard step={t('home.how.step1.title')} body={t('home.how.step1.body')} />
                         </li>
-                        <li className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.how.step2.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.how.step2.body')}</p>
+                        <li>
+                            <StepCard step={t('home.how.step2.title')} body={t('home.how.step2.body')} />
                         </li>
-                        <li className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.how.step3.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.how.step3.body')}</p>
+                        <li>
+                            <StepCard step={t('home.how.step3.title')} body={t('home.how.step3.body')} />
                         </li>
-                        <li className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-xs text-[#cbd5e1] font-semibold tracking-wide">{t('home.how.step4.title')}</div>
-                            <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.how.step4.body')}</p>
+                        <li>
+                            <StepCard step={t('home.how.step4.title')} body={t('home.how.step4.body')} />
                         </li>
                     </ol>
-                </div>
+                </section>
 
-                <div className="mt-10 text-left">
-                    <h2 className="text-xl font-bold text-white">{t('home.section.data.title')}</h2>
-                    <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.section.data.subtitle')}</p>
-                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-sm font-bold text-white">{t('home.data.scope.title')}</div>
-                            <ul className="mt-2 text-sm text-[#94a3b8] leading-6 list-disc pl-5 space-y-1">
+                <section className="mt-12">
+                    <div className="max-w-2xl">
+                        <h2 className="text-xl font-semibold tracking-[-0.03em] text-slate-900">{t('home.section.data.title')}</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-600">{t('home.section.data.subtitle')}</p>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+                            <div className="text-sm font-semibold tracking-[-0.01em] text-slate-900">{t('home.data.scope.title')}</div>
+                            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-7 text-slate-600 marker:text-slate-400">
                                 <li>{t('home.data.scope.modify')}</li>
                                 <li>{t('home.data.scope.send')}</li>
                             </ul>
-                        </div>
-                        <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
-                            <div className="text-sm font-bold text-white">{t('home.data.storage.title')}</div>
-                            <ul className="mt-2 text-sm text-[#94a3b8] leading-6 list-disc pl-5 space-y-1">
+                        </Surface>
+
+                        <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
+                            <div className="text-sm font-semibold tracking-[-0.01em] text-slate-900">{t('home.data.storage.title')}</div>
+                            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-7 text-slate-600 marker:text-slate-400">
                                 <li>{t('home.data.storage.no_body')}</li>
                                 <li>{t('home.data.storage.tokens')}</li>
                                 <li>{t('home.data.storage.metadata')}</li>
                                 <li>{t('home.data.storage.attachments')}</li>
                                 <li>{t('home.data.storage.outgoing')}</li>
                             </ul>
-                        </div>
+                        </Surface>
                     </div>
-                </div>
+                </section>
 
+                <footer className="mt-16 border-t border-white/60 pt-10 pb-8">
+                    <div className="mx-auto max-w-4xl px-4 text-center">
+                        <p className="mx-auto max-w-2xl text-xs leading-relaxed text-slate-500">{t('home.footer.ack')}</p>
 
-
-                <footer className="mt-16 border-t border-zinc-800 pt-10 pb-8">
-                    <div className="max-w-4xl mx-auto px-4 text-center">
-
-                        <p className="text-xs text-zinc-500 leading-relaxed max-w-2xl mx-auto">
-                            {t('home.footer.ack')}
-                        </p>
-
-                        <div className="my-6 h-px w-full bg-zinc-800" />
+                        <div className="my-6 h-px w-full bg-white/60" />
 
                         <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-widest text-zinc-600">
-                                {t('home.footer.dev.title')}
-                            </p>
-
-                            <p className="text-sm font-semibold text-zinc-200">
-                                {t('home.footer.dev.line1')}
-                            </p>
+                            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{t('home.footer.dev.title')}</p>
+                            <p className="text-sm font-semibold text-slate-900">{t('home.footer.dev.line1')}</p>
                         </div>
 
-                        <div className="mt-6 flex items-center justify-center gap-2 flex-wrap">
-                            <a
-                                href={`mailto:${DEVELOPER.email}`}
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                                aria-label={t('home.footer.link.email')}
-                                title={DEVELOPER.email}
-                            >
-                                <MailIcon className="w-4 h-4" />
-                                {t('home.footer.link.email')}
-                            </a>
-                            <a
-                                href={DEVELOPER.website}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                                aria-label={t('home.footer.link.resume')}
-                                title={DEVELOPER.website}
-                            >
-                                <GlobeIcon className="w-4 h-4" />
-                                {t('home.footer.link.resume')}
-                            </a>
-                            <a
-                                href={DEVELOPER.github}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                                aria-label={t('home.footer.link.github')}
-                                title={DEVELOPER.github}
-                            >
-                                <GitHubIcon className="w-4 h-4" />
-                                GitHub
-                            </a>
-                            <a
-                                href={DEVELOPER.linkedin}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                                aria-label={t('home.footer.link.linkedin')}
-                                title={DEVELOPER.linkedin}
-                            >
-                                <LinkedInIcon className="w-4 h-4" />
-                                LinkedIn
-                            </a>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                            <FooterLink href={`mailto:${DEVELOPER.email}`} title={DEVELOPER.email} label={t('home.footer.link.email')}>
+                                <MailIcon className="h-4 w-4" />
+                            </FooterLink>
+
+                            <FooterLink href={DEVELOPER.website} title={DEVELOPER.website} label={t('home.footer.link.resume')}>
+                                <GlobeIcon className="h-4 w-4" />
+                            </FooterLink>
+
+                            <FooterLink href={DEVELOPER.github} title={DEVELOPER.github} label="GitHub">
+                                <GitHubIcon className="h-4 w-4" />
+                            </FooterLink>
+
+                            <FooterLink href={DEVELOPER.linkedin} title={DEVELOPER.linkedin} label="LinkedIn">
+                                <LinkedInIcon className="h-4 w-4" />
+                            </FooterLink>
                         </div>
 
                         <div className="mt-6 flex justify-center gap-6 text-sm">
-                            <Link
-                                to="/privacy"
-                                className="text-zinc-400 hover:text-blue-400 transition-colors"
-                            >
+                            <Link to="/privacy" className="text-slate-500 transition-colors hover:text-slate-900">
                                 {t('nav.privacy')}
                             </Link>
 
-                            <Link
-                                to="/terms"
-                                className="text-zinc-400 hover:text-blue-400 transition-colors"
-                            >
+                            <Link to="/terms" className="text-slate-500 transition-colors hover:text-slate-900">
                                 {t('nav.terms')}
                             </Link>
                         </div>
-
                     </div>
                 </footer>
             </div>

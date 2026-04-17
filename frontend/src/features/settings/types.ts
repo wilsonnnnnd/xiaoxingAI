@@ -11,7 +11,7 @@ export const settingsSchema = z.object({
   ROUTER_API_KEY: z.string().optional(),
   GMAIL_MARK_READ: z.string(),
   GMAIL_POLL_QUERY: z.string(),
-  UI_LANG: z.enum(['en', 'zh']),
+  NOTIFY_LANG: z.enum(['en', 'zh']),
   
   // User Personal Settings
   min_priority: z.enum(['high', 'medium', 'low']),

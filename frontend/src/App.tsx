@@ -7,8 +7,9 @@ import Skill from './pages/Skill'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import OAuthComplete from './pages/OAuthComplete'
+import UiDemo from './pages/UiDemo'
 import { GmailPage } from './features/gmail'
-import { LoginPage } from './features/auth'
+import { LoginPage, RegisterPage } from './features/auth'
 import { SettingsPage } from './features/settings'
 import { ReplyFormatPage } from './features/replyFormat'
 import { PromptsPage } from './features/prompts'
@@ -21,9 +22,11 @@ export default function App() {
       <Toaster position="top-right" />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
+        <Route path="ui-demo" element={<UiDemo />} />
         <Route path="help" element={<Help />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
         <Route path="terms" element={<TermsOfService />} />
