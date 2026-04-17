@@ -56,11 +56,10 @@ function StatCard({ label, value, suffix, note }: StatCardProps) {
 type StatusCardProps = {
     label: string
     statusText: string
-    active?: boolean
-    muted?: boolean
+    state?: 'ok' | 'err' | 'muted'
 }
 
-function StatusCard({ label, statusText, active = false, muted = false }: StatusCardProps) {
+function StatusCard({ label, statusText, state = 'muted' }: StatusCardProps) {
     return (
         <Surface className="p-5 sm:p-6 transition-all duration-200 hover:bg-white/80">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</div>
@@ -69,7 +68,11 @@ function StatusCard({ label, statusText, active = false, muted = false }: Status
                 <span
                     className={[
                         'h-2.5 w-2.5 rounded-full shrink-0',
-                        muted ? 'bg-slate-300' : active ? 'bg-[rgba(217,235,255,1)]' : 'bg-slate-300',
+                        state === 'ok'
+                            ? 'bg-emerald-500'
+                            : state === 'err'
+                                ? 'bg-rose-500'
+                                : 'bg-slate-300',
                     ].join(' ')}
                 />
                 <span className="text-sm text-slate-600">{statusText}</span>
@@ -227,13 +230,16 @@ export default function Home() {
                         note={t('home.section.what.subtitle')}
                     />
 
-                    <StatusCard label={t('home.stats.service')} statusText={apiStatusText} active={apiOk === true} muted={apiOk == null} />
+                    <StatusCard
+                        label={t('home.stats.service')}
+                        statusText={apiStatusText}
+                        state={apiOk === true ? 'ok' : apiOk === false ? 'err' : 'muted'}
+                    />
 
                     <StatusCard
                         label={t('home.stats.gmail_worker')}
                         statusText={isAuthed ? workerText : t('home.stats.login_required')}
-                        active={!!gmailWorker?.running}
-                        muted={!isAuthed || !gmailWorker?.running}
+                        state={isAuthed && gmailWorker?.running ? 'ok' : 'muted'}
                     />
                 </section>
 
