@@ -144,7 +144,7 @@ app.include_router(reply_format.router, prefix=API_PREFIX)
 def gmail_auth_get_url(request: Request, user: dict = Depends(auth_mod.current_user)):
     """返回 Gmail OAuth 授权 URL（JSON）。前端用此接口获取 URL 后由 JS 跳转，可携带 user_id。"""
     try:
-        redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
+        redirect_uri = str(request.base_url).rstrip("/") + "/api/gmail/callback"
         url = get_oauth_url(redirect_uri, user_id=user["id"])
         return {"url": url}
     except FileNotFoundError as e:
@@ -157,7 +157,7 @@ def gmail_auth(request: Request, user: Optional[dict] = Depends(auth_mod.get_cur
     """跳转到 Google OAuth 授权页面（浏览器直接跳转的兼容路由，无 JWT 时 user_id=None）"""
     user_id = user["id"] if user else None
     try:
-        redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
+        redirect_uri = str(request.base_url).rstrip("/") + "/api/gmail/callback"
         url = get_oauth_url(redirect_uri, user_id=user_id)
         return RedirectResponse(url=url)
     except FileNotFoundError as e:
@@ -178,9 +178,9 @@ def gmail_callback(request: Request, code: str,
     if user_id is None and user:
         user_id = user["id"]
     try:
-        redirect_uri = str(request.base_url).rstrip("/") + "/gmail/callback"
+        redirect_uri = str(request.base_url).rstrip("/") + "/api/gmail/callback"
         exchange_code_for_token(code, redirect_uri, user_id=user_id)
-        return RedirectResponse(url=f"{app_config.FRONTEND_URL}?auth=success")
+        return RedirectResponse(url=f"{app_config.FRONTEND_URL}/oauth/complete?provider=google&result=success")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth 回调失败: {str(e)}")
 
