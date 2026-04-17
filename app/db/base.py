@@ -11,7 +11,6 @@ class LogType(str, enum.Enum):
 _SYSTEM_PROMPTS = [
     ("邮件分析",      "email_analysis", "gmail/email_analysis.txt"),
     ("邮件摘要",      "email_summary",  "gmail/email_summary.txt"),
-    ("邮件摘要(EN)",  "email_summary_en",  "gmail/email_summary.en.txt"),
     ("Telegram通知",  "telegram_notify","gmail/telegram_notify.txt"),
     ("Telegram通知(EN)", "telegram_notify_en", "gmail/telegram_notify.en.txt"),
     ("Outgoing Email", "outgoing_email", "outgoing/email_compose.txt"),

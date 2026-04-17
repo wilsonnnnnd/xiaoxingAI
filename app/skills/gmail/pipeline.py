@@ -85,7 +85,6 @@ def summarize_email(
     """步骤 2：基于邮件原文和分析结果，提取结构化摘要"""
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
     body_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
-    notify_lang = _get_notify_lang(user_id)
     template = load_prompt(config.PROMPT_SUMMARY, user_id=user_id)
     prompt = template.format(
         subject=subject,
@@ -113,32 +112,22 @@ def summarize_email(
         max_repair_tokens=192,
     )
 
-    if notify_lang == "en":
-        s = str(parsed.get("summary") or "")
-        kp = parsed.get("key_points")
-        kp_text = " ".join([str(x) for x in kp]) if isinstance(kp, list) else ""
-        if _cjk_count(s + " " + kp_text) >= 3:
-            try:
-                tpl_en = load_prompt("gmail/email_summary.en.txt", user_id=user_id)
-                prompt_en = tpl_en.format(
-                    subject=subject,
-                    sender=sender,
-                    date=date,
-                    analysis=json.dumps(analysis, ensure_ascii=False, indent=2),
-                    snippet=snippet,
-                    body_excerpt=body_excerpt,
-                )
-                raw2, tokens2 = call_llm(prompt_en, max_tokens=256, use_cache=False)
-                parsed2 = extract_json_with_repair(
-                    raw2,
-                    schema_hint=json.dumps(schema_defaults, ensure_ascii=False, indent=2),
-                    max_repair_tokens=192,
-                )
-                parsed = parsed2
-                tokens = int(tokens or 0) + int(tokens2 or 0)
-                raw = raw2
-            except Exception:
-                pass
+    s = str(parsed.get("summary") or "")
+    kp = parsed.get("key_points")
+    kp_text = " ".join([str(x) for x in kp]) if isinstance(kp, list) else ""
+    if _cjk_count(s + " " + kp_text) >= 3:
+        try:
+            raw2, tokens2 = call_llm(prompt, max_tokens=256, use_cache=False)
+            parsed2 = extract_json_with_repair(
+                raw2,
+                schema_hint=json.dumps(schema_defaults, ensure_ascii=False, indent=2),
+                max_repair_tokens=192,
+            )
+            parsed = parsed2
+            tokens = int(tokens or 0) + int(tokens2 or 0)
+            raw = raw2
+        except Exception:
+            pass
     return {"type": "summary", "result": parsed, "raw": raw, "tokens": tokens}
 
 
