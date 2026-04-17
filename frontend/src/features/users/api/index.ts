@@ -2,6 +2,8 @@ import { api } from '../../../api/client'
 import type { User, Bot } from '../../../types'
 export { getMe } from '../../auth/api'
 export const testTelegram = () => api.post('/telegram/test').then(r => r.data)
+export const getTelegramChatId = (token: string) =>
+  api.get<{ chat_id: string | null }>('/telegram/chat_id', { params: { token } }).then(r => r.data)
 
 export const listUsers = () =>
   api.get<{ users: User[] }>('/users').then(r => r.data.users)
@@ -11,7 +13,7 @@ export const createUser = (data: { email: string; password: string; display_name
 
 export const getUser = (id: number) => api.get<User>(`/users/${id}`).then(r => r.data)
 
-export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled' | 'min_priority' | 'max_emails_per_run' | 'poll_interval' | 'gmail_poll_query'>>) =>
+export const updateUser = (id: number, patch: Partial<Pick<User, 'worker_enabled' | 'min_priority' | 'max_emails_per_run' | 'poll_interval' | 'gmail_poll_query' | 'ui_lang' | 'notify_lang'>>) =>
   api.put<User>(`/users/${id}`, patch).then(r => r.data)
 
 export const listBots = (userId: number) =>

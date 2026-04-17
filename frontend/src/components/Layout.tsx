@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getMe } from '../features/users/api'
+import { getMe, updateUser } from '../features/users/api'
 import { Sidebar } from './layout/Sidebar'
 import { useI18n } from '../i18n/useI18n'
 import { legalPolicyVersion } from '../pages/legalContent'
 
 export default function Layout() {
   const location = useLocation()
-  const { t } = useI18n()
+  const { t, lang, setLang } = useI18n()
   const token = localStorage.getItem('auth_token')
   const isPublic = location.pathname === '/' || location.pathname === '/home' || location.pathname === '/help' || location.pathname === '/privacy' || location.pathname === '/terms' || location.pathname === '/oauth/complete'
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -26,6 +26,22 @@ export default function Layout() {
     staleTime: 120_000,
     enabled: !!token && location.pathname !== '/oauth/complete',
   })
+
+  useEffect(() => {
+    const serverLang = (me?.ui_lang === 'zh' || me?.ui_lang === 'en') ? me.ui_lang : null
+    if (serverLang && serverLang !== lang) {
+      setLang(serverLang)
+    }
+  }, [me, lang, setLang])
+
+  useEffect(() => {
+    const serverLang = (me?.ui_lang === 'zh' || me?.ui_lang === 'en') ? me.ui_lang : null
+    const id = me?.id
+    if (!id || !token) return
+    if (serverLang && serverLang === lang) return
+    if (lang !== 'en' && lang !== 'zh') return
+    updateUser(Number(id), { ui_lang: lang }).catch(() => {})
+  }, [me, lang, token])
 
   if (!token && !isPublic) {
     return <Navigate to="/login" replace />

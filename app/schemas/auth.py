@@ -9,3 +9,11 @@ class AdminLoginRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    display_name: Optional[str] = None
+    ui_lang: Optional[str] = None
+    notify_lang: Optional[str] = None

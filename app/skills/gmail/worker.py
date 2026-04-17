@@ -93,11 +93,13 @@ async def _process_with_retry(email: dict, max_retries: int = 3,
             _wlog(f"🔍 分析邮件：{subj}", user_id=user_id)
             result = await asyncio.to_thread(
                 process_email,
-                email["subject"],
-                email["body"] or email["snippet"],
+                email.get("subject", ""),
+                email.get("body", ""),
+                email.get("snippet", ""),
                 email.get("from", ""),
                 email.get("date", ""),
                 email_id,
+                user_id,
             )
             return result
         except Exception as e:

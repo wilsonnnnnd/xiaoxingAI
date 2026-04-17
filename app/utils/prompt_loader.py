@@ -8,11 +8,15 @@ PROMPTS_DIR = BASE_DIR / "prompts"
 _SYSTEM_PROMPT_TYPE_BY_PATH = {
     "gmail/email_analysis.txt": "email_analysis",
     "gmail/email_summary.txt": "email_summary",
+    "gmail/email_summary.en.txt": "email_summary_en",
     "gmail/telegram_notify.txt": "telegram_notify",
+    "gmail/telegram_notify.en.txt": "telegram_notify_en",
     "outgoing/email_compose.txt": "outgoing_email",
     "outgoing/email_edit.txt": "email_edit",
     "outgoing/email_reply_compose.txt": "email_reply_compose",
 }
+
+_LOCALIZED_PROMPTS = {"gmail/telegram_notify.txt", "gmail/email_summary.txt"}
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -28,6 +32,16 @@ def _sanitize_filename(filename: str) -> str:
     if p.is_absolute() or ".." in p.parts:
         raise ValueError("Invalid prompt filename")
     return s
+
+
+def _localized_variant(name: str, notify_lang: str) -> str:
+    if name not in _LOCALIZED_PROMPTS:
+        return ""
+    l = (notify_lang or "").strip().lower()
+    if l == "en":
+        if name.endswith(".txt"):
+            return name[:-4] + ".en.txt"
+    return ""
 
 
 def load_prompt(filename: str, user_id: Optional[int] = None) -> str:
@@ -54,6 +68,30 @@ def load_prompt(filename: str, user_id: Optional[int] = None) -> str:
         db = None
 
     if db is not None:
+        notify_lang = ""
+        if user_id is not None:
+            try:
+                with db._cur() as cur:
+                    try:
+                        cur.execute("SELECT notify_lang FROM user_settings WHERE user_id = %s", (int(user_id),))
+                        row = cur.fetchone()
+                        notify_lang = str(row[0] or "") if row else ""
+                    except Exception:
+                        cur.execute("SELECT ui_lang FROM user_settings WHERE user_id = %s", (int(user_id),))
+                        row = cur.fetchone()
+                        notify_lang = str(row[0] or "") if row else ""
+            except Exception:
+                notify_lang = ""
+
+        if notify_lang:
+            enriched: list[str] = []
+            for cand in candidates:
+                v = _localized_variant(cand, notify_lang)
+                if v:
+                    enriched.append(v)
+                enriched.append(cand)
+            candidates = enriched
+
         for cand in candidates:
             if user_id is not None:
                 try:

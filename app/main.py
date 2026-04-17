@@ -187,7 +187,7 @@ def gmail_callback(request: Request, code: str,
 # ─────────────────────────────────────────
 
 @app.post("/api/worker/start")
-async def worker_start():
+async def worker_start(user: dict = Depends(auth_mod.require_admin)):
     """启动自动轮询 Worker"""
     try:
         started = await worker.start()
@@ -197,14 +197,14 @@ async def worker_start():
 
 
 @app.post("/api/worker/stop")
-def worker_stop():
+def worker_stop(user: dict = Depends(auth_mod.require_admin)):
     """停止自动轮询 Worker"""
     stopped = worker.stop()
     return {"ok": True, "stopped": stopped, "status": worker.get_status()}
 
 
 @app.get("/api/worker/status")
-def worker_status():
+def worker_status(user: dict = Depends(auth_mod.current_user)):
     """获取 Worker 当前状态和统计"""
     return worker.get_status()
 
@@ -215,7 +215,7 @@ def worker_status():
 
 
 @app.post("/api/worker/poll")
-async def worker_poll():
+async def worker_poll(user: dict = Depends(auth_mod.require_admin)):
     """立即触发一次轮询（无论 worker 是否在运行）"""
     try:
         result = await worker.poll_now()
@@ -247,6 +247,6 @@ async def ws_worker_status(websocket: WebSocket):
 
 # Backwards-compatible wrappers exposing explicit endpoints for separated statuses
 @app.get("/api/gmail/workstatus")
-def gmail_work_status():
+def gmail_work_status(user: dict = Depends(auth_mod.current_user)):
     """Wrapper for Gmail worker status (frontend-friendly name)."""
     return worker.get_status()

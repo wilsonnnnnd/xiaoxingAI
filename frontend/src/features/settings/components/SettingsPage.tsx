@@ -18,7 +18,7 @@ import { ChangePasswordCard } from './ChangePasswordCard'
 import toast from 'react-hot-toast'
 
 export const SettingsPage: React.FC = () => {
-  const { t, lang, setLang } = useI18n()
+  const { t, lang } = useI18n()
   const [myId, setMyId] = useState<number | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [hasLlmKey, setHasLlmKey] = useState(false)
@@ -44,7 +44,7 @@ export const SettingsPage: React.FC = () => {
       ROUTER_API_KEY: '',
       GMAIL_MARK_READ: 'true',
       GMAIL_POLL_QUERY: 'is:unread in:inbox category:primary',
-      UI_LANG: lang,
+      NOTIFY_LANG: 'en',
       min_priority: 'medium',
       max_emails_per_run: 10,
       poll_interval: 300,
@@ -53,7 +53,7 @@ export const SettingsPage: React.FC = () => {
 
   useConfirmDiscard(isDirty, t('prompts.confirm.discard'))
 
-  const currentUiLang = watch('UI_LANG')
+  const currentNotifyLang = watch('NOTIFY_LANG')
 
   useEffect(() => {
     async function loadData() {
@@ -80,7 +80,7 @@ export const SettingsPage: React.FC = () => {
           ROUTER_API_KEY: '',
           GMAIL_MARK_READ: cfgRaw.GMAIL_MARK_READ ?? 'true',
           GMAIL_POLL_QUERY: user.gmail_poll_query ?? cfgRaw.GMAIL_POLL_QUERY ?? 'is:unread in:inbox category:primary',
-          UI_LANG: cfgRaw.UI_LANG === 'zh' ? 'zh' : cfgRaw.UI_LANG === 'en' ? 'en' : lang,
+          NOTIFY_LANG: user.notify_lang === 'zh' ? 'zh' : user.notify_lang === 'en' ? 'en' : 'en',
 
           min_priority: ['high', 'medium', 'low'].includes(user.min_priority) ? (user.min_priority as SettingsFormInput['min_priority']) : 'medium',
           max_emails_per_run: user.max_emails_per_run ?? 10,
@@ -100,7 +100,7 @@ export const SettingsPage: React.FC = () => {
   const onSave = async (data: SettingsFormInput) => {
     try {
       const parsed: SettingsFormValues = settingsSchema.parse(data)
-      const { min_priority, max_emails_per_run, poll_interval, GMAIL_POLL_QUERY, ...globalConfig } = parsed
+      const { min_priority, max_emails_per_run, poll_interval, GMAIL_POLL_QUERY, NOTIFY_LANG, ...globalConfig } = parsed
 
       await Promise.all([
         isAdmin ? (async () => {
@@ -116,13 +116,10 @@ export const SettingsPage: React.FC = () => {
             setHasRouterKey(!!res.config.HAS_ROUTER_API_KEY)
           }
         })() : Promise.resolve(),
-        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval, gmail_poll_query: GMAIL_POLL_QUERY }) : Promise.resolve(),
+        myId ? updateUser(myId, { min_priority, max_emails_per_run, poll_interval, gmail_poll_query: GMAIL_POLL_QUERY, notify_lang: NOTIFY_LANG }) : Promise.resolve(),
       ])
 
       toast.success(t('result.saved'))
-      if (parsed.UI_LANG !== lang) {
-        setLang(parsed.UI_LANG)
-      }
       reset({ ...parsed, LLM_API_KEY: '', ROUTER_API_KEY: '' })
     } catch {
       /* handled globally */
@@ -147,11 +144,11 @@ export const SettingsPage: React.FC = () => {
         </div>
         <div className="flex flex-col gap-1 items-end shrink-0">
           <Select
-            label={t('label.ui_lang')}
-            value={currentUiLang}
+            label={t('label.notify_lang')}
+            value={currentNotifyLang}
             onChange={(e) => {
               const newLang = e.target.value as 'en' | 'zh'
-              setValue('UI_LANG', newLang, { shouldDirty: true })
+              setValue('NOTIFY_LANG', newLang, { shouldDirty: true })
             }}
             className="min-w-[120px]"
             options={[

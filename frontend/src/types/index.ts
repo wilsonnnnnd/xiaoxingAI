@@ -78,6 +78,8 @@ export interface AuthUser {
   id: number
   email: string
   role: string
+  ui_lang?: 'en' | 'zh'
+  notify_lang?: 'en' | 'zh'
 }
 
 export interface User {
@@ -89,6 +91,8 @@ export interface User {
   max_emails_per_run: number
   poll_interval: number
   gmail_poll_query: string
+  ui_lang?: 'en' | 'zh'
+  notify_lang?: 'en' | 'zh'
   created_at: string
 }
 

@@ -170,7 +170,8 @@ export const GmailPage: React.FC = () => {
     const authorized = stats?.has_token ?? false
     const notifyBots = myBots.filter(b => b.bot_mode === 'all' || b.bot_mode === 'notify')
     const hasNotifyBot = notifyBots.length > 0
-    const canStart = authorized && hasNotifyBot
+    const isAdmin = me?.role === 'admin'
+    const canStart = isAdmin && authorized && hasNotifyBot
 
     const fmt = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : '—'
     const fmtTs = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : ''
@@ -238,9 +239,9 @@ export const GmailPage: React.FC = () => {
                     <div className="flex items-center gap-2 flex-wrap mt-2">
                         {!workerRunning
                             ? <Button onClick={() => startMut.mutate()} disabled={startMut.isPending || !canStart}>{t('home.btn.start')}</Button>
-                            : <Button variant="primary" className="bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5]" onClick={() => stopMut.mutate()} loading={stopMut.isPending}>{t('home.btn.stop')}</Button>
+                            : <Button variant="primary" className="bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5]" onClick={() => stopMut.mutate()} loading={stopMut.isPending} disabled={!isAdmin}>{t('home.btn.stop')}</Button>
                         }
-                        <Button variant="primary" className="bg-[#334155] text-[#e2e8f0]" onClick={() => pollMut.mutate()} loading={pollMut.isPending}>{t('home.btn.poll_now')}</Button>
+                        <Button variant="primary" className="bg-[#334155] text-[#e2e8f0]" onClick={() => pollMut.mutate()} loading={pollMut.isPending} disabled={!isAdmin}>{t('home.btn.poll_now')}</Button>
                         <Button variant="telegram" onClick={() => tgMut.mutate()} loading={tgMut.isPending}>{t('home.btn.test_tg')}</Button>
                     </div>
 

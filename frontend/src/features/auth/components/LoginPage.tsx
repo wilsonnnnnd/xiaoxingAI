@@ -63,6 +63,13 @@ export const LoginPage: React.FC = () => {
           </Button>
         </form>
 
+        <div className="text-xs text-[#64748b] text-center">
+          {t('register.no_account')}{' '}
+          <Link to="/register" className="underline hover:text-white transition-colors">
+            {t('register.to_register')}
+          </Link>
+        </div>
+
         <div className="flex items-center justify-center gap-4 text-xs text-[#64748b]">
           <Link to="/privacy" className="hover:underline">{t('nav.privacy')}</Link>
           <span className="opacity-40">•</span>

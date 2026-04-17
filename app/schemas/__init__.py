@@ -1,4 +1,4 @@
-from .auth import AdminLoginRequest, ChangePasswordRequest
+from .auth import AdminLoginRequest, ChangePasswordRequest, RegisterRequest
 from .user import UserCreate, UserUpdate
 from .bot import BotCreate, BotUpdate
 from .prompt import PromptCreate, PromptUpdate

@@ -14,7 +14,7 @@ from .repositories import (
 # User
 from .repositories.user_repo import (
     create_user, get_user_by_email, get_user_by_id,
-    list_users, list_worker_enabled_users, update_user, count_users
+    list_users, list_admin_users, list_worker_enabled_users, update_user, count_users
 )
 
 # Bot

@@ -11,7 +11,9 @@ class LogType(str, enum.Enum):
 _SYSTEM_PROMPTS = [
     ("邮件分析",      "email_analysis", "gmail/email_analysis.txt"),
     ("邮件摘要",      "email_summary",  "gmail/email_summary.txt"),
+    ("邮件摘要(EN)",  "email_summary_en",  "gmail/email_summary.en.txt"),
     ("Telegram通知",  "telegram_notify","gmail/telegram_notify.txt"),
+    ("Telegram通知(EN)", "telegram_notify_en", "gmail/telegram_notify.en.txt"),
     ("Outgoing Email", "outgoing_email", "outgoing/email_compose.txt"),
     ("Email Edit", "email_edit", "outgoing/email_edit.txt"),
     ("Email Reply Compose", "email_reply_compose", "outgoing/email_reply_compose.txt"),
@@ -63,17 +65,38 @@ def init_db() -> None:
                 max_emails_per_run INTEGER NOT NULL DEFAULT 5,
                 poll_interval      INTEGER NOT NULL DEFAULT 300,
                 gmail_poll_query   TEXT NOT NULL DEFAULT '',
+                notify_lang        VARCHAR NOT NULL DEFAULT 'en',
+                ui_lang            VARCHAR NOT NULL DEFAULT 'en',
                 created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
             )
         """)
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns"
+            " WHERE table_schema='public' AND table_name='user_settings'"
+        )
+        cols = {r[0] for r in cur.fetchall()}
+        if "notify_lang" not in cols:
+            cur.execute("ALTER TABLE user_settings ADD COLUMN notify_lang VARCHAR NOT NULL DEFAULT 'en'")
+        if "ui_lang" not in cols:
+            cur.execute("ALTER TABLE user_settings ADD COLUMN ui_lang VARCHAR NOT NULL DEFAULT 'en'")
+        if "notify_lang" not in cols and "ui_lang" in cols:
+            cur.execute("UPDATE user_settings SET notify_lang = ui_lang WHERE notify_lang IS NULL OR notify_lang = ''")
+        if "ui_lang" not in cols and "notify_lang" in cols:
+            cur.execute("UPDATE user_settings SET ui_lang = notify_lang WHERE ui_lang IS NULL OR ui_lang = ''")
 
         cur.execute(
-            "INSERT INTO user_settings (user_id, worker_enabled, min_priority, max_emails_per_run, poll_interval, gmail_poll_query)"
-            " SELECT id, worker_enabled, min_priority, max_emails_per_run, poll_interval, %s"
+            "INSERT INTO user_settings (user_id, worker_enabled, min_priority, max_emails_per_run, poll_interval, gmail_poll_query, notify_lang, ui_lang)"
+            " SELECT id, worker_enabled, min_priority, max_emails_per_run, poll_interval, %s, 'en', 'en'"
             " FROM \"user\""
             " ON CONFLICT (user_id) DO NOTHING",
             (config.GMAIL_POLL_QUERY,),
+        )
+        cur.execute(
+            "UPDATE user_settings SET notify_lang = 'en' WHERE notify_lang IS NULL OR notify_lang = ''"
+        )
+        cur.execute(
+            "UPDATE user_settings SET ui_lang = 'en' WHERE ui_lang IS NULL OR ui_lang = ''"
         )
         cur.execute(
             "UPDATE user_settings SET gmail_poll_query = %s"

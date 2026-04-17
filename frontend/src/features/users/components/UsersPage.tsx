@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useI18n } from '../../../i18n/useI18n'
 import {
-  listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe,
+  listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe, getTelegramChatId,
 } from '../api'
 import type { User, Bot } from '../../../types'
 import { Card } from '../../../components/common/Card'
@@ -23,6 +23,7 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
     const qc = useQueryClient()
     const [editing, setEditing] = useState(false)
     const [form, setForm] = useState({ name: bot.name, token: bot.token, chat_id: bot.chat_id, bot_mode: bot.bot_mode ?? 'all' })
+    const [gettingChatId, setGettingChatId] = useState(false)
 
     const key = ['bots', userId]
 
@@ -68,8 +69,36 @@ const BotRow: React.FC<{ bot: Bot; userId: number }> = ({ bot, userId }) => {
                 <InputField
                     label={t('users.bot.chat_id')}
                     value={form.chat_id}
-                    onChange={v => setForm(f => ({ ...f, chat_id: v }))}
+                    disabled
+                    placeholder={t('users.bot.hint.btn_get_chat_id')}
                 />
+                <div className="flex gap-2 -mt-1">
+                    <Button
+                        variant="primary"
+                        className="bg-[#334155] hover:bg-[#475569] text-xs px-3 py-1.5"
+                        loading={gettingChatId}
+                        disabled={!form.token || gettingChatId}
+                        onClick={async () => {
+                            const token = form.token.trim()
+                            if (!token) return
+                            setGettingChatId(true)
+                            try {
+                                const res = await getTelegramChatId(token)
+                                const chatId = (res?.chat_id ?? '').toString().trim()
+                                if (!chatId) {
+                                    toast.error(t('users.bot.hint.no_chat_id'))
+                                    return
+                                }
+                                setForm(f => ({ ...f, chat_id: chatId }))
+                                toast.success(t('users.bot.hint.filled'))
+                            } finally {
+                                setGettingChatId(false)
+                            }
+                        }}
+                    >
+                        {t('users.bot.hint.btn_get_chat_id')}
+                    </Button>
+                </div>
                 <Select
                     label="Mode"
                     value={form.bot_mode}
@@ -128,6 +157,7 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
     const { t } = useI18n()
     const qc = useQueryClient()
     const [form, setForm] = useState({ name: '', token: '', chat_id: '', bot_mode: 'all' })
+    const [gettingChatId, setGettingChatId] = useState(false)
 
     const createMut = useMutation({
         mutationFn: () => createBot(userId, form),
@@ -140,6 +170,19 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
 
     return (
         <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-4 flex flex-col gap-3">
+            <div className="text-xs text-[#64748b] leading-relaxed">
+                <div className="font-semibold text-[#94a3b8]">{t('users.bot.hint.title')}</div>
+                <ol className="list-decimal pl-5 mt-1 flex flex-col gap-0.5">
+                    <li>
+                        {t('users.bot.hint.step1')}{' '}
+                        <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="underline">
+                            BotFather
+                        </a>
+                    </li>
+                    <li>{t('users.bot.hint.step2')}</li>
+                    <li>{t('users.bot.hint.step3')}</li>
+                </ol>
+            </div>
             <InputField
                 label={t('users.bot.name')}
                 value={form.name}
@@ -154,8 +197,36 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
             <InputField
                 label={t('users.bot.chat_id')}
                 value={form.chat_id}
-                onChange={v => setForm(f => ({ ...f, chat_id: v }))}
+                disabled
+                placeholder={t('users.bot.hint.btn_get_chat_id')}
             />
+            <div className="flex gap-2 -mt-1">
+                <Button
+                    variant="primary"
+                    className="bg-[#334155] hover:bg-[#475569] text-xs px-3 py-1.5"
+                    loading={gettingChatId}
+                    disabled={!form.token || gettingChatId}
+                    onClick={async () => {
+                        const token = form.token.trim()
+                        if (!token) return
+                        setGettingChatId(true)
+                        try {
+                            const res = await getTelegramChatId(token)
+                            const chatId = (res?.chat_id ?? '').toString().trim()
+                            if (!chatId) {
+                                toast.error(t('users.bot.hint.no_chat_id'))
+                                return
+                            }
+                            setForm(f => ({ ...f, chat_id: chatId }))
+                            toast.success(t('users.bot.hint.filled'))
+                        } finally {
+                            setGettingChatId(false)
+                        }
+                    }}
+                >
+                    {t('users.bot.hint.btn_get_chat_id')}
+                </Button>
+            </div>
             <Select
                 label="Mode"
                 value={form.bot_mode}
