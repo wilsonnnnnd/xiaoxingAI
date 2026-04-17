@@ -48,7 +48,7 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
 
   if (editing) {
     return (
-      <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-4 flex flex-col gap-3">
+      <div className="rounded-2xl bg-white/55 border border-white/70 ring-1 ring-black/[0.03] px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] flex flex-col gap-3">
         <InputField
           label={t('users.bot.name')}
           value={form.name}
@@ -68,8 +68,8 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
         />
         <div className="flex gap-2 -mt-1">
           <Button
-            variant="primary"
-            className="bg-[#334155] hover:bg-[#475569] text-xs px-3 py-1.5"
+            variant="secondary"
+            size="sm"
             loading={gettingChatId}
             disabled={!form.token || gettingChatId}
             onClick={async () => {
@@ -106,7 +106,7 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
           <Button onClick={() => updateMut.mutate()} loading={updateMut.isPending}>
             {t('users.btn.save')}
           </Button>
-          <Button variant="primary" className="bg-[#334155] hover:bg-[#475569]" onClick={() => setEditing(false)}>
+          <Button variant="secondary" onClick={() => setEditing(false)}>
             {t('users.btn.cancel')}
           </Button>
         </div>
@@ -115,25 +115,25 @@ const BotRow: React.FC<BotRowProps> = ({ bot, userId }) => {
   }
 
   return (
-    <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-3 flex items-center justify-between gap-3">
+    <div className="rounded-2xl bg-white/55 border border-white/70 ring-1 ring-black/[0.03] px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-sm text-[#e2e8f0] font-medium flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-slate-900 font-semibold flex items-center gap-2 flex-wrap">
           {bot.name}
-          {bot.is_default && <span className="text-[10px] bg-[#1d4ed8] text-white px-1.5 py-0 rounded uppercase font-bold">{t('users.bot.default')}</span>}
-          {bot.bot_mode === 'notify' && <span className="text-[10px] bg-[#854d0e] text-[#fef08a] px-1.5 py-0 rounded uppercase font-bold">{t('users.bot.mode.notify')}</span>}
+          {bot.is_default && <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full uppercase font-bold ring-1 ring-black/[0.06]">{t('users.bot.default')}</span>}
+          {bot.bot_mode === 'notify' && <span className="text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full uppercase font-bold border border-amber-200">{t('users.bot.mode.notify')}</span>}
         </span>
         <span className="text-xs text-[#64748b] font-mono truncate">{bot.chat_id}</span>
       </div>
       <div className="flex items-center gap-1 shrink-0">
         {!bot.is_default && (
-          <Button variant="primary" className="px-2 py-1 text-xs bg-[#334155] text-[#94a3b8]" onClick={() => defaultMut.mutate()} loading={defaultMut.isPending}>
+          <Button variant="secondary" size="sm" onClick={() => defaultMut.mutate()} loading={defaultMut.isPending}>
             {t('users.bot.btn.set_default')}
           </Button>
         )}
-        <Button variant="primary" className="px-2 py-1 text-xs bg-[#334155] text-[#94a3b8]" onClick={() => setEditing(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
           {t('users.btn.edit')}
         </Button>
-        <Button variant="primary" className="px-2 py-1 text-xs bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5]" onClick={() => {
+        <Button variant="ghost" size="sm" className="text-rose-700 hover:text-rose-900 hover:bg-rose-50 hover:border-rose-200" onClick={() => {
           if (confirm(t('users.bot.confirm_delete'))) deleteMut.mutate()
         }} loading={deleteMut.isPending}>
           {t('users.bot.btn.delete')}
@@ -160,9 +160,9 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
   const canSubmit = form.name && form.token && form.chat_id
 
   return (
-    <div className="bg-[#0b0e14] border border-[#273347] rounded-lg p-4 flex flex-col gap-3">
-      <div className="text-xs text-[#64748b] leading-relaxed">
-        <div className="font-semibold text-[#94a3b8]">{t('users.bot.hint.title')}</div>
+    <div className="rounded-2xl bg-white/55 border border-white/70 ring-1 ring-black/[0.03] px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] flex flex-col gap-3">
+      <div className="text-xs text-slate-600 leading-relaxed">
+        <div className="font-semibold text-slate-800">{t('users.bot.hint.title')}</div>
         <ol className="list-decimal pl-5 mt-1 flex flex-col gap-0.5">
           <li>
             {t('users.bot.hint.step1')}{' '}
@@ -193,8 +193,8 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
       />
       <div className="flex gap-2 -mt-1">
         <Button
-          variant="primary"
-          className="bg-[#334155] hover:bg-[#475569] text-xs px-3 py-1.5"
+          variant="secondary"
+          size="sm"
           loading={gettingChatId}
           disabled={!form.token || gettingChatId}
           onClick={async () => {
@@ -231,7 +231,7 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
         <Button onClick={() => createMut.mutate()} loading={createMut.isPending} disabled={!canSubmit}>
           {t('users.bot.btn.add')}
         </Button>
-        <Button variant="primary" className="bg-[#334155] hover:bg-[#475569]" onClick={onDone}>
+        <Button variant="secondary" onClick={onDone}>
           {t('users.btn.cancel')}
         </Button>
       </div>
@@ -249,15 +249,14 @@ export const BotSettings: React.FC<{ userId: number }> = ({ userId }) => {
   })
 
   return (
-    <Card title={t('card.telegram')}>
-      <p className="text-xs text-[#64748b] -mt-2 mb-2">{t('settings.bots.desc')}</p>
+    <Card title={t('card.telegram')} subtitle={t('settings.bots.desc')}>
       <div className="flex flex-col gap-2">
         {isLoading ? (
-          <p className="text-xs text-[#64748b]">{t('prompts.loading')}</p>
+          <p className="text-xs text-slate-500">{t('prompts.loading')}</p>
         ) : (
           <>
             {bots.length === 0 && !addingBot && (
-              <p className="text-xs text-[#64748b] py-4 text-center border border-dashed border-[#2d3748] rounded-lg">{t('users.bots.empty')}</p>
+              <p className="text-xs text-slate-500 py-4 text-center border border-dashed border-white/70 rounded-2xl">{t('users.bots.empty')}</p>
             )}
             {bots.map(bot => (
               <BotRow key={bot.id} bot={bot} userId={userId} />
@@ -266,8 +265,9 @@ export const BotSettings: React.FC<{ userId: number }> = ({ userId }) => {
               <AddBotForm userId={userId} onDone={() => setAddingBot(false)} />
             ) : (
               <Button 
-                variant="primary" 
-                className="self-start px-3 py-1.5 text-xs bg-[#334155] text-[#e2e8f0]" 
+                variant="secondary" 
+                size="sm"
+                className="self-start" 
                 onClick={() => setAddingBot(true)}
               >
                 ＋ {t('users.bot.btn.add')}

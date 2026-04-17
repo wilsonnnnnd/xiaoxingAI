@@ -7,6 +7,7 @@ import Skill from './pages/Skill'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import OAuthComplete from './pages/OAuthComplete'
+import UiDemo from './pages/UiDemo'
 import { GmailPage } from './features/gmail'
 import { LoginPage, RegisterPage } from './features/auth'
 import { SettingsPage } from './features/settings'
@@ -25,6 +26,7 @@ export default function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
+        <Route path="ui-demo" element={<UiDemo />} />
         <Route path="help" element={<Help />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
         <Route path="terms" element={<TermsOfService />} />

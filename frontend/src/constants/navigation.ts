@@ -7,6 +7,7 @@ export interface NavItemConfig {
 
 export const NAV_CONFIG: NavItemConfig[] = [
   { to: '/home', key: 'nav.home', adminOnly: false },
+  { to: '/ui-demo', key: 'nav.ui_demo', adminOnly: false },
   { to: '/skill', key: 'nav.skill', adminOnly: false },
   { to: '/users', key: 'nav.users', adminOnly: true },
   { to: '/settings', key: 'nav.settings', adminOnly: false, end: true },

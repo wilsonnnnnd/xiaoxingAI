@@ -27,14 +27,23 @@ export const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-[#1e2330] border border-[#2d3748] rounded-2xl p-8 flex flex-col gap-6 shadow-xl">
-        <div className="text-center">
-          <div className="text-3xl font-bold text-white tracking-tight">小星</div>
-          <div className="text-sm text-[#94a3b8] mt-2">{t('login.title')}</div>
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,252,255,0.96)_52%,rgba(246,249,253,0.95)_100%)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,rgba(217,235,255,0.45),transparent_70%)]" />
+
+      <div className="relative w-full max-w-sm flex flex-col gap-6 rounded-[28px] bg-[rgba(255,255,255,0.82)] backdrop-blur-xl border border-white/80 ring-1 ring-black/[0.03] p-8 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+        
+        <div className="absolute inset-0 rounded-[28px] pointer-events-none bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(255,255,255,0.06)_50%,transparent)]" />
+
+        <div className="relative text-center">
+          <div className="text-[28px] font-semibold tracking-[-0.02em] text-slate-900">
+            小星
+          </div>
+          <div className="text-sm text-slate-500 mt-2">
+            {t('login.title')}
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <form onSubmit={handleSubmit} className="relative flex flex-col gap-5">
           <InputField
             label={t('login.email')}
             type="email"
@@ -53,27 +62,34 @@ export const LoginPage: React.FC = () => {
             required
             disabled={busy}
           />
-          
+
           <Button
             type="submit"
             loading={busy}
-            className="w-full py-2.5 mt-2"
+            className="w-full mt-2"
           >
             {t('login.btn')}
           </Button>
         </form>
 
-        <div className="text-xs text-[#64748b] text-center">
+        <div className="text-xs text-slate-500 text-center">
           {t('register.no_account')}{' '}
-          <Link to="/register" className="underline hover:text-white transition-colors">
+          <Link
+            to="/register"
+            className="underline underline-offset-4 text-[#0b3c5d] hover:text-slate-900 transition-colors"
+          >
             {t('register.to_register')}
           </Link>
         </div>
 
-        <div className="flex items-center justify-center gap-4 text-xs text-[#64748b]">
-          <Link to="/privacy" className="hover:underline">{t('nav.privacy')}</Link>
-          <span className="opacity-40">•</span>
-          <Link to="/terms" className="hover:underline">{t('nav.terms')}</Link>
+        <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
+          <Link to="/privacy" className="hover:text-slate-900 transition-colors">
+            {t('nav.privacy')}
+          </Link>
+          <span className="opacity-30">•</span>
+          <Link to="/terms" className="hover:text-slate-900 transition-colors">
+            {t('nav.terms')}
+          </Link>
         </div>
       </div>
     </div>

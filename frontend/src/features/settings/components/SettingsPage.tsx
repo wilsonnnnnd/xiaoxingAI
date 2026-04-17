@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useI18n } from '../../../i18n/useI18n'
 import { Button } from '../../../components/common/Button'
 import { Select } from '../../../components/common/Select'
+import { Surface } from '../../../components/common/Surface'
+import { Badge } from '../../../components/common/Badge'
 import { useConfirmDiscard } from '../../../hooks/useConfirmDiscard'
 import { getConfig, saveConfig } from '../api'
 import { getMe, getUser, updateUser } from '../../users'
@@ -136,13 +138,9 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full p-4 sm:p-5 gap-6 min-w-0 max-w-5xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">{t('header.title.settings')}</h1>
-          <p className="text-sm text-[#64748b] mt-1">{t('header.subtitle.settings')}</p>
-        </div>
-        <div className="flex flex-col gap-1 items-end shrink-0">
+      <Surface title={t('header.title.settings')} eyebrow={t('nav.settings')} badge={t('header.subtitle.settings')}>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
+
           <Select
             label={t('label.notify_lang')}
             value={currentNotifyLang}
@@ -150,51 +148,42 @@ export const SettingsPage: React.FC = () => {
               const newLang = e.target.value as 'en' | 'zh'
               setValue('NOTIFY_LANG', newLang, { shouldDirty: true })
             }}
-            className="min-w-[120px]"
+            className="min-w-[160px]"
             options={[
               { label: 'English', value: 'en' },
               { label: '中文', value: 'zh' },
             ]}
           />
         </div>
-      </div>
 
-      <div className="flex flex-col gap-6">
-        <ConnectionTests />
-        <ChangePasswordCard />
+        <div className="mt-6 flex flex-col gap-6">
+          <ConnectionTests />
+          <ChangePasswordCard />
 
-        <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
-          {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
-          <GmailSettings control={control} />
+          <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
+            {isAdmin && <LLMSettings control={control} hasLlmKey={hasLlmKey} hasRouterKey={hasRouterKey} />}
+            <GmailSettings control={control} />
 
-          <div className="flex items-center gap-3 sticky bottom-0 py-4 bg-[#0f172a]/80 backdrop-blur-md border-t border-[#2d3748] -mx-4 px-4 sm:-mx-5 sm:px-5 z-10">
-            <Button
-              type="submit"
-              loading={isSubmitting}
-              disabled={!isDirty}
-              className="px-8 py-2.5"
-            >
-              {t('btn.save')}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              className="bg-[#334155] hover:bg-[#475569] px-6 py-2.5"
-              onClick={() => reset()}
-              disabled={!isDirty || isSubmitting}
-            >
-              {t('btn.reload')}
-            </Button>
-            {isDirty && (
-              <span className="text-xs text-[#fbbf24] ml-2 animate-pulse">
-                ● You have unsaved changes
-              </span>
-            )}
-          </div>
-        </form>
+            <div className="sticky bottom-0 -mx-5 px-5 sm:-mx-6 sm:px-6 py-4 bg-white/62 backdrop-blur-xl border-t border-white/60 z-10">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button type="submit" loading={isSubmitting} disabled={!isDirty} className="px-8 py-2.5">
+                  {t('btn.save')}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => reset()} disabled={!isDirty || isSubmitting} className="px-6 py-2.5">
+                  {t('btn.reload')}
+                </Button>
+                {isDirty && (
+                  <Badge variant="warning" className="py-2 px-3">
+                    {t('settings.unsaved')}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </form>
 
-        {myId && <BotSettings userId={myId} />}
-      </div>
+          {myId && <BotSettings userId={myId} />}
+        </div>
+      </Surface>
     </div>
   )
 }

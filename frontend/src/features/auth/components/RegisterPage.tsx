@@ -27,89 +27,114 @@ export const RegisterPage: React.FC = () => {
       localStorage.setItem('auth_token', data.access_token)
       navigate('/home', { replace: true })
     } catch {
-        /* TODO: show error message */
+      /* TODO: show error message */
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-[#1e2330] border border-[#2d3748] rounded-2xl p-8 flex flex-col gap-6 shadow-xl">
-        <div className="text-center">
-          <div className="text-3xl font-bold text-white tracking-tight">小星</div>
-          <div className="text-sm text-[#94a3b8] mt-2">{t('register.title')}</div>
-        </div>
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,252,255,0.96)_52%,rgba(246,249,253,0.95)_100%)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top,rgba(217,235,255,0.45),transparent_70%)]" />
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Select
-            label={t('register.notify_lang')}
-            value={notifyLang}
-            onChange={(e) => {
-              const v = e.target.value as 'en' | 'zh'
-              setNotifyLang(v)
-            }}
-            options={[
-              { label: 'English', value: 'en' },
-              { label: '中文', value: 'zh' },
-            ]}
-          />
-          <div className="text-[11px] text-[#64748b] -mt-3">{t('register.notify_lang_hint')}</div>
-          <InputField
-            label={t('register.email')}
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(v) => setEmail(v)}
-            required
-            disabled={busy}
-          />
-          <InputField
-            label={t('register.display_name')}
-            value={displayName}
-            onChange={(v) => setDisplayName(v)}
-            disabled={busy}
-          />
-          <InputField
-            label={t('register.password')}
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(v) => setPassword(v)}
-            required
-            disabled={busy}
-          />
-          <InputField
-            label={t('register.password2')}
-            type="password"
-            autoComplete="new-password"
-            value={password2}
-            onChange={(v) => setPassword2(v)}
-            required
-            disabled={busy}
-          />
+      <div className="relative w-full max-w-sm">
+        <div className="absolute inset-0 rounded-[30px] bg-white/30 blur-2xl" />
 
-          <Button
-            type="submit"
-            loading={busy}
-            disabled={!canSubmit}
-            className="w-full py-2.5 mt-2"
-          >
-            {t('register.btn')}
-          </Button>
+        <div className="relative overflow-hidden rounded-[30px] border border-white/80 bg-[rgba(255,255,255,0.84)] backdrop-blur-xl ring-1 ring-black/[0.03] shadow-[0_12px_40px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.85)]">
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(255,255,255,0.06)_48%,transparent)]" />
 
-          <div className="text-xs text-[#64748b] text-center">
-            {t('register.have_account')}{' '}
-            <Link to="/login" className="underline hover:text-white transition-colors">
-              {t('register.to_login')}
-            </Link>
+          <div className="relative flex flex-col gap-6 p-8">
+            <div className="text-center">
+              <div className="text-[29px] font-semibold tracking-[-0.04em] text-slate-900">小星</div>
+              <div className="mt-2 text-sm text-slate-500">{t('register.title')}</div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <Select
+                  label={t('register.notify_lang')}
+                  value={notifyLang}
+                  onChange={(e) => {
+                    const v = e.target.value as 'en' | 'zh'
+                    setNotifyLang(v)
+                  }}
+                  options={[
+                    { label: 'English', value: 'en' },
+                    { label: '中文', value: 'zh' },
+                  ]}
+                />
+                <div className="px-1 text-[11px] leading-5 text-slate-500">
+                  {t('register.notify_lang_hint')}
+                </div>
+              </div>
+
+              <InputField
+                label={t('register.email')}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(v) => setEmail(v)}
+                required
+                disabled={busy}
+              />
+
+              <InputField
+                label={t('register.display_name')}
+                value={displayName}
+                onChange={(v) => setDisplayName(v)}
+                disabled={busy}
+              />
+
+              <InputField
+                label={t('register.password')}
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(v) => setPassword(v)}
+                required
+                disabled={busy}
+              />
+
+              <InputField
+                label={t('register.password2')}
+                type="password"
+                autoComplete="new-password"
+                value={password2}
+                onChange={(v) => setPassword2(v)}
+                required
+                disabled={busy}
+              />
+
+              <Button
+                type="submit"
+                loading={busy}
+                disabled={!canSubmit}
+                className="w-full mt-2"
+              >
+                {t('register.btn')}
+              </Button>
+
+              <div className="text-center text-xs text-slate-500">
+                {t('register.have_account')}{' '}
+                <Link
+                  to="/login"
+                  className="underline underline-offset-4 text-[#0b3c5d] hover:text-slate-900 transition-colors"
+                >
+                  {t('register.to_login')}
+                </Link>
+              </div>
+            </form>
+
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
+              <Link to="/privacy" className="hover:text-slate-900 transition-colors">
+                {t('nav.privacy')}
+              </Link>
+              <span className="opacity-30">•</span>
+              <Link to="/terms" className="hover:text-slate-900 transition-colors">
+                {t('nav.terms')}
+              </Link>
+            </div>
           </div>
-        </form>
-
-        <div className="flex items-center justify-center gap-4 text-xs text-[#64748b]">
-          <Link to="/privacy" className="hover:underline">{t('nav.privacy')}</Link>
-          <span className="opacity-40">•</span>
-          <Link to="/terms" className="hover:underline">{t('nav.terms')}</Link>
         </div>
       </div>
     </div>

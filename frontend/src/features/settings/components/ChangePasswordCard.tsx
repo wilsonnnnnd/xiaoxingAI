@@ -15,8 +15,22 @@ export const ChangePasswordCard: React.FC = () => {
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
-  const pwCls = 'w-full bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 py-2 text-sm text-[#e2e8f0] outline-none focus:border-[#6366f1] transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-16'
-  const toggleCls = 'absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[#94a3b8] hover:text-[#e2e8f0] transition-colors'
+  const pwCls = [
+    'w-full rounded-xl px-3 py-2 pr-16 text-sm',
+    'bg-white/70 backdrop-blur-xl',
+    'border border-white/70 ring-1 ring-black/[0.03]',
+    'text-slate-900 placeholder:text-slate-400',
+    'shadow-[0_8px_22px_rgba(15,23,42,0.03)]',
+    'outline-none transition-all duration-200',
+    'focus:border-sky-200/70 focus:ring-2 focus:ring-sky-300/30',
+    'disabled:opacity-50 disabled:cursor-not-allowed',
+  ].join(' ')
+  const toggleCls = [
+    'absolute right-2 top-1/2 -translate-y-1/2',
+    'text-[11px] font-semibold',
+    'text-slate-500 hover:text-slate-900',
+    'transition-colors',
+  ].join(' ')
 
   const mut = useMutation({
     mutationFn: () => changePassword(oldPassword, newPassword),
@@ -40,7 +54,7 @@ export const ChangePasswordCard: React.FC = () => {
     <Card title={t('settings.password.title')}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1 w-full">
-          <label className="text-xs text-[#94a3b8]">{t('settings.password.old')}</label>
+          <label className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{t('settings.password.old')}</label>
           <div className="relative">
             <input className={pwCls} type={showOld ? 'text' : 'password'} value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
             <button type="button" className={toggleCls} onClick={() => setShowOld(v => !v)}>
@@ -50,7 +64,7 @@ export const ChangePasswordCard: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-1 w-full">
-          <label className="text-xs text-[#94a3b8]">{t('settings.password.new')}</label>
+          <label className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{t('settings.password.new')}</label>
           <div className="relative">
             <input className={pwCls} type={showNew ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             <button type="button" className={toggleCls} onClick={() => setShowNew(v => !v)}>
@@ -60,7 +74,7 @@ export const ChangePasswordCard: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-1 w-full">
-          <label className="text-xs text-[#94a3b8]">{t('settings.password.confirm')}</label>
+          <label className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{t('settings.password.confirm')}</label>
           <div className="relative">
             <input className={pwCls} type={showConfirm ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             <button type="button" className={toggleCls} onClick={() => setShowConfirm(v => !v)}>

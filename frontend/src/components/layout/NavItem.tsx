@@ -10,19 +10,29 @@ interface NavItemProps {
   onClick?: () => void
 }
 
-export const NavItem: React.FC<NavItemProps> = ({ to, translationKey, className = '', end, onClick }) => {
+export const NavItem: React.FC<NavItemProps> = ({
+  to,
+  translationKey,
+  className = '',
+  end,
+  onClick,
+}) => {
   const { t } = useI18n()
-  
+
   return (
     <NavLink
       to={to}
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#60a5fa] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] ${
-          isActive 
-            ? 'bg-[#071023] text-white font-semibold border-l-4 border-[#60a5fa] pl-3' 
-            : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'
+        `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out 
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+        ${
+          isActive
+            // ✅ 激活状态（浅蓝 + 深色字）
+            ? 'bg-[rgba(217,235,255,0.9)] text-[#0b3c5d] font-semibold border-l-4 border-sky-300 pl-3'
+            // ✅ 未激活（轻灰 + 轻 hover）
+            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
         } ${className}`
       }
     >

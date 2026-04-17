@@ -13,10 +13,17 @@ type Props = {
   closing: string
 }
 
-export const SignatureAndPreview: React.FC<Props> = ({ signature, t, templateText, closing }) => {
+export const SignatureAndPreview: React.FC<Props> = ({
+  signature,
+  t,
+  templateText,
+  closing,
+}) => {
   const qc = useQueryClient()
   const [signatureDraft, setSignatureDraft] = React.useState(signature)
-  const [previewContent, setPreviewContent] = React.useState(t('reply_format.sample_content'))
+  const [previewContent, setPreviewContent] = React.useState(
+    t('reply_format.sample_content')
+  )
 
   React.useEffect(() => {
     setSignatureDraft(signature)
@@ -31,48 +38,90 @@ export const SignatureAndPreview: React.FC<Props> = ({ signature, t, templateTex
   })
 
   const isSignatureDirty = signatureDraft !== signature
-  const previewText = applyPreview(templateText, previewContent, signatureDraft, closing)
+  const previewText = applyPreview(
+    templateText,
+    previewContent,
+    signatureDraft,
+    closing
+  )
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="bg-[#0b0e14] border border-[#2d3748] rounded-xl p-4">
-        <div className="text-sm font-semibold text-[#e2e8f0] mb-3">{t('reply_format.signature')}</div>
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="rounded-[24px] border border-white/80 bg-[rgba(255,255,255,0.72)] p-4 sm:p-5 backdrop-blur-2xl shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03]">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Signature
+            </div>
+            <h3 className="mt-1 text-base font-semibold tracking-[-0.02em] text-slate-900">
+              {t('reply_format.signature')}
+            </h3>
+          </div>
+
+          {isSignatureDirty && (
+            <div className="inline-flex items-center rounded-full border border-white/80 bg-[rgba(217,235,255,0.75)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#0b3c5d] ring-1 ring-black/[0.03]">
+              Unsaved
+            </div>
+          )}
+        </div>
+
         <InputField
           label=""
           multi
-          rows={5}
+          rows={6}
           value={signatureDraft}
           onChange={setSignatureDraft}
           placeholder={t('reply_format.signature_placeholder')}
-          className="font-mono text-xs leading-relaxed"
+          className="font-mono text-[12px] leading-6"
         />
-        <div className="flex items-center justify-between mt-3">
-          <div className="text-[11px] text-[#64748b]">{t('reply_format.signature_hint')}</div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="max-w-[75%] text-[12px] leading-5 text-slate-500">
+            {t('reply_format.signature_hint')}
+          </p>
+
           <Button
             onClick={() => saveSignature.mutate()}
             loading={saveSignature.isPending}
             disabled={!isSignatureDirty}
-            className="px-4 py-1 text-xs"
+            className="px-4"
           >
             {t('btn.save')}
           </Button>
         </div>
-      </div>
+      </section>
 
-      <div className="bg-[#0b0e14] border border-[#2d3748] rounded-xl p-4">
-        <div className="text-sm font-semibold text-[#e2e8f0] mb-3">{t('reply_format.preview')}</div>
+      <section className="rounded-[24px] border border-white/80 bg-[rgba(255,255,255,0.72)] p-4 sm:p-5 backdrop-blur-2xl shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.03]">
+        <div className="mb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Live Preview
+          </div>
+          <h3 className="mt-1 text-base font-semibold tracking-[-0.02em] text-slate-900">
+            {t('reply_format.preview')}
+          </h3>
+        </div>
+
         <InputField
           label={t('reply_format.preview_content')}
           multi
           rows={4}
           value={previewContent}
           onChange={setPreviewContent}
-          className="font-mono text-xs leading-relaxed"
+          className="font-mono text-[12px] leading-6"
         />
-        <div className="mt-3 rounded-lg border border-[#2d3748] bg-[#0b0e14] p-3 max-h-[160px] overflow-auto">
-          <pre className="whitespace-pre-wrap text-xs text-[#e2e8f0] font-mono leading-relaxed">{previewText}</pre>
+
+        <div className="mt-4 rounded-[20px] border border-white/80 bg-white/72 p-4 backdrop-blur-xl ring-1 ring-black/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Output
+          </div>
+
+          <div className="max-h-[220px] overflow-auto rounded-[16px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(250,252,255,0.9))] px-3.5 py-3">
+            <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-6 text-slate-700">
+              {previewText}
+            </pre>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
