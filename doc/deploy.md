@@ -59,8 +59,8 @@ Recommended path:
 These commands are for CentOS, Rocky Linux, or AlmaLinux:
 
 ```bash
-sudo yum update -y
-sudo yum install -y git nginx redis gcc curl
+sudo apt update -y
+sudo apt install -y git nginx redis gcc curl
 ```
 
 If Node.js 18+ and Python 3.11+ are not installed, install them first.
@@ -339,7 +339,7 @@ Before running Certbot, make sure these ports are open in your cloud security gr
 If port 443 is closed, this command may fail or HTTPS may not work correctly:
 
 ```bash
-sudo yum install -y certbot python3-certbot-nginx
+sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com -d www.your-domain.com
 ```
 

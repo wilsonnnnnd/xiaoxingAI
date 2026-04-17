@@ -86,6 +86,45 @@ export default function Home() {
                         )}
                     </div>
                 </div>
+
+                <div className="mt-10 text-left grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
+                        <div className="text-sm font-bold text-white">{t('home.about.brand_title')}</div>
+                        <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.about.brand_body')}</p>
+                        <div className="mt-3 text-xs text-[#64748b]">
+                            {t('home.about.hosted_on')} <span className="text-[#e2e8f0]">https://xiaoxingai.online</span>
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
+                        <div className="text-sm font-bold text-white">{t('home.about.features_title')}</div>
+                        <ul className="mt-2 text-sm text-[#94a3b8] leading-6 list-disc pl-5 space-y-1">
+                            <li>{t('home.about.features.gmail')}</li>
+                            <li>{t('home.about.features.telegram')}</li>
+                            <li>{t('home.about.features.outgoing')}</li>
+                        </ul>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#1f2a3a] bg-[#0b1220] p-5">
+                        <div className="text-sm font-bold text-white">{t('home.about.data_title')}</div>
+                        <p className="mt-2 text-sm text-[#94a3b8] leading-6">{t('home.about.data_body')}</p>
+                        <div className="mt-4 flex items-center gap-3 flex-wrap">
+                            <Link
+                                to="/privacy"
+                                className="px-3 py-2 rounded-lg bg-[#0b1220] border border-[#1f2a3a] hover:border-[#334155] text-[#e2e8f0] text-sm font-semibold transition-colors duration-200"
+                            >
+                                {t('home.about.privacy_link')}
+                            </Link>
+                            <Link
+                                to="/terms"
+                                className="px-3 py-2 rounded-lg bg-[#0b1220] border border-[#1f2a3a] hover:border-[#334155] text-[#e2e8f0] text-sm font-semibold transition-colors duration-200"
+                            >
+                                {t('home.about.terms_link')}
+                            </Link>
+                        </div>
+                        <div className="mt-3 text-xs text-[#64748b] leading-5">{t('home.about.no_login_note')}</div>
+                    </div>
+                </div>
             </div>
         </div>
     )

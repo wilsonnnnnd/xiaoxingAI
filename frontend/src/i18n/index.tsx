@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useI18nStore } from './store'
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const { setLang } = useI18nStore()
+  const { lang, setLang } = useI18nStore()
 
   // Sync backend config only as initial fallback (when user has no saved preference)
   useEffect(() => {
@@ -14,6 +14,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       .then(cfg => { if (cfg.UI_LANG === 'zh' || cfg.UI_LANG === 'en') setLang(cfg.UI_LANG) })
       .catch(() => {})
   }, [setLang])
+
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
 
   return <>{children}</>
 }

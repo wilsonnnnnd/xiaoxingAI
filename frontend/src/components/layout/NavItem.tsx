@@ -19,7 +19,7 @@ export const NavItem: React.FC<NavItemProps> = ({ to, translationKey, className 
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out ${
+        `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#60a5fa] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] ${
           isActive 
             ? 'bg-[#071023] text-white font-semibold border-l-4 border-[#60a5fa] pl-3' 
             : 'text-[#94a3b8] hover:bg-[#334155] hover:text-[#e2e8f0]'

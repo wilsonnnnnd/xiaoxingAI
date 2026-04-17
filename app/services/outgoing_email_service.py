@@ -106,7 +106,7 @@ class OutgoingEmailService:
 
         total_tokens = 0
         try:
-            content, t = call_llm(prompt, max_tokens=800)
+            content, t = call_llm(prompt, max_tokens=800, use_cache=False)
             total_tokens += int(t or 0)
             data = extract_json_from_llm(content)
         except Exception as e:
