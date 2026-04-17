@@ -15,7 +15,7 @@ export interface LegalDoc {
 export const legalHostDomain = 'https://xiaoxingai.online'
 export const legalPolicyVersion = '2026-04-17'
 const effectiveDate = '2026-04-17'
-const contactEmail = 'wilson.ding.wm@gmail.com'
+const contactEmail = 'weimengding@gmail.com'
 
 export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
   if (lang === 'zh') {
@@ -27,6 +27,7 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
           title: '1. 概述',
           paragraphs: [
             `本隐私政策适用于小星 AI（“我们”）在 ${legalHostDomain} 上提供的网页应用与相关服务（“服务”）。`,
+            '小星 AI 由 Weimeng Ding 开发与维护。',
             '我们不会出售你的个人信息。',
           ],
         },
@@ -115,6 +116,7 @@ export function getPrivacyPolicy(lang: LegalLang): LegalDoc {
         title: '1. Overview',
         paragraphs: [
           `This Privacy Policy applies to Xiaoxing AI ("we", "us", "our") provided on ${legalHostDomain} (the "Service").`,
+          'Xiaoxing AI is developed and maintained by Weimeng Ding.',
           'We do not sell your personal data.',
         ],
       },
@@ -205,6 +207,7 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
           title: '1. 条款适用',
           paragraphs: [
             '本服务条款（“条款”）适用于你对小星 AI 的访问与使用。使用本服务即表示你同意本条款。',
+            '小星 AI 由 Weimeng Ding 开发与维护。',
           ],
         },
         {
@@ -274,6 +277,7 @@ export function getTermsOfService(lang: LegalLang): LegalDoc {
         title: '1. Agreement',
         paragraphs: [
           'These Terms of Service ("Terms") govern your access to and use of Xiaoxing AI (the "Service"). By using the Service, you agree to these Terms.',
+          'Xiaoxing AI is developed and maintained by Weimeng Ding.',
         ],
       },
       {
