@@ -32,7 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ me, className = 'w-60 shrink-0
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token')
-    window.location.href = '/login'
+    window.location.href = '/home'
   }
 
   return (

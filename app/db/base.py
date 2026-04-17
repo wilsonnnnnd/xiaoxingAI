@@ -325,18 +325,31 @@ def _migrate_prompts_split() -> None:
 
 def _init_system_prompts() -> None:
     with _cur() as cur:
-        cur.execute("SELECT COUNT(*) FROM system_prompts WHERE type != 'persona_config'")
-        if cur.fetchone()[0] > 0:
-            return
-
         for name, ptype, rel_path in _SYSTEM_PROMPTS:
             fpath = _PROMPTS_DIR / rel_path
             if not fpath.exists():
                 continue
             content = fpath.read_text(encoding="utf-8")
             cur.execute(
-                "INSERT INTO system_prompts (name, type, content, is_default)"
-                " VALUES (%s, %s, %s, TRUE)"
-                " ON CONFLICT DO NOTHING",
-                (name, ptype, content),
+                "SELECT id FROM system_prompts WHERE type = %s ORDER BY id ASC",
+                (ptype,),
+            )
+            rows = cur.fetchall()
+            if not rows:
+                cur.execute(
+                    "INSERT INTO system_prompts (name, type, content, is_default)"
+                    " VALUES (%s, %s, %s, TRUE)",
+                    (name, ptype, content),
+                )
+                continue
+
+            keep_id = rows[0][0]
+            cur.execute(
+                "DELETE FROM system_prompts WHERE type = %s AND id <> %s",
+                (ptype, keep_id),
+            )
+            cur.execute(
+                "UPDATE system_prompts SET name = %s, content = %s, is_default = TRUE, updated_at = NOW()"
+                " WHERE id = %s",
+                (name, content, keep_id),
             )

@@ -119,7 +119,7 @@ def set_default_bot(bot_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         cur.execute(
             """UPDATE bot SET is_default = TRUE, updated_at = NOW()
                WHERE id = %s AND user_id = %s
-               RETURNING id, user_id, name, token, chat_id, is_default, chat_prompt_id, bot_mode,
+               RETURNING id, user_id, name, token, chat_id, is_default, bot_mode,
                          created_at, updated_at""",
             (bot_id, user_id),
         )

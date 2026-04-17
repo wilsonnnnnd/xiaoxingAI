@@ -140,7 +140,7 @@ def reply_email(message: str, user_id: int | None = None) -> str:
     )
 
     try:
-        tpl = load_prompt("outgoing/email_reply_compose.txt")
+        tpl = load_prompt("outgoing/email_reply_compose.txt", user_id=int(user_id))
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=f"提示词模板缺失: {e}")
 
@@ -396,7 +396,7 @@ def outgoing_draft_modify(message: str, user_id: int | None = None) -> str:
         draft_id=int(draft_id),
     )
     body_plain_core = strip_reply_footer(content=body_plain, signature=signature, closing=closing)
-    tpl = load_prompt("outgoing/email_edit.txt")
+    tpl = load_prompt("outgoing/email_edit.txt", user_id=int(user_id))
     prompt = (tpl
         .replace("{{to_email}}", str(draft.get("to_email") or ""))
         .replace("{{subject}}", str(draft.get("subject") or ""))

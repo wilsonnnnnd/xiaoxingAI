@@ -91,7 +91,7 @@ class OutgoingEmailService:
             }
 
         try:
-            tpl = load_prompt("outgoing/email_compose.txt")
+            tpl = load_prompt("outgoing/email_compose.txt", user_id=int(user["id"]))
         except FileNotFoundError as e:
             raise HTTPException(status_code=500, detail=f"提示词模板缺失: {e}")
 
