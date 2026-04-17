@@ -1,5 +1,5 @@
 import json as _json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 from ..session import _cur
 
 def is_email_processed(email_id: str, user_id: Optional[int] = None) -> bool:
@@ -16,6 +16,24 @@ def is_email_processed(email_id: str, user_id: Optional[int] = None) -> bool:
                 (email_id,),
             )
         return cur.fetchone() is not None
+
+
+def get_processed_email_ids(email_ids: Iterable[str], user_id: Optional[int] = None) -> Set[str]:
+    ids = [str(x) for x in email_ids if str(x)]
+    if not ids:
+        return set()
+    with _cur() as cur:
+        if user_id is not None:
+            cur.execute(
+                "SELECT email_id FROM email_records WHERE user_id = %s AND email_id = ANY(%s)",
+                (user_id, ids),
+            )
+        else:
+            cur.execute(
+                "SELECT email_id FROM email_records WHERE email_id = ANY(%s)",
+                (ids,),
+            )
+        return {str(r[0]) for r in cur.fetchall()}
 
 def save_email_record(
     email_id: str,

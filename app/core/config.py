@@ -28,6 +28,10 @@ GMAIL_POLL_QUERY:    str  = _get("GMAIL_POLL_QUERY", "is:unread in:inbox categor
 GMAIL_POLL_MAX:      int  = int(_get("GMAIL_POLL_MAX", "5"))
 GMAIL_MARK_READ:     bool = _get("GMAIL_MARK_READ", "true").lower() == "true"
 AUTO_START_GMAIL_WORKER: bool = _get("AUTO_START_GMAIL_WORKER", "false").lower() == "true"
+GMAIL_WORKER_IO_CONCURRENCY: int = int(_get("GMAIL_WORKER_IO_CONCURRENCY", "8"))
+GMAIL_WORKER_IO_MAX_WORKERS: int = int(_get("GMAIL_WORKER_IO_MAX_WORKERS", "12"))
+GMAIL_WORKER_START_JITTER_MAX: int = int(_get("GMAIL_WORKER_START_JITTER_MAX", "15"))
+GMAIL_WORKER_START_BUCKETS: int = int(_get("GMAIL_WORKER_START_BUCKETS", "12"))
 
 # 优先级过滤（空列表 = 全部通知）
 _priority_raw = _get("NOTIFY_MIN_PRIORITY", "")

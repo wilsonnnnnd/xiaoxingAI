@@ -7,8 +7,12 @@ Gmail 邮件轮询 Worker — 多账号版本
 import asyncio
 import dataclasses
 import logging
+import random
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 from app.core import ws as ws_pub
 
 from app.core import config
@@ -21,6 +25,15 @@ from app.core import redis_client as rc
 from app.skills.gmail import telegram_updates
 
 logger = logging.getLogger("worker")
+
+_io_executor = ThreadPoolExecutor(max_workers=max(4, int(getattr(config, "GMAIL_WORKER_IO_MAX_WORKERS", 12))))
+_io_semaphore = asyncio.Semaphore(max(1, int(getattr(config, "GMAIL_WORKER_IO_CONCURRENCY", 8))))
+
+
+async def _run_io(fn, /, *args, **kwargs):
+    async with _io_semaphore:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_io_executor, partial(fn, *args, **kwargs))
 
 
 # ── 每用户运行状态 ─────────────────────────────────────────────────
@@ -91,7 +104,7 @@ async def _process_with_retry(email: dict, max_retries: int = 3,
     for attempt in range(max_retries):
         try:
             _wlog(f"🔍 分析邮件：{subj}", user_id=user_id)
-            result = await asyncio.to_thread(
+            result = await _run_io(
                 process_email,
                 email.get("subject", ""),
                 email.get("body", ""),
@@ -119,7 +132,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
     user_id = state.user_id
 
     # 读取用户配置（DB 中的 per-user 设置）
-    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
+    user_row = await _run_io(db.get_user_by_id, user_id)
     if not user_row:
         return
 
@@ -129,7 +142,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
     mark_read     = config.GMAIL_MARK_READ
 
     # 获取该用户的 Gmail 通知 Bot（mode='all' 或 'notify'）
-    notify_bots = await asyncio.to_thread(db.get_notify_bots, user_id)
+    notify_bots = await _run_io(db.get_notify_bots, user_id)
 
     async with state.get_lock():
         state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
@@ -139,7 +152,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
             user_id=user_id,
         )
         try:
-            emails = await asyncio.to_thread(
+            emails = await _run_io(
                 fetch_emails, poll_query, max_emails, user_id
             )
         except Exception as e:
@@ -148,11 +161,9 @@ async def _poll_once(state: _UserWorkerState) -> None:
             state.stats["last_error"] = str(e)
             return
 
-        processed = await asyncio.gather(*[
-            asyncio.to_thread(db.is_email_processed, e["id"], user_id)
-            for e in emails
-        ])
-        new_emails = [e for e, is_done in zip(emails, processed) if not is_done]
+        email_ids = [str(e.get("id") or "") for e in emails if str(e.get("id") or "")]
+        done_ids = await _run_io(db.get_processed_email_ids, email_ids, user_id)
+        new_emails = [e for e in emails if str(e.get("id") or "") and str(e.get("id") or "") not in done_ids]
         skipped_dup = len(emails) - len(new_emails)
         state.stats["total_fetched"] += len(new_emails)
         _wlog(
@@ -186,7 +197,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 if notify_priorities and priority not in notify_priorities:
                     _wlog(f"⏭️ 跳过低优先级 [{priority}]：{subj}",
                           level="warn", user_id=user_id)
-                    await asyncio.to_thread(
+                    await _run_io(
                         db.save_email_record,
                         email_id=email["id"], subject=subj,
                         sender=email.get("from", ""), date=email.get("date", ""),
@@ -206,7 +217,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 else:
                     _wlog(f"✈️ 发送 Telegram：{subj}", user_id=user_id)
                     for n_bot in notify_bots:
-                        resp = await asyncio.to_thread(
+                        resp = await _run_io(
                             send_message,
                             result["telegram_message"],
                             n_bot["chat_id"],
@@ -241,7 +252,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                     _wlog(f"✅ 已发送：{subj}",
                           tokens=result.get("tokens", 0), user_id=user_id)
 
-                await asyncio.to_thread(
+                await _run_io(
                     db.save_email_record,
                     email_id=email["id"], subject=subj,
                     sender=email.get("from", ""), date=email.get("date", ""),
@@ -255,7 +266,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
 
                 if mark_read:
                     try:
-                        await asyncio.to_thread(mark_as_read, email["id"], user_id)
+                        await _run_io(mark_as_read, email["id"], user_id)
                         _wlog(f"📌 已标记已读：{subj}", user_id=user_id)
                     except Exception as mark_err:
                         _wlog(f"⚠️ 标记已读失败 [{subj}]: {mark_err}",
@@ -267,7 +278,7 @@ async def _poll_once(state: _UserWorkerState) -> None:
                 _wlog(f"❌ 处理失败 [{subj}]: {e}",
                       level="error", user_id=user_id)
 
-        await asyncio.to_thread(db.cleanup_old_logs)
+        await _run_io(db.cleanup_old_logs)
         try:
             ws_pub.publish_worker_status(get_status())
         except Exception:
@@ -278,8 +289,21 @@ async def _poll_once(state: _UserWorkerState) -> None:
 
 async def _user_loop(state: _UserWorkerState) -> None:
     user_id = state.user_id
-    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
+    user_row = await _run_io(db.get_user_by_id, user_id)
     poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
+
+    jitter_max = int(getattr(config, "GMAIL_WORKER_START_JITTER_MAX", 0) or 0)
+    buckets = int(getattr(config, "GMAIL_WORKER_START_BUCKETS", 0) or 0)
+    delay_window = max(0, min(int(poll_interval or 0), jitter_max)) if jitter_max > 0 else 0
+    if delay_window > 0:
+        bucket_count = max(1, min(delay_window, buckets if buckets > 0 else 12))
+        bucket_span = delay_window / bucket_count
+        bucket_idx = int(user_id) % bucket_count
+        ordinal = datetime.now().date().toordinal()
+        rng = random.Random((int(user_id) << 16) ^ ordinal)
+        delay = min(delay_window, (bucket_idx * bucket_span) + (rng.random() * bucket_span))
+        if delay > 0:
+            await asyncio.sleep(delay)
 
     _wlog(f"🚀 Worker 已启动，轮询间隔 {poll_interval}s", user_id=user_id)
     while state.running:
@@ -290,7 +314,7 @@ async def _user_loop(state: _UserWorkerState) -> None:
             _wlog(f"❌ 轮询异常: {e}", level="error", user_id=user_id)
             logger.error(f"[worker] user#{user_id} 轮询异常: {e}", exc_info=True)
         # 重新读取 poll_interval（可能被热更新）
-        user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
+        user_row = await _run_io(db.get_user_by_id, user_id)
         poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
         for _ in range(poll_interval):
             if not state.running:
@@ -324,7 +348,7 @@ def _start_user_worker(user_id: int) -> bool:
 
 async def start(allow_empty: bool = False) -> bool:
     """启动所有 worker_enabled 用户的轮询 Worker。"""
-    users = await asyncio.to_thread(db.list_worker_enabled_users)
+    users = await _run_io(db.list_worker_enabled_users)
     if not users:
         if allow_empty:
             try:
@@ -352,7 +376,7 @@ async def start(allow_empty: bool = False) -> bool:
 
 async def ensure_user_running(user_id: int) -> bool:
     """确保指定 user 的轮询 Task 处于运行状态。"""
-    user_row = await asyncio.to_thread(db.get_user_by_id, user_id)
+    user_row = await _run_io(db.get_user_by_id, user_id)
     if not user_row:
         return False
     if not user_row.get("worker_enabled"):
@@ -444,6 +468,13 @@ async def shutdown() -> None:
             await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
+    try:
+        _io_executor.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        try:
+            _io_executor.shutdown(wait=False)
+        except Exception:
+            pass
 
 
 def get_status() -> Dict[str, Any]:
@@ -504,7 +535,7 @@ def get_status() -> Dict[str, Any]:
 
 async def poll_now() -> Dict[str, Any]:
     """立即触发一次全用户轮询（不受调度间隔限制）。"""
-    users = db.list_worker_enabled_users()
+    users = await _run_io(db.list_worker_enabled_users)
     if not users:
         raise RuntimeError("当前无 worker_enabled=True 的用户")
 

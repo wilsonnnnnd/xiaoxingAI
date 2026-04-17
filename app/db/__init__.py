@@ -37,7 +37,7 @@ from .repositories.log_repo import (
 # Email
 from .repositories.email_repo import (
     save_email_record, get_email_records, get_email_record,
-    count_email_records, is_email_processed
+    count_email_records, is_email_processed, get_processed_email_ids
 )
 
 # Stats
