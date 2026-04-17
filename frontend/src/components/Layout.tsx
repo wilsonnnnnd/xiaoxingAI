@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getMe, updateUser } from '../features/users/api'
+import { getMe } from '../features/users/api'
 import { Sidebar } from './layout/Sidebar'
 import { useI18n } from '../i18n/useI18n'
 import { legalPolicyVersion } from '../pages/legalContent'
@@ -35,25 +35,31 @@ export default function Layout() {
   })
 
   useEffect(() => {
-    const serverLang =
-      me?.ui_lang === 'zh' || me?.ui_lang === 'en' ? me.ui_lang : null
-
-    if (serverLang && serverLang !== lang) {
-      setLang(serverLang)
-    }
-  }, [me, lang, setLang])
-
-  useEffect(() => {
-    const serverLang =
-      me?.ui_lang === 'zh' || me?.ui_lang === 'en' ? me.ui_lang : null
     const id = me?.id
-
     if (!id || !token) return
-    if (serverLang && serverLang === lang) return
-    if (lang !== 'en' && lang !== 'zh') return
 
-    updateUser(Number(id), { ui_lang: lang }).catch(() => {})
-  }, [me, lang, token])
+    const serverLang =
+      me?.ui_lang === 'zh' || me?.ui_lang === 'en' ? me.ui_lang : null
+
+    const k = 'ui_lang_synced_user_id'
+    let last = ''
+    try {
+      last = localStorage.getItem(k) ?? ''
+    } catch {
+      last = ''
+    }
+
+    if (last !== String(id)) {
+      if (serverLang && serverLang !== lang) {
+        setLang(serverLang)
+      }
+      try {
+        localStorage.setItem(k, String(id))
+      } catch {
+        // ignore error
+      }
+    }
+  }, [me, lang, setLang, token])
 
   useEffect(() => {
     if (!sidebarOpen) return

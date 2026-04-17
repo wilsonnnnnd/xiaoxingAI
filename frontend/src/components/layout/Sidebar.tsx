@@ -232,7 +232,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="mt-3">
-            <LanguageToggle />
+            <LanguageToggle userId={me?.id} />
           </div>
 
           {isAuthed ? (
