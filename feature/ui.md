@@ -2,7 +2,7 @@
 
 ## Overview
 
-Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite + Tailwind CSS). In production mode the frontend is served directly by the FastAPI backend.
+Xiaoxing ships a light, minimal single-page application (React + TypeScript + Vite + Tailwind CSS). In production mode the frontend is served directly by the FastAPI backend.
 
 ## Pages
 
@@ -12,6 +12,7 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 | `/home` | Home / Dashboard | System overview, quick-start checklist |
 | `/skill` | Skills Hub | Entry point for skills (currently Gmail) |
 | `/skill/gmail` | Gmail | Worker control, live email log, per-user settings |
+| `/ui-demo` | UI Demo | Light theme design demo (shared components showcase) |
 | `/prompts` | Prompt Editor | View and edit prompt files (admin + limited non-admin view) |
 | `/settings` | Settings | Google OAuth, bot configuration, environment variables |
 | `/settings/reply-format` | Reply Format | Configure per-user reply templates and signature |
@@ -22,8 +23,8 @@ Xiaoxing ships a dark-themed single-page application (React + TypeScript + Vite 
 ## Internationalisation (i18n)
 
 - English and Chinese supported
-- Language switcher in the top navigation bar
-- Preference stored via **Zustand** (persists across page reloads)
+- Language switcher in the Sidebar
+- UI language is stored in local storage, and is saved to the server when the user manually switches
 - Translation keys in `frontend/src/i18n/en.ts` and `zh.ts`
 
 ## Mobile Support
@@ -35,6 +36,11 @@ See:
 
 - `frontend/src/components/Layout.tsx`
 - `frontend/src/components/layout/Sidebar.tsx`
+
+## UI Docs
+
+- Design system: [doc/ui-design.md](../doc/ui-design.md)
+- Frontend engineering guide: [doc/ui-guide.md](../doc/ui-guide.md)
 
 ## Development Mode
 

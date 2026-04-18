@@ -2,7 +2,7 @@
 
 ## 概述
 
-Xiaoxing 提供深色主题单页应用（React + TypeScript + Vite + Tailwind CSS）。生产模式下前端静态文件由 FastAPI 后端直接托管。
+Xiaoxing 提供浅色极简单页应用（React + TypeScript + Vite + Tailwind CSS）。生产模式下前端静态文件由 FastAPI 后端直接托管。
 
 ## 页面结构
 
@@ -12,6 +12,7 @@ Xiaoxing 提供深色主题单页应用（React + TypeScript + Vite + Tailwind C
 | `/home` | 首页 / 仪表盘 | 系统概览，快速启动检查清单 |
 | `/skill` | 技能中心 | 技能入口页（当前为 Gmail） |
 | `/skill/gmail` | Gmail | Worker 控制、实时邮件日志、用户配置 |
+| `/ui-demo` | UI 示例 | 浅色设计示例页（通用组件展示） |
 | `/prompts` | Prompt 编辑器 | 查看和编辑 Prompt 文件（管理员 + 普通用户受限视图） |
 | `/settings` | 设置 | Google OAuth 授权、Bot 配置、环境变量 |
 | `/settings/reply-format` | 回复格式 | 配置每用户回复模板与署名 |
@@ -22,8 +23,8 @@ Xiaoxing 提供深色主题单页应用（React + TypeScript + Vite + Tailwind C
 ## 国际化（i18n）
 
 - 支持中文和英文
-- 顶部导航栏提供语言切换按钮
-- 偏好通过 **Zustand** 持久化（刷新后保留）
+- Sidebar 提供语言切换按钮
+- 语言偏好本地持久化，用户手动切换时会保存到服务器
 - 翻译键位于 `frontend/src/i18n/en.ts` 和 `zh.ts`
 
 ## 移动端适配
@@ -35,6 +36,11 @@ Xiaoxing 提供深色主题单页应用（React + TypeScript + Vite + Tailwind C
 
 - `frontend/src/components/Layout.tsx`
 - `frontend/src/components/layout/Sidebar.tsx`
+
+## UI 文档
+
+- UI 设计规范（浅色极简）：[doc/ui-design.md](../../doc/ui-design.md)
+- 前端工程指南： [doc/ui-guide.md](../../doc/ui-guide.md)
 
 ## 开发模式
 

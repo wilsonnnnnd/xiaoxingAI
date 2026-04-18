@@ -20,12 +20,18 @@
 
 | 功能 | 简介 |
 |------|------|
-|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，3 阶段 AI 流水线（分类→摘要→推送），支持优先级过滤和去重 |
+|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，2 阶段 AI 流水线（分类→摘要）+ 确定性 Telegram 渲染，支持优先级过滤和去重 |
 |[Telegram 集成](feature/zh/telegram.md) | 邮件推送通知、发信草稿的确认/取消回调按钮、用户绑定 Bot |
 |[工具系统](feature/zh/tool-system.md) | 工具注册表 + Router LLM 调度（不可用时关键词降级）；包含发信草稿相关工具 |
 |[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
 |[Prompt 管理](feature/zh/prompts.md) | 内置 Prompt + 每用户覆盖；管理员可在网页端管理所有 Prompt 文件 |
-|[Web 界面](feature/zh/ui.md) | 深色主题 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语；移动端友好 |
+|[Web 界面](feature/zh/ui.md) | 浅色极简 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语；移动端友好 |
+
+文档索引：
+
+- UI 设计规范（浅色极简）：[doc/ui-design.md](doc/ui-design.md)
+- 前端工程指南： [doc/ui-guide.md](doc/ui-guide.md)
+- Worker 运行逻辑： [doc/worker-runtime.md](doc/worker-runtime.md)
 
 ---
 
@@ -102,6 +108,10 @@ copy .env.example .env        # Windows
 | `GMAIL_POLL_MAX` | 每次最多处理邮件数（默认 5） |
 | `GMAIL_MARK_READ` | 处理后是否标记已读（true/false） |
 | `AUTO_START_GMAIL_WORKER` | 启动服务时自动启动轮询（默认 false） |
+| `GMAIL_WORKER_IO_CONCURRENCY` | Worker IO 并发上限（默认 8） |
+| `GMAIL_WORKER_IO_MAX_WORKERS` | Worker 专用线程池大小（默认 12） |
+| `GMAIL_WORKER_START_JITTER_MAX` | 首轮错峰最大秒数（默认 15） |
+| `GMAIL_WORKER_START_BUCKETS` | 首轮错峰分桶数量（默认 12） |
 | `NOTIFY_MIN_PRIORITY` | 推送优先级过滤，逗号分隔；留空则推送全部 |
 | `LLM_BACKEND` | local 或 openai（默认 local） |
 | `LLM_API_URL` | LLM API 地址 |
