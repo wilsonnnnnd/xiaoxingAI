@@ -51,6 +51,19 @@ Each user owns:
 - User passwords set by admin in the User Management page
 - No password reset flow — admin resets directly from UI
 
+## Registration (Invite Only)
+
+By default, public registration is disabled.
+
+- Admin generates one-time invite codes from **User Management** (`/users`)
+- Users must provide `invite_code` when calling `POST /auth/register`
+- Each invite has expiry and can be revoked; usage is audited (used_email / used_ip / used_at)
+
+`.env` switches:
+
+- `ALLOW_PUBLIC_REGISTER=true` enables public registration (not recommended for small/private deployments)
+- `REGISTER_INVITE_CODE` (optional): a “master invite code” in `.env`. If set, this code can be used without consuming a DB invite. Recommended: leave empty and use per-invite codes for auditability.
+
 ## Token Revocation
 
 Changing a password or logging out increments the token version in Redis. All previously issued tokens for that user become immediately invalid.

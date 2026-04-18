@@ -2,7 +2,7 @@
 
 ## Overview
 
-Each registered user runs an independent Gmail polling worker. When new emails arrive they pass through a 3-stage AI pipeline and are pushed to Telegram.
+Each registered user runs an independent Gmail polling worker. When new emails arrive they pass through a 2-stage AI pipeline and are pushed to Telegram using deterministic rendering (no extra LLM call).
 
 ```
 Gmail (OAuth2) → AI Analysis → Telegram Push
@@ -19,13 +19,13 @@ Gmail (OAuth2) → AI Analysis → Telegram Push
 
 ### 2. AI Analysis Pipeline
 
-Each email is passed through 3 LLM calls:
+Each email is processed as:
 
-| Step | Prompt | Output |
-|------|--------|--------|
-| 1. Classify | `email_analysis.txt` | Priority (urgent/normal/low) + category |
-| 2. Summarise | `email_summary.txt` | Short summary (2–4 sentences) |
-| 3. Telegram message | `telegram_notify.txt` | HTML-formatted Telegram notification |
+| Step | Prompt / Code | Output |
+|------|---------------|--------|
+| 1. Classify | `app/prompts/gmail/email_analysis.txt` | category + priority + one-line English summary + action_needed |
+| 2. Summarise | `app/prompts/gmail/email_summary.txt` | structured English summary + key_points |
+| 3. Telegram notify | `app/skills/gmail/telegram_format.py` | HTML-formatted Telegram message (deterministic, tokens=0) |
 
 Tool routing for Telegram chat is a separate subsystem (see Tool System) and is not part of the per-email pipeline.
 
@@ -42,6 +42,8 @@ Configuration: Settings → Gmail → Minimum Priority
 - Processed email IDs stored per `(user_id, email_id)` in `email_records` table
 - Every processed email (body, analysis, summary, Telegram message, token count) is persisted
 
+Dedup check is done in batch to reduce DB load (fetch processed email IDs for the current poll in one query).
+
 ## Configuration
 
 | `.env` variable | Default | Description |
@@ -51,8 +53,16 @@ Configuration: Settings → Gmail → Minimum Priority
 | `GMAIL_POLL_MAX` | `5` | Max emails per poll cycle |
 | `GMAIL_MARK_READ` | `true` | Mark processed emails as read |
 | `NOTIFY_MIN_PRIORITY` | _(empty)_ | Comma-separated priorities to notify; empty = all |
+| `GMAIL_WORKER_IO_CONCURRENCY` | `8` | Worker IO concurrency limit |
+| `GMAIL_WORKER_IO_MAX_WORKERS` | `12` | Worker dedicated thread pool size |
+| `GMAIL_WORKER_START_JITTER_MAX` | `15` | First-run jitter window seconds |
+| `GMAIL_WORKER_START_BUCKETS` | `12` | First-run jitter buckets |
 
 Per-user overrides are available in the Settings page.
+
+See also:
+
+- [Worker runtime model →](../doc/worker-runtime.md)
 
 ---
 

@@ -20,12 +20,18 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 
 | Feature | Description |
 |---------|-------------|
-|[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 3-stage AI pipeline (classify → summarise → push); priority filter and deduplication |
+|[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 2-stage AI pipeline (classify → summarise) + deterministic Telegram rendering; priority filter and deduplication |
 |[Telegram](feature/telegram.md) | Email notifications, interactive callback buttons for outgoing draft confirmation, and per-user bot binding |
 |[Tool System](feature/tool-system.md) | Tool registry + Router LLM dispatch with keyword fallback; includes outgoing reply draft tools |
 |[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
 |[Prompt Editor](feature/prompts.md) | Built-in + per-user prompt overrides; admin can manage all prompt files from the web UI |
-|[Web UI](feature/ui.md) | Dark SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n; mobile-friendly layout |
+|[Web UI](feature/ui.md) | Light minimal SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n; mobile-friendly layout |
+
+Docs:
+
+- UI design system: [doc/ui-design.md](doc/ui-design.md)
+- Frontend engineering guide: [doc/ui-guide.md](doc/ui-guide.md)
+- Worker runtime model: [doc/worker-runtime.md](doc/worker-runtime.md)
 
 ---
 
@@ -102,7 +108,14 @@ Edit `.env`:
 | `GMAIL_POLL_MAX` | Max emails per run (default: 5) |
 | `GMAIL_MARK_READ` | Mark as read after processing (true/false) |
 | `AUTO_START_GMAIL_WORKER` | Auto-start polling worker on server startup (true/false, default: false) |
+| `GMAIL_WORKER_IO_CONCURRENCY` | Worker IO concurrency limit (default: 8) |
+| `GMAIL_WORKER_IO_MAX_WORKERS` | Worker dedicated thread pool size (default: 12) |
+| `GMAIL_WORKER_START_JITTER_MAX` | First-run start jitter window seconds (default: 15) |
+| `GMAIL_WORKER_START_BUCKETS` | First-run jitter buckets (default: 12) |
 | `NOTIFY_MIN_PRIORITY` | Comma-separated priorities to notify; leave empty for all |
+| `ALLOW_PUBLIC_REGISTER` | Allow public registration (default: false) |
+| `REGISTER_INVITE_CODE` | Optional “master” invite code in .env. If set, it can be used to register without consuming a DB invite (recommended: leave empty and use per-code invites) |
+| `REGISTER_EMAIL_ALLOWLIST` | Optional allowlist of email domains (comma-separated), e.g. `gmail.com,company.com` |
 | `LLM_BACKEND` | local or openai (default: local) |
 | `LLM_API_URL` | LLM endpoint URL |
 | `LLM_MODEL` | Model name |

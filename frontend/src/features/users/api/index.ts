@@ -1,5 +1,5 @@
 import { api } from '../../../api/client'
-import type { User, Bot } from '../../../types'
+import type { User, Bot, RegisterInvite } from '../../../types'
 export { getMe } from '../../auth/api'
 export const testTelegram = () => api.post('/telegram/test').then(r => r.data)
 export const getTelegramChatId = (token: string) =>
@@ -30,3 +30,12 @@ export const deleteBot = (userId: number, botId: number) =>
 
 export const setDefaultBot = (userId: number, botId: number) =>
   api.post(`/users/${userId}/bots/${botId}/set-default`).then(r => r.data)
+
+export const listInvites = () =>
+  api.get<{ invites: RegisterInvite[] }>('/invites').then(r => r.data.invites)
+
+export const createInvite = (data: { ttl_seconds?: number; note?: string }) =>
+  api.post<RegisterInvite>('/invites', data).then(r => r.data)
+
+export const revokeInvite = (code: string) =>
+  api.post(`/invites/${encodeURIComponent(code)}/revoke`).then(r => r.data)
