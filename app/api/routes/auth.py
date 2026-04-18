@@ -54,10 +54,17 @@ def auth_register(payload: RegisterRequest, request: Request):
     if payload.website and str(payload.website).strip():
         raise HTTPException(status_code=400, detail="注册信息不合法")
 
+    invite_code = (payload.invite_code or "").strip()
+    invite_consumed = False
     if not app_config.ALLOW_PUBLIC_REGISTER:
-        invite = (payload.invite_code or "").strip()
-        if not app_config.REGISTER_INVITE_CODE or invite != app_config.REGISTER_INVITE_CODE:
-            raise HTTPException(status_code=403, detail="当前禁止公开注册，请联系管理员")
+        if not invite_code:
+            raise HTTPException(status_code=403, detail="注册需要邀请码")
+        if app_config.REGISTER_INVITE_CODE and invite_code == app_config.REGISTER_INVITE_CODE:
+            invite_consumed = False
+        else:
+            invite_consumed = bool(db.consume_register_invite(invite_code, email, ip))
+            if not invite_consumed:
+                raise HTTPException(status_code=403, detail="邀请码无效或已过期")
 
     allowlist = {x.strip().lower() for x in (app_config.REGISTER_EMAIL_ALLOWLIST or "").split(",") if x.strip()}
     if allowlist:
@@ -75,14 +82,28 @@ def auth_register(payload: RegisterRequest, request: Request):
     if db.get_user_by_email(email):
         raise HTTPException(status_code=409, detail="该邮箱已被注册")
 
-    new_user = db.create_user(
-        email=email,
-        display_name=(payload.display_name or "").strip() or None,
-        role="user",
-        password_hash=auth_mod.hash_password(payload.password),
-        ui_lang=((payload.ui_lang or "").strip().lower() in {"zh", "en"} and (payload.ui_lang or "").strip().lower()) or "en",
-        notify_lang=((payload.notify_lang or "").strip().lower() in {"zh", "en"} and (payload.notify_lang or "").strip().lower()) or "en",
-    )
+    try:
+        new_user = db.create_user(
+            email=email,
+            display_name=(payload.display_name or "").strip() or None,
+            role="user",
+            password_hash=auth_mod.hash_password(payload.password),
+            ui_lang=((payload.ui_lang or "").strip().lower() in {"zh", "en"} and (payload.ui_lang or "").strip().lower()) or "en",
+            notify_lang=((payload.notify_lang or "").strip().lower() in {"zh", "en"} and (payload.notify_lang or "").strip().lower()) or "en",
+        )
+    except Exception:
+        if invite_consumed and invite_code:
+            try:
+                db.release_register_invite(invite_code, email)
+            except Exception:
+                pass
+        raise
+
+    if invite_consumed and invite_code:
+        try:
+            db.finalize_register_invite(invite_code, int(new_user.get("id") or 0))
+        except Exception:
+            pass
     try:
         notify_admin_new_user(user=new_user)
     except Exception:

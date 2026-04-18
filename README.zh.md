@@ -113,6 +113,9 @@ copy .env.example .env        # Windows
 | `GMAIL_WORKER_START_JITTER_MAX` | 首轮错峰最大秒数（默认 15） |
 | `GMAIL_WORKER_START_BUCKETS` | 首轮错峰分桶数量（默认 12） |
 | `NOTIFY_MIN_PRIORITY` | 推送优先级过滤，逗号分隔；留空则推送全部 |
+| `ALLOW_PUBLIC_REGISTER` | 是否允许公开注册（默认 false） |
+| `REGISTER_INVITE_CODE` | 可选：在 .env 中配置的“主邀请码”。若设置，该邀请码可直接注册且不会消耗数据库邀请码（推荐留空，使用每码可追踪的邀请码） |
+| `REGISTER_EMAIL_ALLOWLIST` | 可选：允许注册的邮箱域名白名单（逗号分隔），如 `gmail.com,company.com` |
 | `LLM_BACKEND` | local 或 openai（默认 local） |
 | `LLM_API_URL` | LLM API 地址 |
 | `LLM_MODEL` | 模型名称 |

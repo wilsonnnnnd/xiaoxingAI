@@ -107,6 +107,22 @@ export interface Bot {
   created_at: string
 }
 
+export interface RegisterInvite {
+  id: number
+  code: string
+  created_by: number | null
+  created_by_email?: string | null
+  note?: string | null
+  created_at: string
+  expires_at: string
+  used_at?: string | null
+  used_by?: number | null
+  used_by_email?: string | null
+  used_email?: string | null
+  used_ip?: string | null
+  revoked_at?: string | null
+}
+
 export interface DbPrompt {
   id: number
   user_id: number | null

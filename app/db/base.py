@@ -161,6 +161,25 @@ def init_db() -> None:
             )
         """)
 
+        # ── register_invites ─────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS register_invites (
+                id          BIGSERIAL PRIMARY KEY,
+                code        VARCHAR(64) UNIQUE NOT NULL,
+                created_by  BIGINT REFERENCES "user"(id) ON DELETE SET NULL,
+                note        VARCHAR(200),
+                created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+                expires_at  TIMESTAMP NOT NULL,
+                used_at     TIMESTAMP,
+                used_by     BIGINT REFERENCES "user"(id) ON DELETE SET NULL,
+                used_email  VARCHAR,
+                used_ip     VARCHAR,
+                revoked_at  TIMESTAMP
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_register_invites_expires_at ON register_invites (expires_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_register_invites_used_at ON register_invites (used_at)")
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS outgoing_email_drafts (
                 id                BIGSERIAL PRIMARY KEY,

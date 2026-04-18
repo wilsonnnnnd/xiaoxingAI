@@ -113,6 +113,9 @@ Edit `.env`:
 | `GMAIL_WORKER_START_JITTER_MAX` | First-run start jitter window seconds (default: 15) |
 | `GMAIL_WORKER_START_BUCKETS` | First-run jitter buckets (default: 12) |
 | `NOTIFY_MIN_PRIORITY` | Comma-separated priorities to notify; leave empty for all |
+| `ALLOW_PUBLIC_REGISTER` | Allow public registration (default: false) |
+| `REGISTER_INVITE_CODE` | Optional “master” invite code in .env. If set, it can be used to register without consuming a DB invite (recommended: leave empty and use per-code invites) |
+| `REGISTER_EMAIL_ALLOWLIST` | Optional allowlist of email domains (comma-separated), e.g. `gmail.com,company.com` |
 | `LLM_BACKEND` | local or openai (default: local) |
 | `LLM_API_URL` | LLM endpoint URL |
 | `LLM_MODEL` | Model name |

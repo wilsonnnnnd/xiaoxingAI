@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app import db
 from app.core import auth as auth_mod
-from app.schemas import UserCreate, UserUpdate
+from app.schemas import UserCreate, UserUpdate, InviteCreateRequest
 from app.skills.gmail import worker as gmail_worker
 
 router = APIRouter()
@@ -57,3 +57,25 @@ async def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(au
                 gmail_worker.stop_user(user_id)
     row = db.get_user_by_id(user_id)
     return {k: v for k, v in row.items() if k != "password_hash"}
+
+
+@router.get("/invites")
+def invites_list(user: dict = Depends(auth_mod.require_admin)):
+    items = db.list_register_invites(limit=100)
+    return {"invites": items}
+
+
+@router.post("/invites", status_code=201)
+def invites_create(payload: InviteCreateRequest, user: dict = Depends(auth_mod.require_admin)):
+    ttl = int(payload.ttl_seconds or 86400)
+    note = (payload.note or "").strip() or None
+    inv = db.create_register_invite(created_by=int(user.get("id") or 0), ttl_seconds=ttl, note=note)
+    return inv
+
+
+@router.post("/invites/{code}/revoke")
+def invites_revoke(code: str, user: dict = Depends(auth_mod.require_admin)):
+    ok = db.revoke_register_invite(code)
+    if not ok:
+        raise HTTPException(status_code=400, detail="邀请码不可撤销（可能已使用/已撤销/不存在）")
+    return {"ok": True}

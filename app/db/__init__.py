@@ -82,6 +82,16 @@ from .repositories.reply_format_repo import (
     upsert_reply_format_settings,
 )
 
+# Register Invite
+from .repositories.invite_repo import (
+    create_register_invite,
+    list_register_invites,
+    consume_register_invite,
+    finalize_register_invite,
+    release_register_invite,
+    revoke_register_invite,
+)
+
 def get_stats(user_id: Optional[int] = None) -> Dict[str, Any]:
     with _cur() as cur:
         if user_id is not None:

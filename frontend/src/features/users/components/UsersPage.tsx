@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { useI18n } from '../../../i18n/useI18n'
 import {
     listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe, getTelegramChatId,
+    listInvites, createInvite, revokeInvite,
 } from '../api'
 import type { User, Bot } from '../../../types'
 import { Card } from '../../../components/common/Card'
@@ -14,6 +15,7 @@ import { InputField } from '../../../components/common/InputField'
 import { Select } from '../../../components/common/Select'
 import { Switch } from '../../../components/common/Switch'
 import { FormInput } from '../../../components/common/form/FormInput'
+import { Badge } from '../../../components/common/Badge'
 import toast from 'react-hot-toast'
 
 // ── Bot row form ─────────────────────────────────────────────────
@@ -522,6 +524,173 @@ const AddUserForm: React.FC<{ onDone: () => void }> = ({ onDone }) => {
 
 // ── Page ─────────────────────────────────────────────────────────
 
+const InvitePanel: React.FC = () => {
+    const { t, lang } = useI18n()
+    const qc = useQueryClient()
+    const [ttl, setTtl] = useState(86400)
+    const [note, setNote] = useState('')
+
+    const { data: invites = [], isLoading } = useQuery({
+        queryKey: ['invites'],
+        queryFn: listInvites,
+        staleTime: 30_000,
+    })
+
+    const createMut = useMutation({
+        mutationFn: () => createInvite({ ttl_seconds: ttl, note: note.trim() || undefined }),
+        onSuccess: async (inv) => {
+            await qc.invalidateQueries({ queryKey: ['invites'] })
+            try {
+                await navigator.clipboard.writeText(inv.code)
+                toast.success(t('users.invite.copied'))
+            } catch {
+                toast.success(t('users.invite.created'))
+            }
+        },
+    })
+
+    const revokeMut = useMutation({
+        mutationFn: (code: string) => revokeInvite(code),
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['invites'] })
+            toast.success(t('users.invite.revoked'))
+        },
+    })
+
+    const [now, setNow] = useState<number | null>(null)
+
+    useEffect(() => {
+        setNow(Date.now())
+    }, [])
+
+    const rows = useMemo(() => {
+        if (now === null) return []
+        return invites.map((x) => {
+            const exp = Date.parse(x.expires_at)
+            const isExpired = Number.isFinite(exp) ? exp <= now : false
+            const isUsed = !!x.used_at || !!x.used_by
+            const isRevoked = !!x.revoked_at
+            const status = isRevoked ? 'revoked' : isUsed ? 'used' : isExpired ? 'expired' : 'active'
+            const variant: 'success' | 'warning' | 'error' | 'neutral' =
+                status === 'active' ? 'success' : status === 'expired' ? 'warning' : status === 'revoked' ? 'neutral' : 'neutral'
+            const statusText =
+                status === 'active' ? t('users.invite.status.active')
+                    : status === 'expired' ? t('users.invite.status.expired')
+                        : status === 'revoked' ? t('users.invite.status.revoked')
+                            : t('users.invite.status.used')
+            const usedBy = x.used_by_email || x.used_email || '—'
+            const createdBy = x.created_by_email || '—'
+            const expText = x.expires_at ? x.expires_at.replace('T', ' ').slice(0, 19) : '—'
+            return { x, status, variant, statusText, usedBy, createdBy, expText }
+        })
+    }, [invites, now, t])
+
+    return (
+        <Card title={t('users.invite.title')} subtitle={t('users.invite.subtitle')}>
+            <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_auto] gap-3 items-end">
+                <Select
+                    label={t('users.invite.ttl')}
+                    value={ttl}
+                    onChange={(e) => setTtl(Number(e.target.value))}
+                    options={[
+                        { label: lang === 'zh' ? '1 小时' : '1 hour', value: 3600 },
+                        { label: lang === 'zh' ? '24 小时' : '24 hours', value: 86400 },
+                        { label: lang === 'zh' ? '7 天' : '7 days', value: 86400 * 7 },
+                    ]}
+                />
+                <InputField
+                    label={t('users.invite.note')}
+                    value={note}
+                    onChange={setNote}
+                    placeholder={t('users.invite.note_ph')}
+                />
+                <Button onClick={() => createMut.mutate()} loading={createMut.isPending} className="h-10">
+                    {t('users.invite.btn_create')}
+                </Button>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                            <th className="py-2 pr-3">{t('users.invite.col.code')}</th>
+                            <th className="py-2 pr-3">{t('users.invite.col.status')}</th>
+                            <th className="py-2 pr-3">{t('users.invite.col.expires')}</th>
+                            <th className="py-2 pr-3">{t('users.invite.col.created_by')}</th>
+                            <th className="py-2 pr-3">{t('users.invite.col.used_by')}</th>
+                            <th className="py-2 pr-0 text-right">{t('users.invite.col.action')}</th>
+                        </tr>
+                    </thead>
+                    <tbody className="align-top">
+                        {isLoading || now === null ? (
+                            <tr>
+                                <td colSpan={6} className="py-6 text-center text-slate-500">
+                                    {t('prompts.loading')}
+                                </td>
+                            </tr>
+                        ) : rows.length === 0 ? (
+                            <tr>
+                                <td colSpan={6} className="py-6 text-center text-slate-500">
+                                    {t('users.invite.empty')}
+                                </td>
+                            </tr>
+                        ) : (
+                            rows.map(({ x, status, variant, statusText, usedBy, createdBy, expText }) => (
+                                <tr key={x.id} className="border-t border-white/60">
+                                    <td className="py-3 pr-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono text-xs text-slate-900">{x.code}</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-slate-600 hover:text-slate-900"
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(x.code)
+                                                        toast.success(t('users.invite.copied'))
+                                                    } catch {
+                                                        toast.error(t('users.invite.copy_failed'))
+                                                    }
+                                                }}
+                                            >
+                                                {t('users.invite.btn_copy')}
+                                            </Button>
+                                        </div>
+                                        {x.note ? <div className="mt-1 text-xs text-slate-500">{x.note}</div> : null}
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                        <Badge variant={variant}>{statusText}</Badge>
+                                    </td>
+                                    <td className="py-3 pr-3 text-xs text-slate-600 font-mono tabular-nums">{expText}</td>
+                                    <td className="py-3 pr-3 text-xs text-slate-600">{createdBy}</td>
+                                    <td className="py-3 pr-3 text-xs text-slate-600">{usedBy}</td>
+                                    <td className="py-3 pr-0 text-right">
+                                        {status === 'active' ? (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-slate-600 hover:text-slate-900"
+                                                onClick={() => {
+                                                    if (confirm(t('users.invite.confirm_revoke'))) revokeMut.mutate(x.code)
+                                                }}
+                                                loading={revokeMut.isPending}
+                                            >
+                                                {t('users.invite.btn_revoke')}
+                                            </Button>
+                                        ) : (
+                                            <span className="text-xs text-slate-400">—</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </Card>
+    )
+}
+
 export const UsersPage: React.FC = () => {
     const { t } = useI18n()
     const [addingUser, setAddingUser] = useState(false)
@@ -570,6 +739,8 @@ export const UsersPage: React.FC = () => {
             </div>
 
             {addingUser && <AddUserForm onDone={() => setAddingUser(false)} />}
+
+            <InvitePanel />
 
             <Card title={t('users.list.title')}>
                 {isLoading ? (
