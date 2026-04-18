@@ -13,17 +13,18 @@ export const RegisterPage: React.FC = () => {
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [notifyLang, setNotifyLang] = useState<'en' | 'zh'>(lang)
   const [busy, setBusy] = useState(false)
 
-  const canSubmit = !!email && !!password && password === password2
+  const canSubmit = !!email && !!password && password === password2 && !!inviteCode
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!canSubmit) return
     setBusy(true)
     try {
-      const data = await register(email, password, displayName || undefined, lang, notifyLang)
+      const data = await register(email, password, displayName || undefined, lang, notifyLang, inviteCode)
       localStorage.setItem('auth_token', data.access_token)
       navigate('/home', { replace: true })
     } catch {
@@ -66,6 +67,19 @@ export const RegisterPage: React.FC = () => {
                 <div className="px-1 text-[11px] leading-5 text-slate-500">
                   {t('register.notify_lang_hint')}
                 </div>
+              </div>
+
+              <InputField
+                label={t('register.invite_code')}
+                autoComplete="off"
+                value={inviteCode}
+                onChange={(v) => setInviteCode(v)}
+                required
+                disabled={busy}
+              />
+
+              <div className="px-1 text-[11px] leading-5 text-slate-500 -mt-3">
+                {t('register.invite_hint')}
               </div>
 
               <InputField

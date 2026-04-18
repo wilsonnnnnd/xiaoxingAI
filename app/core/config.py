@@ -33,6 +33,10 @@ GMAIL_WORKER_IO_MAX_WORKERS: int = int(_get("GMAIL_WORKER_IO_MAX_WORKERS", "12")
 GMAIL_WORKER_START_JITTER_MAX: int = int(_get("GMAIL_WORKER_START_JITTER_MAX", "15"))
 GMAIL_WORKER_START_BUCKETS: int = int(_get("GMAIL_WORKER_START_BUCKETS", "12"))
 
+ALLOW_PUBLIC_REGISTER: bool = _get("ALLOW_PUBLIC_REGISTER", "false").lower() == "true"
+REGISTER_INVITE_CODE: str = _get("REGISTER_INVITE_CODE", "").strip()
+REGISTER_EMAIL_ALLOWLIST: str = _get("REGISTER_EMAIL_ALLOWLIST", "").strip()
+
 # 优先级过滤（空列表 = 全部通知）
 _priority_raw = _get("NOTIFY_MIN_PRIORITY", "")
 NOTIFY_PRIORITIES: list[str] = [p.strip() for p in _priority_raw.split(",") if p.strip()]

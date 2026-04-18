@@ -362,6 +362,8 @@ export const en: Record<string, string> = {
     "register.ui_lang": "Interface language",
     "register.notify_lang": "Notification language",
     "register.notify_lang_hint": "This language will be used for Telegram notifications and other messages sent to you.",
+    "register.invite_code": "Invite code",
+    "register.invite_hint": "Ask the admin for an invite code to register.",
     "register.email": "Email",
     "register.display_name": "Display name (optional)",
     "register.password": "Password",

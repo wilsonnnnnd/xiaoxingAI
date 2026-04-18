@@ -362,6 +362,8 @@ export const zh: Record<string, string> = {
   "register.ui_lang": "界面语言",
   "register.notify_lang": "通知语言",
   "register.notify_lang_hint": "此语言将用于 Telegram 通知等最终发送给你的消息。",
+  "register.invite_code": "邀请码",
+  "register.invite_hint": "注册需要邀请码，请向管理员获取。",
   "register.email": "邮箱",
   "register.display_name": "显示名称（可选）",
   "register.password": "密码",

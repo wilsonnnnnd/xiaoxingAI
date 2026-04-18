@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import db
 from app.core import auth as auth_mod
+from app.core import config as app_config
 from app.core.rate_limit import RateLimiter
 from app.schemas import AdminLoginRequest, ChangePasswordRequest, RegisterRequest
 from app.services.admin_notify import notify_admin_new_user
@@ -12,7 +13,9 @@ router = APIRouter()
 
 logger = logging.getLogger("main")
 _login_limiter = RateLimiter(limit=10, window_secs=900, prefix="rl:login")
-_register_limiter = RateLimiter(limit=5, window_secs=900, prefix="rl:register")
+_register_ip_limiter = RateLimiter(limit=12, window_secs=900, prefix="rl:register:ip")
+_register_email_limiter = RateLimiter(limit=5, window_secs=900, prefix="rl:register:email")
+_register_global_limiter = RateLimiter(limit=60, window_secs=900, prefix="rl:register:global")
 
 
 @router.post("/auth/login")
@@ -39,16 +42,36 @@ def admin_login(payload: AdminLoginRequest, request: Request):
 @router.post("/auth/register")
 def auth_register(payload: RegisterRequest, request: Request):
     ip = request.client.host if request.client else "unknown"
-    key = f"{ip}:{(payload.email or '').strip().lower()}"
-    n = _register_limiter.hit(key)
-    if n > 5:
+    email = (payload.email or "").strip().lower()
+    _register_global_limiter.hit("all")
+    if _register_ip_limiter.hit(ip) > 12:
+        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+    if email and _register_email_limiter.hit(email) > 5:
         raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
 
-    email = (payload.email or "").strip().lower()
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(status_code=400, detail="邮箱格式不正确")
-    if not payload.password or len(payload.password) < 4:
-        raise HTTPException(status_code=400, detail="密码至少 4 个字符")
+    if payload.website and str(payload.website).strip():
+        raise HTTPException(status_code=400, detail="注册信息不合法")
+
+    if not app_config.ALLOW_PUBLIC_REGISTER:
+        invite = (payload.invite_code or "").strip()
+        if not app_config.REGISTER_INVITE_CODE or invite != app_config.REGISTER_INVITE_CODE:
+            raise HTTPException(status_code=403, detail="当前禁止公开注册，请联系管理员")
+
+    allowlist = {x.strip().lower() for x in (app_config.REGISTER_EMAIL_ALLOWLIST or "").split(",") if x.strip()}
+    if allowlist:
+        domain = email.split("@")[-1].lower()
+        if domain not in allowlist:
+            raise HTTPException(status_code=403, detail="该邮箱域名不允许注册")
+
+    pw = payload.password or ""
+    if len(pw) < 8:
+        raise HTTPException(status_code=400, detail="密码至少 8 个字符")
+    has_letter = any(ch.isalpha() for ch in pw)
+    has_digit = any(ch.isdigit() for ch in pw)
+    if not (has_letter and has_digit):
+        raise HTTPException(status_code=400, detail="密码需要同时包含字母和数字")
     if db.get_user_by_email(email):
         raise HTTPException(status_code=409, detail="该邮箱已被注册")
 
@@ -66,7 +89,8 @@ def auth_register(payload: RegisterRequest, request: Request):
         pass
 
     token = auth_mod.create_access_token(db.get_user_by_email(email) or {})
-    _register_limiter.reset(key)
+    _register_ip_limiter.reset(ip)
+    _register_email_limiter.reset(email)
     logger.info("[auth] 注册成功: %s", email)
     return {"access_token": token, "token_type": "bearer"}
 
