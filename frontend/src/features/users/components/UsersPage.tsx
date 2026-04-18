@@ -560,7 +560,8 @@ const InvitePanel: React.FC = () => {
     const [now, setNow] = useState<number | null>(null)
 
     useEffect(() => {
-        setNow(Date.now())
+        const id = window.setTimeout(() => setNow(Date.now()), 0)
+        return () => clearTimeout(id)
     }, [])
 
     const rows = useMemo(() => {
@@ -622,7 +623,7 @@ const InvitePanel: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="align-top">
-                        {isLoading || now === null ? (
+                        {isLoading ? (
                             <tr>
                                 <td colSpan={6} className="py-6 text-center text-slate-500">
                                     {t('prompts.loading')}
