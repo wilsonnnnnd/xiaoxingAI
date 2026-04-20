@@ -10,6 +10,12 @@
 
 ---
 
+## 工作流程
+
+![Xiaoxing AI WorkFlow](app/image/workflow.png)
+
+---
+
 ## 截图
 
 ![Xiaoxing AI 首页](app/image/Home-zh.png)

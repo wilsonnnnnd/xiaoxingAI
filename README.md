@@ -10,9 +10,17 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 
 ---
 
+## WorkFlow
+
+![Xiaoxing AI WorkFlow](app/image/workflow.png)
+
+---
+
+
 ## Screenshot
 
 ![Xiaoxing AI Home](app/image/Home-en.png)
+
 
 ---
 
