@@ -129,6 +129,8 @@ Edit `.env`:
 | `FRONTEND_URL` | Frontend origin for OAuth callback and CORS (default: http://localhost:5173) |
 | `UI_LANG` | Default UI language — `en` or `zh` (default: en) |
 | `TELEGRAM_CALLBACK_SECRET` | Secret for signing Telegram callback_data (required for inline confirm/cancel buttons) |
+| `TELEGRAM_WEBHOOK_BASE_URL` | Optional public HTTPS backend origin. When set, Telegram updates prefer webhook; when empty or setWebhook fails, they fall back to polling. |
+| `TELEGRAM_WEBHOOK_SECRET` | Optional Telegram webhook header secret (`X-Telegram-Bot-Api-Secret-Token`). |
 | `OUTGOING_EMAIL_ENCRYPTION_KEY` | Base64(32 bytes) key to encrypt outgoing draft bodies |
 | `OUTGOING_DRAFT_TTL_MINUTES` | Outgoing draft TTL minutes (default: 30) |
 

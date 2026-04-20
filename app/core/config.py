@@ -21,6 +21,8 @@ def _get(key: str, default: str = "") -> str:
 # Telegram
 TELEGRAM_BOT_TOKEN: str = _get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID:   str = _get("TELEGRAM_CHAT_ID")
+TELEGRAM_WEBHOOK_BASE_URL: str = _get("TELEGRAM_WEBHOOK_BASE_URL", "").rstrip("/")
+TELEGRAM_WEBHOOK_SECRET: str = _get("TELEGRAM_WEBHOOK_SECRET", "")
 
 # Gmail 轮询
 GMAIL_POLL_INTERVAL: int  = int(_get("GMAIL_POLL_INTERVAL", "300"))
