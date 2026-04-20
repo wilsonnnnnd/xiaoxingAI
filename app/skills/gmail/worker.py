@@ -351,10 +351,6 @@ async def start(allow_empty: bool = False) -> bool:
     users = await _run_io(db.list_worker_enabled_users)
     if not users:
         if allow_empty:
-            try:
-                await telegram_updates.start()
-            except Exception:
-                pass
             return False
         raise RuntimeError("当前无 worker_enabled=True 的用户，请先在用户设置中开启")
 
@@ -382,6 +378,10 @@ async def ensure_user_running(user_id: int) -> bool:
     if not user_row.get("worker_enabled"):
         return False
     started = _start_user_worker(user_id)
+    try:
+        await telegram_updates.start()
+    except Exception:
+        pass
     if started:
         try:
             ws_pub.publish_worker_status(get_status())
@@ -394,6 +394,11 @@ def stop_user(user_id: int) -> bool:
     """停止指定 user 的轮询 Task。"""
     state = _workers.get(user_id)
     if not state or not state.running:
+        try:
+            if not db.list_worker_enabled_users():
+                telegram_updates.stop_now()
+        except Exception:
+            pass
         return False
 
     state.running = False
@@ -415,6 +420,11 @@ def stop_user(user_id: int) -> bool:
         state.task.cancel()
     try:
         ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    try:
+        if not db.list_worker_enabled_users():
+            telegram_updates.stop_now()
     except Exception:
         pass
     return True
@@ -530,6 +540,7 @@ def get_status() -> Dict[str, Any]:
         "total_errors":        total_errors,
         "total_tokens":        total_tokens,
         "total_runtime_hours": round(total_runtime_secs / 3600, 1),
+        "telegram_updates":     telegram_updates.status(),
     }
 
 

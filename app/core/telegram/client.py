@@ -116,3 +116,46 @@ def get_latest_chat_id(token: str) -> str | None:
 
     return None
 
+
+def set_webhook(
+    *,
+    token: str,
+    url: str,
+    secret_token: str = "",
+    drop_pending_updates: bool = False,
+) -> dict:
+    """Register a Telegram webhook for one bot token."""
+    if not token or not url:
+        raise RuntimeError("Telegram webhook token or url is missing")
+
+    api_url = TELEGRAM_API.format(token=token, method="setWebhook")
+    payload = {
+        "url": url,
+        "allowed_updates": ["message", "edited_message", "callback_query"],
+        "drop_pending_updates": drop_pending_updates,
+    }
+    if secret_token:
+        payload["secret_token"] = secret_token
+
+    resp = requests.post(api_url, json=payload, timeout=15)
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+    return data
+
+
+def delete_webhook(*, token: str, drop_pending_updates: bool = False) -> dict:
+    """Remove a Telegram webhook so getUpdates polling can be used."""
+    if not token:
+        raise RuntimeError("Telegram webhook token is missing")
+
+    api_url = TELEGRAM_API.format(token=token, method="deleteWebhook")
+    resp = requests.post(
+        api_url,
+        json={"drop_pending_updates": drop_pending_updates},
+        timeout=15,
+    )
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+    return data

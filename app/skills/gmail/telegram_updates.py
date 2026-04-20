@@ -5,8 +5,9 @@ from typing import Any, Dict, Optional
 import requests
 
 from app import db
+from app.core import config
 from app.core import redis_client as rc
-from app.core.telegram.client import send_message
+from app.core.telegram.client import delete_webhook, send_message, set_webhook
 from app.core.tools.outgoing_email_tools import (
     outgoing_draft_cancel,
     outgoing_draft_confirm,
@@ -21,6 +22,8 @@ logger = logging.getLogger("tg_updates")
 _running: bool = False
 _task: Optional[asyncio.Task] = None
 _offsets: Dict[int, int] = {}
+_webhook_bot_ids: set[int] = set()
+_polling_bot_ids: Optional[set[int]] = set()
 
 
 def _get_updates(token: str, offset: int, timeout: int = 25) -> list:
@@ -41,6 +44,76 @@ def _get_updates(token: str, offset: int, timeout: int = 25) -> list:
     except Exception as e:
         logger.warning("[tg] getUpdates failed: %s", e)
     return []
+
+
+def _active_bots() -> list[Dict[str, Any]]:
+    return [
+        b for b in db.get_all_bots()
+        if str(b.get("bot_mode") or "all") in ("all", "notify", "chat")
+    ]
+
+
+def _webhook_url(bot_id: int) -> str:
+    return f"{config.TELEGRAM_WEBHOOK_BASE_URL}/api/telegram/webhook/{int(bot_id)}"
+
+
+def _try_register_webhooks(bots: list[Dict[str, Any]]) -> set[int]:
+    """Return bot ids that could not use webhook and should fall back to polling."""
+    global _webhook_bot_ids
+
+    _webhook_bot_ids = set()
+    if not config.TELEGRAM_WEBHOOK_BASE_URL:
+        logger.info("[tg] TELEGRAM_WEBHOOK_BASE_URL not configured; using polling")
+        return {int(b["id"]) for b in bots if str(b.get("token") or "").strip()}
+
+    fallback_ids: set[int] = set()
+    for b in bots:
+        bot_id = int(b["id"])
+        token = str(b.get("token") or "").strip()
+        if not token:
+            continue
+        try:
+            set_webhook(
+                token=token,
+                url=_webhook_url(bot_id),
+                secret_token=config.TELEGRAM_WEBHOOK_SECRET,
+                drop_pending_updates=False,
+            )
+            _webhook_bot_ids.add(bot_id)
+            logger.info("[tg] webhook registered for bot#%s", bot_id)
+        except Exception as e:
+            fallback_ids.add(bot_id)
+            logger.warning("[tg] setWebhook failed for bot#%s, falling back to polling: %s", bot_id, e)
+    return fallback_ids
+
+
+def _prepare_polling(bots: list[Dict[str, Any]], bot_ids: set[int]) -> None:
+    for b in bots:
+        bot_id = int(b["id"])
+        if bot_id not in bot_ids:
+            continue
+        token = str(b.get("token") or "").strip()
+        if not token:
+            continue
+        try:
+            delete_webhook(token=token, drop_pending_updates=False)
+        except Exception as e:
+            logger.warning("[tg] deleteWebhook before polling failed for bot#%s: %s", bot_id, e)
+
+
+def _delete_registered_webhooks() -> None:
+    if not _webhook_bot_ids:
+        return
+    bots_by_id = {int(b["id"]): b for b in _active_bots()}
+    for bot_id in list(_webhook_bot_ids):
+        token = str((bots_by_id.get(bot_id) or {}).get("token") or "").strip()
+        if not token:
+            continue
+        try:
+            delete_webhook(token=token, drop_pending_updates=False)
+            logger.info("[tg] webhook deleted for bot#%s", bot_id)
+        except Exception as e:
+            logger.warning("[tg] deleteWebhook failed for bot#%s: %s", bot_id, e)
 
 
 def _is_confirm(text: str) -> bool:
@@ -145,7 +218,10 @@ def _handle_update(*, bot_row: Dict[str, Any], update: dict) -> None:
 async def _loop() -> None:
     global _offsets
     while _running:
-        bots = [b for b in db.get_all_bots() if str(b.get("bot_mode") or "all") in ("all", "notify", "chat")]
+        bots = [
+            b for b in _active_bots()
+            if _polling_bot_ids is None or int(b["id"]) in _polling_bot_ids
+        ]
         if not bots:
             await asyncio.sleep(2)
             continue
@@ -167,16 +243,31 @@ async def _loop() -> None:
 
 
 async def start() -> bool:
-    global _running, _task
-    if _running and _task and not _task.done():
+    global _running, _task, _polling_bot_ids
+    if _running and (_webhook_bot_ids or (_task and not _task.done())):
         return False
+
+    bots = _active_bots()
+    fallback_ids = _try_register_webhooks(bots)
+    _polling_bot_ids = None if not config.TELEGRAM_WEBHOOK_BASE_URL else set(fallback_ids)
+    if _polling_bot_ids is None:
+        _prepare_polling(bots, {int(b["id"]) for b in bots})
+    elif _polling_bot_ids:
+        _prepare_polling(bots, _polling_bot_ids)
+
     _running = True
-    _task = asyncio.create_task(_loop())
+    if _polling_bot_ids is None or _polling_bot_ids:
+        _task = asyncio.create_task(_loop())
+        polling_ids = "all" if _polling_bot_ids is None else sorted(_polling_bot_ids)
+        logger.info("[tg] polling started for bot ids: %s", polling_ids)
+    else:
+        _task = None
+        logger.info("[tg] webhook mode active for bot ids: %s", sorted(_webhook_bot_ids))
     return True
 
 
 async def stop() -> None:
-    global _running, _task
+    global _running, _task, _polling_bot_ids, _webhook_bot_ids
     _running = False
     if _task and not _task.done():
         _task.cancel()
@@ -185,15 +276,47 @@ async def stop() -> None:
         except asyncio.CancelledError:
             pass
     _task = None
+    _delete_registered_webhooks()
+    _webhook_bot_ids = set()
+    _polling_bot_ids = set()
 
 
 def stop_now() -> None:
-    global _running, _task
+    global _running, _task, _polling_bot_ids, _webhook_bot_ids
     _running = False
     if _task and not _task.done():
         _task.cancel()
     _task = None
+    _delete_registered_webhooks()
+    _webhook_bot_ids = set()
+    _polling_bot_ids = set()
 
 
 def is_running() -> bool:
-    return bool(_running and _task and not _task.done())
+    return bool(_running and (_webhook_bot_ids or (_task and not _task.done())))
+
+
+def status() -> Dict[str, Any]:
+    if not _running:
+        mode = "stopped"
+    elif _webhook_bot_ids and _polling_bot_ids:
+        mode = "webhook+polling"
+    elif _webhook_bot_ids:
+        mode = "webhook"
+    else:
+        mode = "polling"
+    return {
+        "running": is_running(),
+        "mode": mode,
+        "webhook_bot_ids": sorted(_webhook_bot_ids),
+        "polling_bot_ids": "all" if _polling_bot_ids is None else sorted(_polling_bot_ids),
+    }
+
+
+def handle_webhook_update(bot_id: int, update: dict) -> None:
+    bot = db.get_bot(int(bot_id))
+    if not bot:
+        raise ValueError(f"bot#{bot_id} not found")
+    if str(bot.get("bot_mode") or "all") not in ("all", "notify", "chat"):
+        return
+    _handle_update(bot_row=bot, update=update)

@@ -129,6 +129,8 @@ copy .env.example .env        # Windows
 | `FRONTEND_URL` | 前端来源地址，用于 OAuth 回调和 CORS（默认 http://localhost:5173） |
 | `UI_LANG` | 默认 UI 语言，`en` 或 `zh`（默认 en） |
 | `TELEGRAM_CALLBACK_SECRET` | Telegram callback_data 签名密钥（按钮确认/取消等操作防伪造） |
+| `TELEGRAM_WEBHOOK_BASE_URL` | 可选：后端公网 HTTPS 地址；设置后 Telegram updates 优先使用 webhook，留空或 setWebhook 失败时回退 polling |
+| `TELEGRAM_WEBHOOK_SECRET` | 可选：Telegram webhook header 密钥（X-Telegram-Bot-Api-Secret-Token） |
 | `OUTGOING_EMAIL_ENCRYPTION_KEY` | 发信草稿正文加密密钥：base64(32 bytes) |
 | `OUTGOING_DRAFT_TTL_MINUTES` | 发信草稿有效期（分钟，默认 30） |
 
