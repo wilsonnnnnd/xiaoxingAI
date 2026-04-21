@@ -1,0 +1,47 @@
+You are an expert business email writer.
+
+Generate 3 concise reply draft options for the email below.
+Each draft must be realistic, email-ready, and written as a reply email body only.
+
+Requirements:
+1. Return JSON only. No markdown fences. No extra commentary.
+2. Output must be a single JSON object with exactly these keys:
+   - options: array of exactly 3 objects
+   - style_preference: string or null
+3. Each item in options must contain exactly:
+   - label: short display label
+   - tone: one of "formal", "friendly", "concise"
+   - content: the reply draft body
+4. The three options must use these tones exactly once each:
+   - formal
+   - friendly
+   - concise
+5. Each content value must be a realistic reply email draft:
+   - not chatbot-style
+   - no markdown
+   - concise and ready to send after light review
+   - suitable to paste directly into an email body
+   - include a natural greeting when appropriate
+   - do not invent facts, attachments, promises, dates, or commitments not supported by the source email
+   - if information is missing, use neutral wording
+   - do not include any signature placeholder
+   - do not include subject lines
+6. Keep each draft short, typically 3 to 8 lines, and never overly long.
+7. If sender_name is empty, avoid using a forced personal greeting.
+8. Preserve the user's style preference when provided, while keeping the three tones clearly distinct.
+9. Make the tone differences obvious:
+   - formal: more polished, businesslike, and complete
+   - friendly: warmer, more conversational, and approachable
+   - concise: clearly shorter, more direct, and minimal
+
+Original email subject:
+{{subject}}
+
+Original email content:
+{{content}}
+
+Sender name:
+{{sender_name}}
+
+User style preference:
+{{user_style_preference}}

@@ -44,7 +44,110 @@ export interface EmailRecord {
   tokens: number
   priority: string
   sent_telegram: boolean
+  final_status?: string
+  processed_at?: string
+  reply_drafts?: Record<string, unknown>
+  processing_result?: Record<string, unknown>
   created_at: string
+}
+
+export type EmailCategory = 'job' | 'finance' | 'social' | 'spam' | 'other'
+export type EmailPriority = 'high' | 'medium' | 'low'
+export type EmailSuggestedAction = 'reply' | 'ignore' | 'archive' | 'notify' | 'review'
+export type EmailAutomationRuleAction = 'notify' | 'mark_read'
+export type EmailProcessingStatus =
+  | 'processed'
+  | 'processed_with_fallback'
+  | 'partially_failed'
+  | 'failed'
+
+export interface ProcessedEmailListItem {
+  id: number
+  subject: string
+  sender: string
+  summary: string
+  category: EmailCategory
+  priority: EmailPriority
+  suggested_action: EmailSuggestedAction
+  processing_status: EmailProcessingStatus
+  processed_at: string
+  has_reply_drafts: boolean
+}
+
+export interface ProcessedEmailListResponse {
+  count: number
+  page: number
+  page_size: number
+  emails: ProcessedEmailListItem[]
+}
+
+export interface ProcessedEmailStats {
+  processed_today: number
+  high_priority: number
+  with_reply_drafts: number
+  active_rules: number
+}
+
+export interface ProcessedEmailAnalysis {
+  category?: EmailCategory
+  priority?: EmailPriority
+  summary?: string
+  action?: EmailSuggestedAction
+  reason?: string
+  deadline?: string | null
+}
+
+export interface ProcessedEmailMatchedRule {
+  rule: string
+  detail: string
+  action?: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ProcessedEmailExecutedAction {
+  action: string
+  success: boolean
+  optional: boolean
+  message: string
+  metadata: Record<string, unknown>
+}
+
+export type ReplyDraftTone = 'formal' | 'friendly' | 'concise'
+
+export interface ProcessedEmailReplyOption {
+  label: string
+  tone: ReplyDraftTone
+  content: string
+}
+
+export interface ProcessedEmailReplyDrafts {
+  options: ProcessedEmailReplyOption[]
+  style_preference?: string | null
+}
+
+export interface ProcessedEmailDetail {
+  id: number
+  subject: string
+  sender: string
+  processed_at: string
+  processing_status: EmailProcessingStatus
+  original_email_content: string
+  analysis: ProcessedEmailAnalysis
+  matched_rules: ProcessedEmailMatchedRule[]
+  executed_actions: ProcessedEmailExecutedAction[]
+  reply_drafts: ProcessedEmailReplyDrafts
+  summary?: string | null
+}
+
+export interface EmailAutomationRule {
+  id: number
+  user_id: number
+  category?: EmailCategory | null
+  priority?: EmailPriority | null
+  action: EmailAutomationRuleAction
+  enabled: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Config {

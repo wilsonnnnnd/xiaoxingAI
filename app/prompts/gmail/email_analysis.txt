@@ -5,15 +5,17 @@ Analyze the email content and return a structured JSON result.
 
 Output requirements:
 - Output ONLY valid JSON (a single object). No explanations, prefixes, suffixes, Markdown, or code fences.
-- Output ONLY these 4 fields. Do not add any extra fields.
-- Do NOT invent information. If uncertain: summary="", category="other", priority="low", action_needed=false.
+- Output ONLY these 6 fields. Do not add any extra fields.
+- Do NOT invent information. If uncertain: summary="", category="other", priority="low", action="review", reason="uncertain", deadline=null.
 
 Return JSON in this exact schema:
 {{
   "category": "job | finance | social | spam | other",
   "priority": "high | medium | low",
-  "summary": "one-sentence summary (English)",
-  "action_needed": true
+  "summary": "one or two short sentences in English, <= 200 chars",
+  "action": "reply | ignore | archive | notify | review",
+  "reason": "short reason in English",
+  "deadline": "deadline string from the email, or null"
 }}
 
 Category guide:
@@ -28,8 +30,17 @@ Priority guide:
 - medium: important but not urgent
 - low: no need to prioritize
 
+Action guide:
+- reply: the sender is clearly expecting a response or confirmation
+- ignore: no useful action should be taken
+- archive: informational content can be filed away
+- notify: the user should be alerted but no reply is required
+- review: a human should inspect before acting, or the intent is unclear
+
 Additional constraints:
-- summary should be concise (about 20 words max). If uncertain, return an empty string.
+ - summary should be one or two short sentences, and must be no more than 200 characters. If uncertain, return an empty string.
+- reason should be concise (about 12 words max).
+- deadline must be a plain string copied from the email when present; otherwise return null.
 
 Email input:
 

@@ -30,19 +30,30 @@ api.interceptors.response.use(
   r => r,
   err => {
     const t = useI18nStore.getState().t
+    const headers = err?.config?.headers
+    const suppressErrorToast =
+      (typeof headers?.get === 'function' && headers.get('X-Suppress-Error-Toast') === '1') ||
+      headers?.['X-Suppress-Error-Toast'] === '1' ||
+      headers?.['x-suppress-error-toast'] === '1'
     
     if (axios.isCancel(err)) {
-      toast.error(t(ERROR_MAP.cancel))
+      if (!suppressErrorToast) {
+        toast.error(t(ERROR_MAP.cancel))
+      }
       return Promise.reject(err)
     }
 
     if (err.code === 'ECONNABORTED') {
-      toast.error(t(ERROR_MAP.timeout))
+      if (!suppressErrorToast) {
+        toast.error(t(ERROR_MAP.timeout))
+      }
       return Promise.reject(err)
     }
 
     if (!err.response) {
-      toast.error(t(ERROR_MAP.network))
+      if (!suppressErrorToast) {
+        toast.error(t(ERROR_MAP.network))
+      }
       return Promise.reject(err)
     }
 
@@ -58,7 +69,9 @@ api.interceptors.response.use(
 
     // Show toast for error
     const msg = data?.detail || data?.message || t(ERROR_MAP[status] || 'error.unknown')
-    toast.error(msg)
+    if (!suppressErrorToast) {
+      toast.error(msg)
+    }
 
     return Promise.reject(err)
   },

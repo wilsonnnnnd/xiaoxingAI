@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
+let openModalCount = 0
+let previousBodyOverflow: string | null = null
+
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
@@ -18,27 +21,49 @@ export const Modal: React.FC<ModalProps> = ({
   footer,
   size = 'md',
 }) => {
+  const titleId = React.useId()
+  const modalRef = React.useRef<HTMLDivElement | null>(null)
+  const previouslyFocusedRef = React.useRef<HTMLElement | null>(null)
+
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return
+
+    openModalCount += 1
+    if (openModalCount === 1) {
+      previousBodyOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
     }
 
     return () => {
-      document.body.style.overflow = 'unset'
+      openModalCount = Math.max(0, openModalCount - 1)
+      if (openModalCount === 0) {
+        document.body.style.overflow = previousBodyOverflow ?? ''
+        previousBodyOverflow = null
+      }
     }
   }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) return
 
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+    const raf = window.requestAnimationFrame(() => {
+      modalRef.current?.focus()
+    })
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose()
     }
 
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      window.removeEventListener('keydown', onKeyDown)
+      previouslyFocusedRef.current?.focus?.()
+      previouslyFocusedRef.current = null
+    }
   }, [isOpen, onClose])
 
   if (!isOpen) return null
@@ -61,6 +86,11 @@ export const Modal: React.FC<ModalProps> = ({
 
       {/* Modal */}
       <div
+        ref={modalRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={[
           'group relative w-full overflow-hidden rounded-[28px]',
           sizeClasses[size],
@@ -83,7 +113,10 @@ export const Modal: React.FC<ModalProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between gap-4 border-b border-slate-200/70 px-6 py-5">
             <div className="min-w-0">
-              <h3 className="text-[18px] font-semibold tracking-[-0.03em] text-slate-950">
+              <h3
+                id={titleId}
+                className="text-[18px] font-semibold tracking-[-0.03em] text-slate-950"
+              >
                 {title}
               </h3>
             </div>

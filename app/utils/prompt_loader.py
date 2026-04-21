@@ -14,6 +14,7 @@ _SYSTEM_PROMPT_TYPE_BY_PATH = {
     "outgoing/email_compose.txt": "outgoing_email",
     "outgoing/email_edit.txt": "email_edit",
     "outgoing/email_reply_compose.txt": "email_reply_compose",
+    "outgoing/email_reply_drafts.txt": "email_reply_drafts",
 }
 
 _LOCALIZED_PROMPTS = {"gmail/telegram_notify.txt"}

@@ -15,17 +15,41 @@ import { ReplyFormatPage } from './features/replyFormat'
 import { PromptsPage } from './features/prompts'
 import { UsersPage } from './features/users'
 import { DebugPage } from './features/debug'
+import { ProcessedEmailsPage } from './features/inbox'
+import { AutomationRulesPage } from './features/automationRules'
 
 export default function App() {
   return (
     <>
-      <Toaster position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3200,
+          style: {
+            background: 'rgba(255,255,255,0.82)',
+            color: '#0f172a',
+            border: '1px solid rgba(255,255,255,0.70)',
+            borderRadius: '18px',
+            boxShadow: '0 18px 44px rgba(15,23,42,0.10)',
+            backdropFilter: 'blur(18px)',
+          },
+          success: {
+            duration: 2600,
+            iconTheme: { primary: '#059669', secondary: '#ecfdf5' },
+          },
+          error: {
+            duration: 4200,
+            iconTheme: { primary: '#dc2626', secondary: '#fef2f2' },
+          },
+        }}
+      />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
+        <Route path="inbox" element={<ProcessedEmailsPage />} />
         <Route path="ui-demo" element={<UiDemo />} />
         <Route path="help" element={<Help />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
@@ -35,6 +59,7 @@ export default function App() {
         <Route path="skill/gmail" element={<GmailPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/reply-format" element={<ReplyFormatPage />} />
+        <Route path="settings/automation-rules" element={<AutomationRulesPage />} />
         <Route path="prompts" element={<PromptsPage />} />
         <Route path="debug" element={<DebugPage />} />
         <Route path="users" element={<UsersPage />} />

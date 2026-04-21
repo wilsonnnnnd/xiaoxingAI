@@ -8,7 +8,7 @@ from app.core import config
 
 from .repositories import (
     user_repo, bot_repo, prompt_repo, log_repo,
-    email_repo, stats_repo, oauth_repo, outgoing_email_repo, reply_format_repo
+    email_repo, stats_repo, oauth_repo, outgoing_email_repo, reply_format_repo, email_automation_rule_repo
 )
 
 # User
@@ -36,8 +36,8 @@ from .repositories.log_repo import (
 
 # Email
 from .repositories.email_repo import (
-    save_email_record, get_email_records, get_email_record,
-    count_email_records, is_email_processed, get_processed_email_ids
+    save_email_record, get_email_records, get_email_record, get_email_record_by_id,
+    count_email_records, is_email_processed, get_processed_email_ids, get_processed_email_overview_stats
 )
 
 # Stats
@@ -80,6 +80,18 @@ from .repositories.reply_format_repo import (
     delete_reply_template,
     get_reply_format_settings,
     upsert_reply_format_settings,
+)
+
+from .repositories.email_automation_rule_repo import (
+    create_email_automation_rule,
+    list_email_automation_rules,
+    set_email_automation_rule_enabled,
+    update_email_automation_rule,
+    delete_email_automation_rule,
+    get_email_automation_rule,
+    find_duplicate_email_automation_rule,
+    find_matching_email_automation_rules,
+    count_enabled_email_automation_rules,
 )
 
 # Register Invite

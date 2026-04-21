@@ -3,14 +3,21 @@ Gmail AI 处理流水线 — Gmail Skill
 分析邮件 → 提取摘要 → 生成 Telegram 通知（3 步 LLM 调用）
 """
 import json
+import logging
 import re
 from typing import Any, Dict, Tuple
 
+from pydantic import ValidationError
+
 from app.core import config
 from app.core.llm import call_llm
+from app.schemas import EmailAnalysis
 from app.skills.gmail.telegram_format import render_telegram_message
 from app.utils.json_parser import extract_json_with_repair
 from app.utils.prompt_loader import load_prompt
+
+
+logger = logging.getLogger("gmail.pipeline")
 
 
 MAX_BODY_CHARS = 6000   # 超出此长度截断，避免 LLM 上下文溢出
@@ -49,27 +56,82 @@ def _cjk_count(text: str) -> int:
     return len(re.findall(r"[\u4e00-\u9fff]", text))
 
 
+def _model_validate_email_analysis(data: Dict[str, Any]) -> EmailAnalysis:
+    if hasattr(EmailAnalysis, "model_validate"):
+        return EmailAnalysis.model_validate(data)
+    return EmailAnalysis.parse_obj(data)
+
+
+def _model_dump(instance: Any) -> Dict[str, Any]:
+    if hasattr(instance, "model_dump"):
+        return instance.model_dump()
+    return instance.dict()
+
+
+def _fallback_email_analysis() -> EmailAnalysis:
+    return EmailAnalysis(
+        category="other",
+        priority="low",
+        summary="",
+        action="review",
+        reason="Structured output validation failed; review manually.",
+        deadline=None,
+    )
+
+
+def _action_needed_from_analysis(analysis: Dict[str, Any]) -> bool:
+    action = str(analysis.get("action") or "").strip().lower()
+    if action in {"reply", "notify", "review"}:
+        return True
+    if action in {"ignore", "archive"}:
+        return False
+    return bool(analysis.get("action_needed"))
+
+
+def _serialize_analysis(analysis: EmailAnalysis) -> Dict[str, Any]:
+    data = _model_dump(analysis)
+    data["action_needed"] = _action_needed_from_analysis(data)
+    return data
+
+
+def _parse_email_analysis(raw_result: str) -> tuple[Dict[str, Any], bool]:
+    try:
+        parsed = json.loads((raw_result or "").strip())
+        if not isinstance(parsed, dict):
+            raise ValueError("analysis output must be a JSON object")
+        return _serialize_analysis(_model_validate_email_analysis(parsed)), False
+    except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
+        logger.warning(
+            "email analysis validation failed; using fallback",
+            extra={
+                "raw_response": (raw_result or "")[:4000],
+                "validation_error": str(exc),
+                "used_fallback": True,
+            },
+        )
+        return _serialize_analysis(_fallback_email_analysis()), True
+
+
 def analyze_email(subject: str, body_excerpt: str, snippet: str = "", user_id: int | None = None) -> Dict[str, Any]:
     """步骤 1：分析邮件分类、优先级、关键词等"""
     body_excerpt, _ = _truncate(body_excerpt, MAX_BODY_CHARS, suffix="\n...[内容过长，已截断]")
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
     template = load_prompt(config.PROMPT_ANALYZE, user_id=user_id)
-    prompt = template.format(subject=subject, body_excerpt=body_excerpt, snippet=snippet)
+    prompt = (
+        template.format(subject=subject, body_excerpt=body_excerpt, snippet=snippet).strip()
+        + "\n\nReturn ONLY one valid JSON object with exactly these keys: "
+        + '"category", "priority", "summary", "action", "reason", "deadline".'
+    )
 
     raw_result, tokens = call_llm(prompt, max_tokens=256, use_cache=False)
-    schema_hint = """{
-  "category": "other",
-  "priority": "low",
-  "summary": "",
-  "action_needed": false
-}"""
-    parsed = extract_json_with_repair(raw_result, schema_hint=schema_hint, max_repair_tokens=128)
+    parsed, used_fallback = _parse_email_analysis(raw_result)
 
     return {
         "type":   "analysis",
         "result": parsed,
         "raw":    raw_result,
         "tokens": tokens,
+        "used_fallback": used_fallback,
     }
 
 
@@ -86,11 +148,13 @@ def summarize_email(
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
     body_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
     template = load_prompt(config.PROMPT_SUMMARY, user_id=user_id)
+    analysis_for_summary = dict(analysis or {})
+    analysis_for_summary["action_needed"] = _action_needed_from_analysis(analysis_for_summary)
     prompt = template.format(
         subject=subject,
         sender=sender,
         date=date,
-        analysis=json.dumps(analysis, ensure_ascii=False, indent=2),
+        analysis=json.dumps(analysis_for_summary, ensure_ascii=False, indent=2),
         snippet=snippet,
         body_excerpt=body_excerpt,
     )
@@ -102,7 +166,7 @@ def summarize_email(
         "priority_zh": "",
         "summary": "",
         "key_points": [],
-        "action_needed": bool(analysis.get("action_needed") or False),
+        "action_needed": _action_needed_from_analysis(analysis_for_summary),
         "sender": "",
         "date": "",
     }
@@ -245,4 +309,5 @@ def process_email(
         "summary":          summary["result"],
         "telegram_message": telegram_message,
         "tokens":           total_tokens,
+        "used_fallback":    bool(analysis.get("used_fallback")),
     }

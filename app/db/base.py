@@ -16,6 +16,7 @@ _SYSTEM_PROMPTS = [
     ("Outgoing Email", "outgoing_email", "outgoing/email_compose.txt"),
     ("Email Edit", "email_edit", "outgoing/email_edit.txt"),
     ("Email Reply Compose", "email_reply_compose", "outgoing/email_reply_compose.txt"),
+    ("Email Reply Drafts", "email_reply_drafts", "outgoing/email_reply_drafts.txt"),
 ]
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -260,6 +261,21 @@ def init_db() -> None:
             )
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_automation_rules (
+                id         BIGSERIAL PRIMARY KEY,
+                user_id    BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                category   VARCHAR,
+                priority   VARCHAR,
+                action     VARCHAR NOT NULL,
+                enabled    BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("ALTER TABLE email_automation_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_email_automation_rules_user_enabled ON email_automation_rules(user_id, enabled)")
+
         # ── email_records ─────────────────────────────────────────
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS email_records (
@@ -276,10 +292,18 @@ def init_db() -> None:
                 tokens        INTEGER NOT NULL DEFAULT 0,
                 priority      TEXT NOT NULL DEFAULT '',
                 sent_telegram BOOLEAN NOT NULL DEFAULT FALSE,
+                final_status  TEXT NOT NULL DEFAULT '',
+                processed_at  TEXT NOT NULL DEFAULT {_TS_EXPR},
+                reply_drafts_json TEXT NOT NULL DEFAULT '{{}}',
+                processing_result_json TEXT NOT NULL DEFAULT '{{}}',
                 created_at    TEXT NOT NULL DEFAULT {_TS_EXPR},
                 UNIQUE(user_id, email_id)
             )
         """)
+        cur.execute("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS final_status TEXT NOT NULL DEFAULT ''")
+        cur.execute(f"ALTER TABLE email_records ADD COLUMN IF NOT EXISTS processed_at TEXT NOT NULL DEFAULT {_TS_EXPR}")
+        cur.execute("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS reply_drafts_json TEXT NOT NULL DEFAULT '{}'")
+        cur.execute("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS processing_result_json TEXT NOT NULL DEFAULT '{}'")
 
         # ── worker_stats ──────────────────────────────────────────
         cur.execute(f"""

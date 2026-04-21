@@ -28,9 +28,10 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 
 | Feature | Description |
 |---------|-------------|
-|[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; 2-stage AI pipeline (classify → summarise) + deterministic Telegram rendering; priority filter and deduplication |
+|[Gmail Pipeline](feature/gmail.md) | Per-user Gmail polling worker; strict structured analysis + summary + deterministic Telegram rendering; central email processing flow, priority filters, and deduplication |
 |[Telegram](feature/telegram.md) | Email notifications, interactive callback buttons for outgoing draft confirmation, and per-user bot binding |
 |[Tool System](feature/tool-system.md) | Tool registry + Router LLM dispatch with keyword fallback; includes outgoing reply draft tools |
+|AI Inbox & Rules| Processed email inbox with URL-synced detail modal, lightweight search, overview stats, optional reply drafts, and persistent automation rules (create/edit/enable/disable/delete) |
 |[Auth & Users](feature/auth.md) | JWT + bcrypt; admin/user roles; per-user resource isolation; instant token revocation |
 |[Prompt Editor](feature/prompts.md) | Built-in + per-user prompt overrides; admin can manage all prompt files from the web UI |
 |[Web UI](feature/ui.md) | Light minimal SPA (React + Vite + Tailwind); Dashboard, Skills, Settings, Debug, User Management; EN/ZH i18n; mobile-friendly layout |
@@ -38,8 +39,11 @@ If you find this project useful, please give it a star on GitHub — it helps ot
 Docs:
 
 - UI design system: [doc/ui-design.md](doc/ui-design.md)
-- Frontend engineering guide: [doc/ui-guide.md](doc/ui-guide.md)
+- API reference: [doc/api.md](doc/api.md)
+- Development guide: [doc/development_guide.md](doc/development_guide.md)
+- Deployment guide: [doc/deploy.md](doc/deploy.md)
 - Worker runtime model: [doc/worker-runtime.md](doc/worker-runtime.md)
+- Structured email processing notes: [doc/email-analysis-structured-output.md](doc/email-analysis-structured-output.md)
 
 ---
 
@@ -170,6 +174,12 @@ On first startup the server automatically:
 - Imports built-in prompts from app/prompts/
 - Creates the admin account from ADMIN_USER / ADMIN_PASSWORD
 
+Recent backend additions:
+- strict `EmailAnalysis` structured output validation with safe fallback logging
+- central `email_processing_flow` orchestration for analysis, rules, actions, reply draft generation, and persistence
+- persistent `email_automation_rules`
+- inbox-ready processed email APIs: `GET /api/emails/processed`, `GET /api/emails/processed/stats`, and `GET /api/emails/processed/{id}` (supports `q` search by subject/sender)
+
 ### 8. Start the Frontend
 
 **Development mode** (hot reload):
@@ -292,11 +302,12 @@ xiaoxing/
 | `system_prompts` | Built-in prompt templates seeded from `app/prompts/` on startup |
 | `user_prompts` | Per-user prompt overrides |
 | `oauth_tokens` | Google OAuth tokens, one row per user |
-| `email_records` | Processed emails with full AI output (analysis, summary, Telegram message) |
+| `email_records` | Processed emails with structured analysis, summary, reply drafts, status, and processing result snapshots |
 | `outgoing_email_drafts` | Outgoing email drafts (encrypted body) + status machine + Telegram preview binding |
 | `outgoing_email_actions` | Outgoing audit/actions log; also used for idempotency (unique telegram_update_id) |
 | `reply_templates` | Per-user reply format templates |
 | `reply_format_settings` | Per-user reply format settings (default template + signature) |
+| `email_automation_rules` | Persistent user-defined email automation rules (`notify` / `mark_read`) |
 | `worker_stats` | Gmail worker session stats, per user |
 | `log` | Worker and chat logs with level, log_type, and token count |
 
@@ -319,6 +330,7 @@ For a production setup with Nginx, systemd, PostgreSQL, Redis, and HTTPS, see [D
 - [Development Guide](doc/development_guide.md)
 - [API Reference](doc/api.md)
 - [Backend Design Guide](doc/backend-guide.md)
+- [Structured Email Processing Notes](doc/email-analysis-structured-output.md)
 - [Frontend UI Guide](doc/ui-guide.md)
 - [Support Help](support/help.md)
 
@@ -337,4 +349,5 @@ See [LLM Configuration →](feature/llm-configuration.md).
 - On first startup, if no admin user exists, one is created automatically from ADMIN_USER / ADMIN_PASSWORD.
 - JWT_SECRET defaults to change-me-in-production — **always set a strong secret before deploying**.
 - Redis is optional; all features degrade gracefully if unavailable (no caching, no async queue).
-- Each email triggers 3 LLM calls: analysis → summary → Telegram message. All three prompts are independently configurable from the UI.
+- Standard notification processing still triggers analysis → summary → Telegram message.
+- When analysis suggests `reply`, the workflow can additionally generate structured reply draft options (`formal`, `friendly`, `concise`) without auto-sending anything.

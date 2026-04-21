@@ -26,9 +26,10 @@
 
 | 功能 | 简介 |
 |------|------|
-|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，2 阶段 AI 流水线（分类→摘要）+ 确定性 Telegram 渲染，支持优先级过滤和去重 |
+|[Gmail 流水线](feature/zh/gmail.md) | 每用户独立 Worker，严格结构化分析 + 摘要 + 确定性 Telegram 渲染，包含统一的邮件处理工作流、优先级过滤和去重 |
 |[Telegram 集成](feature/zh/telegram.md) | 邮件推送通知、发信草稿的确认/取消回调按钮、用户绑定 Bot |
 |[工具系统](feature/zh/tool-system.md) | 工具注册表 + Router LLM 调度（不可用时关键词降级）；包含发信草稿相关工具 |
+|AI Inbox 与规则| 已处理邮件 Inbox（详情弹窗与 URL 同步）、轻量搜索、概览统计、可选 AI 回复草稿，以及持久化自动化规则（创建/编辑/启用/停用/删除） |
 |[认证与用户管理](feature/zh/auth.md) | JWT + bcrypt；管理员/普通用户角色；资源按用户隔离；Token 即时吊销 |
 |[Prompt 管理](feature/zh/prompts.md) | 内置 Prompt + 每用户覆盖；管理员可在网页端管理所有 Prompt 文件 |
 |[Web 界面](feature/zh/ui.md) | 浅色极简 SPA（React + Vite + Tailwind）；仪表盘、技能中心、设置、调试、用户管理；中英双语；移动端友好 |
@@ -36,8 +37,11 @@
 文档索引：
 
 - UI 设计规范（浅色极简）：[doc/ui-design.md](doc/ui-design.md)
-- 前端工程指南： [doc/ui-guide.md](doc/ui-guide.md)
+- API 参考： [doc/api.md](doc/api.md)
+- 开发指南： [doc/development_guide.md](doc/development_guide.md)
+- 部署指南： [doc/deploy.md](doc/deploy.md)
 - Worker 运行逻辑： [doc/worker-runtime.md](doc/worker-runtime.md)
+- 结构化邮件处理说明： [doc/email-analysis-structured-output.md](doc/email-analysis-structured-output.md)
 
 ---
 
@@ -168,6 +172,12 @@ curl http://127.0.0.1:8000/api/health
 - 将 app/prompts/ 下的文件导入为系统内置 Prompt
 - 根据 ADMIN_USER / ADMIN_PASSWORD 创建管理员账号
 
+近期后端增强：
+- 严格 `EmailAnalysis` 结构化输出校验与安全 fallback 日志
+- 统一 `email_processing_flow`，编排分析、规则匹配、动作执行、回复草稿生成与持久化
+- 持久化 `email_automation_rules`
+- Inbox 接口：`GET /api/emails/processed`、`GET /api/emails/processed/stats`、`GET /api/emails/processed/{id}`（支持 `q` 按主题/发件人搜索）
+
 ### 8. 启动前端
 
 **开发模式**（热重载）：
@@ -290,11 +300,12 @@ xiaoxing/
 | `system_prompts` | 系统内置 Prompt 模板（启动时从 `app/prompts/` 自动导入） |
 | `user_prompts` | 用户 Prompt 覆盖 |
 | `oauth_tokens` | Google OAuth token，每用户一行 |
-| `email_records` | 邮件处理记录，包含完整 AI 输出（分析、摘要、Telegram 文案） |
+| `email_records` | 邮件处理记录，包含结构化分析、摘要、回复草稿、处理状态和处理结果快照 |
 | `outgoing_email_drafts` | 发信草稿（正文加密）+ 状态机 + Telegram 预览关联 |
 | `outgoing_email_actions` | 发信动作审计/流水；也用于幂等（telegram_update_id 唯一） |
 | `reply_templates` | 每用户回复格式模板 |
 | `reply_format_settings` | 每用户回复格式设置（默认模板 + 署名） |
+| `email_automation_rules` | 持久化邮件自动化规则（当前支持 `notify` / `mark_read`） |
 | `worker_stats` | Gmail Worker 会话统计，按用户记录 |
 | `log` | Worker 日志，含级别、类型和 token 数 |
 
@@ -317,6 +328,7 @@ xiaoxing/
 - [开发扩展指南](doc/development_guide.md)
 - [API 文档](doc/api.md)
 - [后端设计指南](doc/backend-guide.md)
+- [结构化邮件处理说明](doc/email-analysis-structured-output.md)
 - [前端 UI 指南](doc/ui-guide.md)
 - [帮助文档](support/help.zh.md)
 
@@ -335,4 +347,5 @@ xiaoxing/
 - 首次启动时，若数据库中不存在管理员账号，服务会自动根据 ADMIN_USER / ADMIN_PASSWORD 创建。
 - JWT_SECRET 默认值为 change-me-in-production — **生产环境部署前必须修改为强密钥**。
 - Redis 为可选依赖；不可达时所有功能自动降级（无缓存、无异步队列）。
-- 每封邮件触发 3 次 LLM 调用：分析 → 摘要 → Telegram 文案，三个阶段的 Prompt 均可通过 UI 独立配置。
+- 标准通知流程仍然是：分析 → 摘要 → Telegram 文案。
+- 当分析结果建议 `reply` 时，工作流还可以额外生成结构化回复草稿选项（`formal`、`friendly`、`concise`），但不会自动发送。

@@ -1,9 +1,9 @@
 from fastapi import HTTPException
+
 from app import db
+from app.skills.gmail.client import fetch_emails
 from app.skills.gmail.schemas import GmailFetchRequest, GmailProcessRequest
-from app.skills.gmail.pipeline import process_email
-from app.core.telegram.client import send_message
-from app.skills.gmail.client import fetch_emails, mark_as_read
+from app.workflows.email_processing_flow import run_email_processing_flow
 
 class GmailService:
     def fetch(self, payload: GmailFetchRequest, *, user_id: int) -> dict:
@@ -25,46 +25,23 @@ class GmailService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"拉取失败: {str(e)}")
 
+        notify_bots = db.get_notify_bots(user_id) if payload.send_telegram else []
         results = []
         for email in emails:
             try:
-                processed = process_email(
-                    email["subject"],
-                    email.get("body", ""),
-                    snippet=email.get("snippet", ""),
-                    sender=email.get("from", ""),
-                    date=email.get("date", ""),
-                    email_id=email.get("id", ""),
+                processed = run_email_processing_flow(
+                    email,
                     user_id=user_id,
+                    notify_bots=notify_bots,
+                    send_telegram_enabled=bool(payload.send_telegram),
+                    mark_read_enabled=bool(payload.mark_read),
+                    persist_result=True,
+                    bind_notify_refs=True,
+                    max_ai_retries=1,
                 )
-                processed["id"]   = email["id"]
+                processed["id"] = email["id"]
                 processed["from"] = email["from"]
                 processed["date"] = email["date"]
-
-                sent = False
-                if payload.send_telegram:
-                    send_message(processed["telegram_message"], parse_mode="HTML")
-                    processed["telegram_sent"] = True
-                    sent = True
-
-                if payload.mark_read and email["id"]:
-                    mark_as_read(email["id"], user_id=user_id)
-
-                if email.get("id"):
-                    db.save_email_record(
-                        email_id=email["id"],
-                        subject=email["subject"],
-                        sender=email.get("from", ""),
-                        date=email.get("date", ""),
-                        body=email.get("body") or email.get("snippet", ""),
-                        analysis=processed.get("analysis", {}),
-                        summary=processed.get("summary", {}),
-                        telegram_msg=processed.get("telegram_message", ""),
-                        tokens=processed.get("tokens", 0),
-                        priority=processed.get("analysis", {}).get("priority", ""),
-                        sent_telegram=sent,
-                        user_id=user_id,
-                    )
 
                 results.append({"status": "ok", **processed})
             except Exception as e:

@@ -72,14 +72,25 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/api/ai/summary` | Summarize email |
 | POST | `/api/ai/process` | AI processing pipeline |
 
-## 8. Email Records
+## 8. Processed Emails / Inbox
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/emails/processed` | Inbox-ready processed email list for the current user; supports `page`, `page_size`, `priority`, `category`, `has_reply_drafts` |
+| GET | `/api/emails/processed/{id}` | Structured processed email detail for the current user |
 | GET | `/api/email/records` | List email records |
 | GET | `/api/email/records/{email_id}` | Get single record |
 
-## 9. Gmail Worker & Actions
+## 9. Email Automation Rules
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/users/{user_id}/email-automation-rules` | List persistent email automation rules |
+| POST | `/api/users/{user_id}/email-automation-rules` | Create rule |
+| PATCH | `/api/users/{user_id}/email-automation-rules/{rule_id}` | Partially update rule; supports enable/disable and clearing nullable match fields |
+| DELETE | `/api/users/{user_id}/email-automation-rules/{rule_id}` | Delete rule |
+
+## 10. Gmail Worker & Actions
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -97,7 +108,7 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/api/gmail/process` | Process fetched Gmail |
 | GET | `/api/gmail/workstatus` | Gmail processing status |
 
-## 10. Telegram Tools
+## 11. Telegram Tools
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -121,4 +132,36 @@ HTTP status codes:
 - `422` — validation error (unknown config key, missing field)
 - `500` — internal server error
 - `502` — LLM backend unreachable
-```
+
+---
+
+## Inbox Payload Notes
+
+`GET /api/emails/processed` returns inbox list items with:
+
+- `id`
+- `subject`
+- `sender`
+- `summary`
+- `category`
+- `priority`
+- `suggested_action`
+- `processing_status`
+- `processed_at`
+- `has_reply_drafts`
+
+`GET /api/emails/processed/{id}` returns structured detail including:
+
+- `original_email_content`
+- `analysis`
+- `matched_rules`
+- `executed_actions`
+- `reply_drafts`
+
+`executed_actions` is the stable execution-log shape exposed to the frontend:
+
+- `action`
+- `success`
+- `optional`
+- `message`
+- `metadata`

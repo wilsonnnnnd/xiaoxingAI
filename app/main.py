@@ -33,7 +33,8 @@ from app.core.auth import get_current_user_or_none
 from app.api.routes import (
     health, ai, email_records, auth as auth_routes, users, bots, 
     db_prompts, config as config_routes, 
-    prompts, stats_logs, gmail_actions, gmail_compose, telegram_tools, debug_outgoing, reply_format
+    prompts, stats_logs, gmail_actions, gmail_compose, telegram_tools, debug_outgoing, reply_format,
+    email_automation_rules,
 )
 
 
@@ -115,6 +116,7 @@ app.include_router(gmail_compose.router)
 app.include_router(telegram_tools.router)
 app.include_router(debug_outgoing.router)
 app.include_router(reply_format.router)
+app.include_router(email_automation_rules.router)
 
 API_PREFIX = "/api"
 
@@ -133,6 +135,7 @@ app.include_router(gmail_compose.router, prefix=API_PREFIX)
 app.include_router(telegram_tools.router, prefix=API_PREFIX)
 app.include_router(debug_outgoing.router, prefix=API_PREFIX)
 app.include_router(reply_format.router, prefix=API_PREFIX)
+app.include_router(email_automation_rules.router, prefix=API_PREFIX)
 
 
 # ─────────────────────────────────────────

@@ -72,14 +72,26 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/api/ai/summary` | Summarize an email with AI |
 | POST | `/api/ai/process` | Run the full AI process |
 
-## 8. Email Records
+## 8. Processed Emails / Inbox
 
 | Method | Path | Description |
 |------|------|------|
+| GET | `/api/emails/processed` | Inbox-ready processed email list for the current user; supports `page`, `page_size`, `q`, `priority`, `category`, `has_reply_drafts` |
+| GET | `/api/emails/processed/stats` | Lightweight inbox overview stats for the current user |
+| GET | `/api/emails/processed/{id}` | Structured processed email detail for the current user |
 | GET | `/api/email/records` | List email records |
 | GET | `/api/email/records/{email_id}` | Get one email record |
 
-## 9. Gmail Worker and Actions
+## 9. Automation Rules
+
+| Method | Path | Description |
+|------|------|------|
+| GET | `/api/users/{user_id}/email-automation-rules` | List persistent email automation rules |
+| POST | `/api/users/{user_id}/email-automation-rules` | Create a rule |
+| PATCH | `/api/users/{user_id}/email-automation-rules/{rule_id}` | Partially update a rule; supports enable/disable and clearing nullable match fields |
+| DELETE | `/api/users/{user_id}/email-automation-rules/{rule_id}` | Delete a rule |
+
+## 10. Gmail Worker and Actions
 
 | Method | Path | Description |
 |------|------|------|
@@ -97,7 +109,7 @@ Interactive docs: http://127.0.0.1:8000/docs
 | POST | `/api/gmail/process` | Process fetched Gmail messages |
 | GET | `/api/gmail/workstatus` | Get Gmail work status |
 
-## 10. Telegram Tools
+## 11. Telegram Tools
 
 | Method | Path | Description |
 |------|------|------|
@@ -123,3 +135,41 @@ Common HTTP status codes:
 - `422` — validation failed
 - `500` — internal server error
 - `502` — LLM backend is not reachable
+
+---
+
+## Inbox Response Notes
+
+`GET /api/emails/processed` returns inbox-friendly summary rows only. Important fields include:
+
+- `q` (optional query param) — case-insensitive substring match on `subject` or `sender`
+- `summary`
+- `category`
+- `priority`
+- `suggested_action`
+- `processing_status`
+- `processed_at`
+- `has_reply_drafts`
+
+`GET /api/emails/processed/stats` returns:
+
+- `processed_today`
+- `high_priority`
+- `with_reply_drafts`
+- `active_rules`
+
+`GET /api/emails/processed/{id}` returns richer structured data:
+
+- `original_email_content`
+- `analysis`
+- `matched_rules`
+- `executed_actions`
+- `reply_drafts`
+
+`executed_actions` is treated as a stable frontend-facing shape:
+
+- `action`
+- `success`
+- `optional`
+- `message`
+- `metadata`

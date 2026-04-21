@@ -21,9 +21,9 @@ def get_reply_format(user: dict = Depends(auth_mod.current_user)):
     if not templates:
         db.create_reply_template(
             user_id=user_id,
-            name="默认模板",
+            name="Default Template",
             body_template="{{content}}\n\n{{closing}}\n\n{{signature}}",
-            closing="谢谢，",
+            closing="Thank you,",
             is_default=True,
         )
         settings = db.get_reply_format_settings(user_id)
@@ -45,7 +45,7 @@ def update_reply_format(payload: ReplyFormatUpdate, user: dict = Depends(auth_mo
     if payload.default_template_id is not None:
         tpl = db.get_reply_template(int(payload.default_template_id), user_id)
         if not tpl:
-            raise HTTPException(status_code=404, detail="默认模板不存在")
+            raise HTTPException(status_code=404, detail="Default template does not exist")
     db.upsert_reply_format_settings(
         user_id=user_id,
         signature=payload.signature,
@@ -86,7 +86,7 @@ def update_template(template_id: int, payload: ReplyTemplateUpdate, user: dict =
     updates = payload.model_dump(exclude_unset=True)
     tpl = db.update_reply_template(int(template_id), user_id, **updates)
     if not tpl:
-        raise HTTPException(status_code=404, detail="模板不存在")
+        raise HTTPException(status_code=404, detail="Template does not exist")
     if tpl.get("is_default"):
         db.upsert_reply_format_settings(user_id=user_id, default_template_id=int(tpl["id"]))
     return tpl
@@ -96,5 +96,5 @@ def update_template(template_id: int, payload: ReplyTemplateUpdate, user: dict =
 def delete_template(template_id: int, user: dict = Depends(auth_mod.current_user)):
     ok = db.delete_reply_template(int(template_id), int(user["id"]))
     if not ok:
-        raise HTTPException(status_code=404, detail="模板不存在")
+        raise HTTPException(status_code=404, detail="Template does not exist")
     return {"ok": True}

@@ -72,14 +72,25 @@ Base URL：`http://127.0.0.1:8000/api`
 | POST | `/api/ai/summary` | AI 邮件总结 |
 | POST | `/api/ai/process` | AI 综合处理流程 |
 
-## 8. 邮件记录 (Email Records)
+## 8. 已处理邮件 / Inbox
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/emails/processed` | 当前用户的 Inbox 列表接口；支持 `page`、`page_size`、`priority`、`category`、`has_reply_drafts` |
+| GET | `/api/emails/processed/{id}` | 当前用户的结构化已处理邮件详情 |
 | GET | `/api/email/records` | 列出邮件记录 |
 | GET | `/api/email/records/{email_id}` | 获取单条邮件记录详情 |
 
-## 9. Gmail Worker & 操作
+## 9. 邮件自动化规则
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/users/{user_id}/email-automation-rules` | 列出持久化邮件自动化规则 |
+| POST | `/api/users/{user_id}/email-automation-rules` | 创建规则 |
+| PATCH | `/api/users/{user_id}/email-automation-rules/{rule_id}` | 部分更新规则；支持启用/禁用及清空可空匹配字段 |
+| DELETE | `/api/users/{user_id}/email-automation-rules/{rule_id}` | 删除规则 |
+
+## 10. Gmail Worker & 操作
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -97,7 +108,7 @@ Base URL：`http://127.0.0.1:8000/api`
 | POST | `/api/gmail/process` | 触发处理获取到的 Gmail 邮件 |
 | GET | `/api/gmail/workstatus` | 获取 Gmail 处理工作状态 |
 
-## 10. Telegram 工具 (Telegram Tools)
+## 11. Telegram 工具 (Telegram Tools)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -121,4 +132,36 @@ HTTP 状态码：
 - `422` — 参数校验失败（未知配置项、字段缺失）
 - `500` — 服务器内部错误
 - `502` — LLM 后端不可达
-```
+
+---
+
+## Inbox 返回说明
+
+`GET /api/emails/processed` 返回适合 Inbox 列表展示的摘要字段：
+
+- `id`
+- `subject`
+- `sender`
+- `summary`
+- `category`
+- `priority`
+- `suggested_action`
+- `processing_status`
+- `processed_at`
+- `has_reply_drafts`
+
+`GET /api/emails/processed/{id}` 返回更完整的结构化详情：
+
+- `original_email_content`
+- `analysis`
+- `matched_rules`
+- `executed_actions`
+- `reply_drafts`
+
+前端可将 `executed_actions` 视为稳定的执行日志结构：
+
+- `action`
+- `success`
+- `optional`
+- `message`
+- `metadata`
