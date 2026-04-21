@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Dict, Optional
 
 import requests
@@ -72,6 +73,7 @@ def _try_register_webhooks(bots: list[Dict[str, Any]]) -> set[int]:
         token = str(b.get("token") or "").strip()
         if not token:
             continue
+        logger.info("[tg] webhook attempt | bot#%s", bot_id)
         try:
             set_webhook(
                 token=token,
@@ -217,26 +219,29 @@ def _handle_update(*, bot_row: Dict[str, Any], update: dict) -> None:
 
 async def _loop() -> None:
     global _offsets
+    logger.info("[tg] polling loop started")
     while _running:
-        bots = [
-            b for b in _active_bots()
-            if _polling_bot_ids is None or int(b["id"]) in _polling_bot_ids
-        ]
+        bots_all = await asyncio.to_thread(_active_bots)
+        bots = [b for b in bots_all if _polling_bot_ids is None or int(b["id"]) in _polling_bot_ids]
         if not bots:
             await asyncio.sleep(2)
             continue
         for b in bots:
+            bot_id = int(b.get("id") or 0)
             token = str(b.get("token") or "").strip()
             if not token:
                 continue
             offset = int(_offsets.get(int(b["id"]), 0) or 0)
-            updates = _get_updates(token, offset, timeout=25)
+            t0 = time.perf_counter()
+            updates = await asyncio.to_thread(_get_updates, token, offset, 25)
+            ms = int((time.perf_counter() - t0) * 1000)
+            logger.info("[tg] polling request duration | bot#%s | %sms | updates=%s", bot_id, ms, len(updates))
             for u in updates:
                 uid = int(u.get("update_id") or 0)
                 if uid:
                     _offsets[int(b["id"])] = max(int(_offsets.get(int(b["id"]), 0) or 0), uid + 1)
                 try:
-                    _handle_update(bot_row=b, update=u)
+                    await asyncio.to_thread(_handle_update, bot_row=b, update=u)
                 except Exception as e:
                     logger.warning("[tg] handle update failed: %s", e)
         await asyncio.sleep(0.2)
@@ -247,13 +252,16 @@ async def start() -> bool:
     if _running and (_webhook_bot_ids or (_task and not _task.done())):
         return False
 
-    bots = _active_bots()
-    fallback_ids = _try_register_webhooks(bots)
+    logger.info("[tg] startup begin")
+    bots = await asyncio.to_thread(_active_bots)
+    fallback_ids = await asyncio.to_thread(_try_register_webhooks, bots)
     _polling_bot_ids = None if not config.TELEGRAM_WEBHOOK_BASE_URL else set(fallback_ids)
     if _polling_bot_ids is None:
-        _prepare_polling(bots, {int(b["id"]) for b in bots})
+        logger.info("[tg] fallback to polling | reason=no_webhook_base_url")
+        await asyncio.to_thread(_prepare_polling, bots, {int(b["id"]) for b in bots})
     elif _polling_bot_ids:
-        _prepare_polling(bots, _polling_bot_ids)
+        logger.info("[tg] fallback to polling | bot_ids=%s", sorted(_polling_bot_ids))
+        await asyncio.to_thread(_prepare_polling, bots, _polling_bot_ids)
 
     _running = True
     if _polling_bot_ids is None or _polling_bot_ids:

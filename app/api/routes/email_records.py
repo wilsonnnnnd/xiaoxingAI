@@ -26,6 +26,21 @@ def _extract_processing_result(record: Dict[str, Any]) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _extract_attachment_meta(record: Dict[str, Any]) -> tuple[bool, int, list[str]]:
+    processing_result = _extract_processing_result(record)
+    has_attachments = bool(processing_result.get("has_attachments") or False)
+    attachment_names = processing_result.get("attachment_names") or []
+    if not isinstance(attachment_names, list):
+        attachment_names = []
+    attachment_names = [str(x) for x in attachment_names if str(x)]
+    attachment_count = int(processing_result.get("attachment_count") or 0)
+    if attachment_count <= 0:
+        attachment_count = len(attachment_names)
+    if attachment_count > 0 or attachment_names:
+        has_attachments = True
+    return has_attachments, attachment_count, attachment_names
+
+
 def _has_reply_drafts(record: Dict[str, Any]) -> bool:
     reply_drafts = record.get("reply_drafts") or {}
     options = reply_drafts.get("options") if isinstance(reply_drafts, dict) else None
@@ -34,6 +49,7 @@ def _has_reply_drafts(record: Dict[str, Any]) -> bool:
 
 def _to_processed_email_list_item(record: Dict[str, Any]) -> ProcessedEmailListItem:
     analysis = record.get("analysis") or {}
+    has_attachments, attachment_count, _ = _extract_attachment_meta(record)
     return ProcessedEmailListItem(
         id=int(record.get("id") or 0),
         subject=str(record.get("subject") or ""),
@@ -45,11 +61,14 @@ def _to_processed_email_list_item(record: Dict[str, Any]) -> ProcessedEmailListI
         processing_status=str(record.get("final_status") or ""),
         processed_at=str(record.get("processed_at") or ""),
         has_reply_drafts=_has_reply_drafts(record),
+        has_attachments=has_attachments,
+        attachment_count=attachment_count,
     )
 
 
 def _to_processed_email_detail(record: Dict[str, Any]) -> ProcessedEmailDetail:
     processing_result = _extract_processing_result(record)
+    has_attachments, attachment_count, attachment_names = _extract_attachment_meta(record)
     return ProcessedEmailDetail(
         id=int(record.get("id") or 0),
         subject=str(record.get("subject") or ""),
@@ -57,6 +76,9 @@ def _to_processed_email_detail(record: Dict[str, Any]) -> ProcessedEmailDetail:
         processed_at=str(record.get("processed_at") or ""),
         processing_status=str(record.get("final_status") or ""),
         original_email_content=str(record.get("body") or ""),
+        has_attachments=has_attachments,
+        attachment_count=attachment_count,
+        attachment_names=attachment_names,
         analysis=dict(record.get("analysis") or {}),
         matched_rules=list(processing_result.get("matched_rules") or []),
         executed_actions=list(processing_result.get("executed_actions") or []),

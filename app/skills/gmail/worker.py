@@ -10,6 +10,7 @@ import asyncio
 import dataclasses
 import logging
 import random
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
@@ -63,6 +64,13 @@ class _UserWorkerState:
 
 
 _workers: Dict[int, _UserWorkerState] = {}
+
+_startup_lock = threading.Lock()
+_startup_task: Optional[asyncio.Task] = None
+_starting: bool = False
+_startup_requested_at: Optional[str] = None
+_startup_completed_at: Optional[str] = None
+_startup_error: Optional[str] = None
 
 
 def _wlog(msg: str, level: str = "info", tokens: int = 0, user_id: Optional[int] = None) -> None:
@@ -242,6 +250,64 @@ def _start_user_worker(user_id: int) -> bool:
     return True
 
 
+def _any_user_running() -> bool:
+    for state in _workers.values():
+        if not state.running:
+            continue
+        if state.task is None:
+            return True
+        if not state.task.done():
+            return True
+    return False
+
+
+def _state_label(*, any_running: bool) -> str:
+    if any_running:
+        return "running"
+    if _starting:
+        return "starting"
+    return "stopped"
+
+
+async def _background_start() -> None:
+    global _starting, _startup_completed_at, _startup_error
+    logger.info("[worker] background start triggered")
+    try:
+        started_any = await start()
+        logger.info("[worker] startup completed | started_any=%s", started_any)
+    except Exception as exc:
+        _startup_error = str(exc)
+        logger.error("[worker] startup failed: %s", exc, exc_info=True)
+    finally:
+        _startup_completed_at = datetime.now().isoformat(timespec="seconds")
+        _starting = False
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
+
+
+def request_start() -> bool:
+    global _startup_task, _starting, _startup_requested_at, _startup_completed_at, _startup_error
+    logger.info("[worker] start requested")
+    with _startup_lock:
+        if _any_user_running():
+            return False
+        if _startup_task is not None and not _startup_task.done():
+            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _startup_error = "no running event loop"
+            return False
+        _starting = True
+        _startup_requested_at = datetime.now().isoformat(timespec="seconds")
+        _startup_completed_at = None
+        _startup_error = None
+        _startup_task = loop.create_task(_background_start())
+        return True
+
+
 async def start(allow_empty: bool = False) -> bool:
     users = await _run_io(db.list_worker_enabled_users)
     if not users:
@@ -418,12 +484,17 @@ def get_status() -> Dict[str, Any]:
 
     return {
         "running": any_running,
+        "starting": _starting,
+        "state": _state_label(any_running=any_running),
         "interval": config.GMAIL_POLL_INTERVAL,
         "query": config.GMAIL_POLL_QUERY,
         "priorities": config.NOTIFY_PRIORITIES or ["all"],
         "started_at": started_at,
         "last_poll": last_poll,
         "last_error": last_error,
+        "startup_requested_at": _startup_requested_at,
+        "startup_completed_at": _startup_completed_at,
+        "startup_error": _startup_error,
         "total_sent": total_sent,
         "total_fetched": total_fetched,
         "total_errors": total_errors,

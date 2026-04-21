@@ -12,7 +12,6 @@ Xiaoxing ships a light, minimal single-page application (React + TypeScript + Vi
 | `/home` | Home / Dashboard | System overview, quick-start checklist |
 | `/skill` | Skills Hub | Entry point for skills (currently Gmail) |
 | `/skill/gmail` | Gmail | Worker control, live email log, per-user settings |
-| `/ui-demo` | UI Demo | Light theme design demo (shared components showcase) |
 | `/prompts` | Prompt Editor | View and edit prompt files (admin + limited non-admin view) |
 | `/settings` | Settings | Google OAuth, bot configuration, environment variables |
 | `/settings/reply-format` | Reply Format | Configure per-user reply templates and signature |

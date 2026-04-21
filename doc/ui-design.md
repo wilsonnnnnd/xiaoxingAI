@@ -1,13 +1,12 @@
 # UI 设计规范（浅色极简 / Soft Glass Minimalism）
 
-本文档描述本项目当前的 UI 设计语言与落地方式，面向需要实现页面与组件的开发者。它与 [ui-guide.md](./ui-guide.md) 的关系是：
+本文档描述本项目当前的 UI 设计语言与落地方式，面向需要实现页面与组件的开发者。它与 [frontend-guide.md](./frontend-guide.md) 的关系是：
 
-- ui-guide.md：偏“工程与约定”（路由、Layout、导航、表单、i18n、错误处理等）
+- frontend-guide.md：偏“工程与约定”（路由、Layout、导航、表单、i18n、错误处理等）
 - ui-design.md：偏“设计系统与视觉语言”（颜色、层级、组件形态、交互与可复制模板）
 
 参考实现：
 
-- 浅色 Demo 页面：`/ui-demo`（源码：[UiDemo.tsx](../frontend/src/pages/UiDemo.tsx)）
 - 通用组件：[`frontend/src/components/common`](../frontend/src/components/common)
 
 ---
@@ -128,7 +127,7 @@
 
 ## 4. 页面模板（可复制）
 
-以 [UiDemo.tsx](../frontend/src/pages/UiDemo.tsx) 为参考，推荐页面组合方式：
+推荐页面组合方式：
 
 1) Hero（Surface 风格的大区块：标题 + CTA + 状态 Badge）
 2) KPI 行（KpiCard x 3）
@@ -137,6 +136,52 @@
 5) Modal（确认/详情）
 
 ---
+
+## UI Demo Patterns (Archived)
+
+说明：项目早期曾存在一个 “UI Demo” 示例页用于快速展示浅色玻璃材质的组件组合方式。该页面已被移除以减少维护成本；其可复用的设计模式在此处归档，供新增页面时参考。
+
+### 1) 页面背景与容器
+
+- 背景：采用浅色径向渐变叠加，辅以极轻网格纹理，制造“空气感”但不抢内容对比度
+- 容器：推荐 `max-w-7xl` 的居中布局，外层垂直间距保持稳定（例如 `gap-6`）
+- 区块：页面由多个 section 组成，区块间距优先用 gap/mt 建立节奏，而不是粗分割线
+
+### 2) Hero（顶部主区块）
+
+- 形态：大圆角面板（比 Card 更大、更像 Surface），顶部使用一条 hairline 高光线
+- 内容结构：eyebrow（小写标题）→ 主标题 → 说明文案 → 右侧轻量操作区（Badge + Primary CTA）
+- 适用：仪表盘首页、单页功能入口、设置页顶部说明
+
+### 3) KPI 行（轻量指标）
+
+- 形态：3 列栅格（移动端 1 列），统一用 KpiCard 承载
+- 文案：label + value + note，数值使用 tabular 形式以减少跳动
+- 适用：Inbox/Worker/系统状态等“概览 + 轻操作”场景
+
+### 4) 信息 Card（标准信息块）
+
+- 结构：subtitle + title + body（可选 rightSlot / footer）
+- 内容密度：默认一段短说明即可；列表类内容用 `space-y-2` 保持可读
+- 适用：说明卡、状态卡、近期事件、小型配置摘要
+
+### 5) 表单 + 列表的双分区（Surface）
+
+- 用法：把“可编辑配置”与“活动列表/日志”分成两个 Surface，并用响应式栅格排列（例如 1 列 → 2 列）
+- 表单区：InputField / Select / Switch 组合时，Label 使用统一的 uppercase micro label（增强系统感）
+- 列表区：条目采用轻边框 + 轻 hover 抬升（微位移 + 轻阴影），强调“可点击但不打扰”
+
+### 6) 微交互（克制）
+
+- hover：主要通过亮度、边界、轻阴影变化表达可交互，不做强烈 scale
+- transition：优先短时长（~200–300ms）且只对必要属性做过渡
+- toast：轻量成功反馈（Saved/Reset/Done）即可，不需要长文案
+
+### 7) 复用组件清单（建议优先使用）
+
+- 容器：Surface / Card / KpiCard
+- 表单：InputField / Select / Switch
+- 反馈与强调：Badge / Button / Modal / Toast（react-hot-toast）
 
 ## 5. 常见反模式（不要这样）
 

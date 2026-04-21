@@ -3,6 +3,7 @@ import importlib
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
@@ -95,9 +96,43 @@ app.add_middleware(
 @app.middleware("http")
 async def _log_requests(request: Request, call_next):
     start = time.perf_counter()
+    path = request.url.path
+
+    is_processed_email_api = (
+        path == "/emails/processed"
+        or path.startswith("/emails/processed/")
+        or path == "/api/emails/processed"
+        or path.startswith("/api/emails/processed/")
+    )
+    start_dt = datetime.now(timezone.utc) if is_processed_email_api else None
+
     response = await call_next(request)
-    ms = (time.perf_counter() - start) * 1000
-    logger.info("%s %s %d %.0fms", request.method, request.url.path, response.status_code, ms)
+    end = time.perf_counter()
+    ms = (end - start) * 1000
+    logger.info("%s %s %d %.0fms", request.method, path, response.status_code, ms)
+
+    if is_processed_email_api:
+        end_dt = datetime.now(timezone.utc)
+        qp = request.query_params
+        safe_params: Dict[str, object] = {}
+        for key in ("page", "page_size", "priority", "category", "has_reply_drafts"):
+            value = qp.get(key)
+            if value is not None and value != "":
+                safe_params[key] = value
+        q_value = qp.get("q")
+        if q_value:
+            safe_params["q_len"] = len(q_value)
+
+        logger.info(
+            "[API] %s %s | %.0fms | start=%s end=%s | params=%s",
+            request.method,
+            path,
+            ms,
+            start_dt.isoformat() if start_dt else "",
+            end_dt.isoformat(),
+            safe_params,
+        )
+
     return response
 
 
@@ -193,8 +228,15 @@ def gmail_callback(request: Request, code: str,
 async def worker_start(user: dict = Depends(auth_mod.require_admin)):
     """启动自动轮询 Worker"""
     try:
-        started = await worker.start()
-        return {"ok": True, "started": started, "status": worker.get_status()}
+        started = worker.request_start()
+        status = worker.get_status()
+        if status.get("running"):
+            message = "already running"
+        elif status.get("starting"):
+            message = "starting"
+        else:
+            message = "start requested" if started else "ignored"
+        return {"ok": True, "started": started, "status": status, "message": message}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -39,6 +39,9 @@ class EmailProcessingRunResult(BaseModel):
     subject: str = ""
     sender: str = ""
     date: str = ""
+    has_attachments: bool = False
+    attachment_count: int = 0
+    attachment_names: List[str] = Field(default_factory=list)
     analysis: Dict[str, Any] = Field(default_factory=dict)
     summary: Dict[str, Any] = Field(default_factory=dict)
     telegram_message: str = ""
@@ -62,11 +65,22 @@ def _priority_level(priority: str) -> int:
 
 
 def _build_base_result(email: Dict[str, Any]) -> EmailProcessingRunResult:
+    attachment_names = email.get("attachment_names") or []
+    if not isinstance(attachment_names, list):
+        attachment_names = []
+    attachment_names = [str(x) for x in attachment_names if str(x)]
+    attachment_count = int(email.get("attachment_count") or 0)
+    if attachment_count <= 0:
+        attachment_count = len(attachment_names)
+    has_attachments = bool(email.get("has_attachments")) or bool(attachment_count) or bool(attachment_names)
     return EmailProcessingRunResult(
         email_id=str(email.get("id") or ""),
         subject=str(email.get("subject") or ""),
         sender=str(email.get("from") or ""),
         date=str(email.get("date") or ""),
+        has_attachments=has_attachments,
+        attachment_count=attachment_count,
+        attachment_names=attachment_names,
         processed_at=datetime.now().isoformat(timespec="seconds"),
     )
 
@@ -147,6 +161,7 @@ def _run_ai_pipeline_with_retry(
                 sender=str(email.get("from") or ""),
                 date=str(email.get("date") or ""),
                 email_id=str(email.get("id") or ""),
+                attachment_count=int(email.get("attachment_count") or 0),
                 user_id=user_id,
             )
         except Exception as exc:
@@ -185,6 +200,16 @@ def run_email_processing_flow(
     result.tokens = int(processed.get("tokens") or 0)
     if bool(processed.get("used_fallback")):
         result.analysis["used_fallback"] = True
+
+    if result.has_attachments:
+        names = [str(x) for x in (result.attachment_names or []) if str(x)]
+        if names:
+            note = f"\n\nAttachments detected: {', '.join(names)}. Attachment contents were not analyzed yet."
+        else:
+            count = int(result.attachment_count or 0)
+            hint = f"{count} file(s)" if count > 0 else "attachment(s)"
+            note = f"\n\nThis email includes {hint}. Attachment contents were not analyzed yet."
+        result.telegram_message = (result.telegram_message or "").rstrip() + note
 
     priority = str(result.analysis.get("priority") or "low").strip().lower()
     matched_automation_rules = automation_rule_service.find_matching_rules(user_id=user_id, analysis=result.analysis)

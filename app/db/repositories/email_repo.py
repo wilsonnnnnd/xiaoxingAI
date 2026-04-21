@@ -1,6 +1,10 @@
 import json as _json
+import logging
+import time
 from typing import Any, Dict, Iterable, List, Optional, Set
 from ..session import _cur
+
+logger = logging.getLogger("db")
 
 
 def _build_email_record_filters(
@@ -185,11 +189,15 @@ def get_email_records(
         )
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         params.extend([limit, offset])
+        start = time.perf_counter()
         cur.execute(
             f"SELECT {_EMAIL_COLS} FROM email_records {where} ORDER BY id DESC LIMIT %s OFFSET %s",
             params,
         )
-        return [_row_to_email_record(r) for r in cur.fetchall()]
+        rows = cur.fetchall()
+        ms = (time.perf_counter() - start) * 1000
+        logger.info("[DB] email_records_list | %.0fms | rows=%d", ms, len(rows))
+        return [_row_to_email_record(r) for r in rows]
 
 def get_email_record(email_id: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     with _cur() as cur:
@@ -210,6 +218,7 @@ def get_email_record(email_id: str, user_id: Optional[int] = None) -> Optional[D
 
 def get_email_record_by_id(record_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     with _cur() as cur:
+        start = time.perf_counter()
         if user_id is not None:
             cur.execute(
                 f"SELECT {_EMAIL_COLS} FROM email_records"
@@ -222,6 +231,8 @@ def get_email_record_by_id(record_id: int, user_id: Optional[int] = None) -> Opt
                 (record_id,),
             )
         r = cur.fetchone()
+        ms = (time.perf_counter() - start) * 1000
+        logger.info("[DB] email_record_by_id | %.0fms | rows=%d", ms, 1 if r else 0)
         return _row_to_email_record(r) if r else None
 
 def count_email_records(
@@ -240,17 +251,22 @@ def count_email_records(
             user_id=user_id,
         )
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        start = time.perf_counter()
         cur.execute(f"SELECT COUNT(*) FROM email_records {where}", params)
-        return cur.fetchone()[0]
+        value = cur.fetchone()[0]
+        ms = (time.perf_counter() - start) * 1000
+        logger.info("[DB] email_records_count | %.0fms", ms)
+        return value
 
 
 def get_processed_email_overview_stats(*, user_id: int) -> Dict[str, int]:
     with _cur() as cur:
+        start = time.perf_counter()
         cur.execute(
             """
             SELECT
                 COUNT(*) FILTER (
-                    WHERE to_timestamp(processed_at, 'YYYY-MM-DD"T"HH24:MI:SS')::date = CURRENT_DATE
+                    WHERE left(processed_at, 10) = to_char(CURRENT_DATE, 'YYYY-MM-DD')
                 ) AS processed_today,
                 COUNT(*) FILTER (
                     WHERE analysis_json::jsonb ->> 'priority' = 'high'
@@ -265,6 +281,8 @@ def get_processed_email_overview_stats(*, user_id: int) -> Dict[str, int]:
             (int(user_id),),
         )
         row = cur.fetchone() or (0, 0, 0)
+        ms = (time.perf_counter() - start) * 1000
+        logger.info("[DB] email_records_stats | %.0fms", ms)
         return {
             "processed_today": int(row[0] or 0),
             "high_priority": int(row[1] or 0),

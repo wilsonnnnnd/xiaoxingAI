@@ -14,6 +14,8 @@ class ProcessedEmailListItem(BaseModel):
     processing_status: str = ""
     processed_at: str = ""
     has_reply_drafts: bool = False
+    has_attachments: bool = False
+    attachment_count: int = 0
 
 
 class ProcessedEmailListResponse(BaseModel):
@@ -52,6 +54,9 @@ class ProcessedEmailDetail(BaseModel):
     processed_at: str = ""
     processing_status: str = ""
     original_email_content: str = ""
+    has_attachments: bool = False
+    attachment_count: int = 0
+    attachment_names: List[str] = Field(default_factory=list)
     analysis: Dict[str, Any] = Field(default_factory=dict)
     matched_rules: List[ProcessedEmailMatchedRule] = Field(default_factory=list)
     executed_actions: List[ProcessedEmailExecutedAction] = Field(default_factory=list)

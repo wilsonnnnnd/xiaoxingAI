@@ -72,6 +72,8 @@ export interface ProcessedEmailListItem {
   processing_status: EmailProcessingStatus
   processed_at: string
   has_reply_drafts: boolean
+  has_attachments: boolean
+  attachment_count: number
 }
 
 export interface ProcessedEmailListResponse {
@@ -132,6 +134,9 @@ export interface ProcessedEmailDetail {
   processed_at: string
   processing_status: EmailProcessingStatus
   original_email_content: string
+  has_attachments: boolean
+  attachment_count: number
+  attachment_names: string[]
   analysis: ProcessedEmailAnalysis
   matched_rules: ProcessedEmailMatchedRule[]
   executed_actions: ProcessedEmailExecutedAction[]

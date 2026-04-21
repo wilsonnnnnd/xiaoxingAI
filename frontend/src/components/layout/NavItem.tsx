@@ -25,18 +25,34 @@ export const NavItem: React.FC<NavItemProps> = ({
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ease-in-out 
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white
-        ${
+        [
+          'group flex items-center gap-3 px-3 py-2.5 rounded-[18px]',
+          'text-[13px] font-medium tracking-[-0.01em]',
+          'transition-all duration-200 ease-out',
+
+          // 🔹 默认态
+          'text-slate-600',
+
+          // 🔹 hover（非常轻）
+          'hover:bg-white/70 hover:text-slate-900',
+
+          // 🔹 active（统一成 skill 风格）
           isActive
-            // ✅ 激活状态（浅蓝 + 深色字）
-            ? 'bg-[rgba(217,235,255,0.9)] text-[#0b3c5d] font-semibold border-l-4 border-sky-300 pl-3'
-            // ✅ 未激活（轻灰 + 轻 hover）
-            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-        } ${className}`
+            ? [
+                'bg-[linear-gradient(180deg,rgba(234,244,255,0.96)_0%,rgba(223,238,255,0.96)_100%)]',
+                'text-[#0b3c5d]',
+                'shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_4px_12px_rgba(15,23,42,0.04)]',
+              ].join(' ')
+            : '',
+
+          // 🔹 focus（统一）
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+
+          className,
+        ].join(' ')
       }
     >
-      {t(translationKey)}
+      <span className="truncate">{t(translationKey)}</span>
     </NavLink>
   )
 }

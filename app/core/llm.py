@@ -6,6 +6,8 @@ LLM 传输层 — 核心模块
 import logging
 import time
 import hashlib
+import json
+from typing import Any
 
 import requests
 
@@ -44,7 +46,7 @@ def _build_headers() -> dict:
     return headers
 
 
-def call_llm(prompt: str, max_tokens: int = 512, use_cache: bool = True) -> tuple:
+def call_llm(prompt: str = "", max_tokens: int = 512, use_cache: bool = True, messages: list[dict[str, Any]] | None = None) -> tuple:
     """调用主 LLM（chat/email 等场景）。"""
     main_key = config.LLM_API_KEY or config.OPENAI_API_KEY
     main_key_src = "LLM_API_KEY" if config.LLM_API_KEY else ("OPENAI_API_KEY" if config.OPENAI_API_KEY else "none")
@@ -57,6 +59,7 @@ def call_llm(prompt: str, max_tokens: int = 512, use_cache: bool = True) -> tupl
         api_key=main_key,
         purpose="main",
         api_key_source=main_key_src,
+        messages=messages,
     )
 
 
@@ -70,7 +73,8 @@ def call_router(prompt: str, max_tokens: int = 64) -> tuple:
 
 
 def _call(url: str, model: str, prompt: str, max_tokens: int,
-          use_cache: bool = True, api_key: str = "", purpose: str = "", api_key_source: str = "") -> tuple:
+          use_cache: bool = True, api_key: str = "", purpose: str = "", api_key_source: str = "",
+          messages: list[dict[str, Any]] | None = None) -> tuple:
     """
     调用指定端点的 LLM。
     - use_cache=True 时优先命中 Redis 缓存（TTL 1h）
@@ -78,10 +82,17 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
     返回 (content_str, token_count)。
     """
     # ── Redis 缓存命中 ────────────────────────────────────
+    cache_key_text = prompt
+    if messages is not None and not cache_key_text:
+        try:
+            cache_key_text = json.dumps(messages, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        except Exception:
+            cache_key_text = str(messages)
+
     if use_cache:
         try:
             from app.core.redis_client import get_llm_cache, set_llm_cache
-            cached = get_llm_cache(prompt, max_tokens)
+            cached = get_llm_cache(cache_key_text, max_tokens)
             if cached is not None:
                 logger.debug(
                     "[llm] cache hit | model=%s tokens=%d", model, cached[1])
@@ -106,21 +117,60 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
     for attempt in range(MAX_LLM_RETRIES):
         try:
             t0 = time.perf_counter()
+            payload_messages = messages if messages is not None else [{"role": "user", "content": prompt}]
             resp = requests.post(
                 url,
                 headers={"Content-Type": "application/json", **
                          ({"Authorization": f"Bearer {api_key}"} if api_key else {})},
                 json={
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": payload_messages,
                     "temperature": 0.2,
                     "max_tokens": max_tokens
                 },
                 timeout=timeout
             )
 
+            try:
+                body_text = (resp.text or "").strip()
+            except Exception:
+                body_text = ""
+
+            if resp.status_code >= 500 and body_text:
+                lower = body_text.lower()
+                if "exceed_context_size_error" in lower or "maximum context length" in lower or "context length" in lower:
+                    body_limit = 4096
+                    body_short = body_text[:body_limit]
+                    if len(body_text) > body_limit:
+                        body_short = body_short + "...(truncated)"
+                    ctype = str(resp.headers.get("content-type") or "").strip()
+                    logger.error(
+                        "[llm] context overflow | purpose=%s model=%s url=%s | status=%s ctype=%s | body=%s",
+                        purpose or "-",
+                        model,
+                        url,
+                        resp.status_code,
+                        ctype,
+                        body_short,
+                    )
+                    raise RuntimeError("LLM context overflow") from None
+
             # 4xx 是永久性错误（如请求体过大），立即抛出不重试
             if 400 <= resp.status_code < 500:
+                body_limit = 4096
+                body_short = body_text[:body_limit]
+                if len(body_text) > body_limit:
+                    body_short = body_short + "...(truncated)"
+                ctype = str(resp.headers.get("content-type") or "").strip()
+                logger.error(
+                    "[llm] 4xx response | purpose=%s model=%s url=%s | status=%s ctype=%s | body=%s",
+                    purpose or "-",
+                    model,
+                    url,
+                    resp.status_code,
+                    ctype,
+                    body_short,
+                )
                 resp.raise_for_status()
 
             resp.raise_for_status()
@@ -137,7 +187,7 @@ def _call(url: str, model: str, prompt: str, max_tokens: int,
             # ── 写入 Redis 缓存 ───────────────────────────
             if use_cache:
                 try:
-                    set_llm_cache(prompt, max_tokens, content, tokens)
+                    set_llm_cache(cache_key_text, max_tokens, content, tokens)
                 except Exception:
                     pass
 

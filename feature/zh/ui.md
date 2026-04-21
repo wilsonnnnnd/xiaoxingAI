@@ -12,7 +12,6 @@ Xiaoxing 提供浅色极简单页应用（React + TypeScript + Vite + Tailwind C
 | `/home` | 首页 / 仪表盘 | 系统概览，快速启动检查清单 |
 | `/skill` | 技能中心 | 技能入口页（当前为 Gmail） |
 | `/skill/gmail` | Gmail | Worker 控制、实时邮件日志、用户配置 |
-| `/ui-demo` | UI 示例 | 浅色设计示例页（通用组件展示） |
 | `/prompts` | Prompt 编辑器 | 查看和编辑 Prompt 文件（管理员 + 普通用户受限视图） |
 | `/settings` | 设置 | Google OAuth 授权、Bot 配置、环境变量 |
 | `/settings/reply-format` | 回复格式 | 配置每用户回复模板与署名 |

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Modal } from '../../../components/common/Modal'
@@ -25,6 +25,38 @@ import {
 } from '../utils'
 
 const DRAFT_TONES: ReplyDraftTone[] = ['formal', 'friendly', 'concise']
+
+const safeT = (t: (key: string) => string, key: string, fallback: string) => {
+  const value = t(key)
+  if (!value || value === key) return fallback
+  return value
+}
+
+const uiText = (lang: string, en: string, zh: string) => (lang === 'zh' ? zh : en)
+
+const shortSender = (sender: string) => {
+  const s = String(sender || '').trim()
+  if (!s) return { short: '', full: '' }
+  const m = s.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/)
+  if (m) {
+    const name = (m[1] || '').trim()
+    const email = (m[2] || '').trim()
+    return {
+      short: name || email,
+      full: `${name ? `${name} ` : ''}<${email}>`,
+    }
+  }
+  return { short: s, full: s }
+}
+
+const isLikelyTechnical = (text: string) => {
+  const s = String(text || '').trim()
+  if (!s) return false
+  if (s.includes('email_records')) return true
+  if (s.includes('priority=') || s.includes('min_priority=')) return true
+  if (/\b[a-z_]+=[^\s]+\b/i.test(s)) return true
+  return false
+}
 
 function parseMatchRuleExpression(rule: string): { category?: string; priority?: string } {
   const normalized = String(rule || '').toLowerCase()
@@ -105,7 +137,7 @@ function MetadataList({ metadata }: { metadata: Record<string, unknown> }) {
           className="rounded-2xl border border-white/70 bg-white/60 px-3.5 py-3 ring-1 ring-black/[0.03]"
         >
           <dt className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{key}</dt>
-          <dd className="mt-1 break-words text-sm leading-6 text-slate-700">
+          <dd className="mt-1 break-words [overflow-wrap:anywhere] text-sm leading-6 text-slate-700">
             {typeof value === 'string' ? value : JSON.stringify(value)}
           </dd>
         </div>
@@ -146,11 +178,15 @@ function DraftCard({ draft }: { draft: ProcessedEmailReplyOption }) {
 }
 
 function AnalysisSection({ detail }: { detail: ProcessedEmailDetail }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const analysis = detail.analysis || {}
   const category = analysis.category as EmailCategory | undefined
   const priority = analysis.priority as EmailPriority | undefined
   const action = analysis.action as EmailSuggestedAction | undefined
+  const unknown = uiText(lang, 'Unknown', '未知')
+  const categoryLabel = category ? safeT(t, `inbox.category.${category}`, String(category)) : null
+  const priorityLabel = priority ? safeT(t, `inbox.priority.${priority}`, String(priority)) : null
+  const actionLabel = action ? safeT(t, `inbox.action.${action}`, String(action)) : null
 
   return (
     <Card
@@ -159,19 +195,16 @@ function AnalysisSection({ detail }: { detail: ProcessedEmailDetail }) {
       subtitle={t('inbox.detail.analysis_subtitle')}
     >
       <div className="space-y-4">
-        <p className="rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 text-sm leading-7 text-slate-700 ring-1 ring-black/[0.03]">
+        <p className="rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 text-[13px] leading-7 text-slate-600 ring-1 ring-black/[0.03] min-w-0 overflow-hidden break-words [overflow-wrap:anywhere] line-clamp-2 sm:line-clamp-none">
           {analysis.summary || detail.summary || t('inbox.no_summary')}
         </p>
 
         <div className="flex flex-wrap gap-2">
-          {category ? (
-            <Badge variant={getBadgeVariantForCategory(category)}>{t(`inbox.category.${category}`)}</Badge>
-          ) : null}
-          {priority ? (
-            <Badge variant={getBadgeVariantForPriority(priority)}>{t(`inbox.priority.${priority}`)}</Badge>
-          ) : null}
-          {action ? (
-            <Badge variant={getBadgeVariantForAction(action)}>{t(`inbox.action.${action}`)}</Badge>
+          {category && categoryLabel ? <Badge variant={getBadgeVariantForCategory(category)}>{categoryLabel}</Badge> : null}
+          {priority && priorityLabel ? <Badge variant={getBadgeVariantForPriority(priority)}>{priorityLabel}</Badge> : null}
+          {action && actionLabel ? <Badge variant={getBadgeVariantForAction(action)}>{actionLabel}</Badge> : null}
+          {!categoryLabel && !priorityLabel && !actionLabel ? (
+            <Badge variant="neutral">{unknown}</Badge>
           ) : null}
         </div>
 
@@ -195,7 +228,7 @@ function AnalysisSection({ detail }: { detail: ProcessedEmailDetail }) {
 }
 
 function ExecutedActionItem({ action }: { action: ProcessedEmailExecutedAction }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const actionLabel = formatExecutedActionLabel(action.action, t)
   const variant = action.success ? 'success' : action.optional ? 'warning' : 'error'
   const statusLabel = action.success
@@ -204,6 +237,12 @@ function ExecutedActionItem({ action }: { action: ProcessedEmailExecutedAction }
       ? t('inbox.detail.action_result.optional_failed')
       : t('inbox.detail.action_result.failed')
   const outcome = formatExecutedActionOutcome(action, actionLabel, t)
+  const rawMessage = String(action.message || '').trim()
+  const hasMetadata = Object.keys(action.metadata || {}).length > 0
+  const technicalMessage = rawMessage && isLikelyTechnical(rawMessage)
+  const userMessage = rawMessage && !technicalMessage ? rawMessage : ''
+  const detailsLabel = uiText(lang, 'Technical details', '技术细节')
+  const hintLabel = uiText(lang, 'Details available', '可查看详情')
 
   return (
     <div className="rounded-[22px] border border-white/70 bg-white/55 p-4 ring-1 ring-black/[0.03]">
@@ -215,16 +254,31 @@ function ExecutedActionItem({ action }: { action: ProcessedEmailExecutedAction }
 
       <div className="mt-3 space-y-1">
         <p className="text-sm leading-7 text-slate-700">{outcome}</p>
-        {action.message ? (
-          <p className="text-xs leading-6 text-slate-500">{action.message}</p>
-        ) : (
+        {userMessage ? <p className="text-xs leading-6 text-slate-500 break-words [overflow-wrap:anywhere]">{userMessage}</p> : null}
+        {!userMessage && (technicalMessage || hasMetadata) ? (
+          <p className="text-xs leading-6 text-slate-500">{hintLabel}</p>
+        ) : null}
+        {!userMessage && !technicalMessage && !hasMetadata ? (
           <p className="text-xs leading-6 text-slate-500">{t('inbox.detail.no_action_message')}</p>
-        )}
+        ) : null}
       </div>
 
-      <div className="mt-3">
-        <MetadataList metadata={action.metadata} />
-      </div>
+      {technicalMessage || hasMetadata ? (
+        <details className="mt-3 rounded-[18px] border border-white/70 bg-white/55 px-4 py-3 ring-1 ring-black/[0.03]">
+          <summary className="cursor-pointer select-none text-xs font-medium text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/20">
+            {detailsLabel}
+          </summary>
+          <div className="mt-3 space-y-3">
+            {technicalMessage ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 px-3.5 py-3 ring-1 ring-black/[0.03]">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">message</div>
+                <div className="mt-1 text-sm leading-6 text-slate-700 break-words [overflow-wrap:anywhere]">{rawMessage}</div>
+              </div>
+            ) : null}
+            {hasMetadata ? <MetadataList metadata={action.metadata} /> : null}
+          </div>
+        </details>
+      ) : null}
     </div>
   )
 }
@@ -236,6 +290,13 @@ export const ProcessedEmailDetailModal: React.FC<{
 }> = ({ emailId, isOpen, onClose }) => {
   const { t, lang } = useI18n()
   const locale = lang === 'zh' ? 'zh-CN' : 'en-AU'
+  const [senderExpanded, setSenderExpanded] = useState(false)
+  const [originalStep, setOriginalStep] = useState(0)
+  const unknown = uiText(lang, 'Unknown', '未知')
+  const showMoreLabel = uiText(lang, 'Show more', '展开更多')
+  const showLessLabel = uiText(lang, 'Show less', '收起')
+  const originalMaxH = originalStep === 0 ? 'max-h-56' : originalStep === 1 ? 'max-h-[28rem]' : 'max-h-none'
+  const originalHasMore = originalStep < 2
 
   const query = useQuery({
     queryKey: ['processed-email-detail', emailId],
@@ -244,13 +305,14 @@ export const ProcessedEmailDetailModal: React.FC<{
   })
 
   const detail = query.data
+  const sender = useMemo(() => shortSender(detail?.sender || ''), [detail?.sender])
   const drafts = detail?.reply_drafts?.options || []
   const draftsByTone = DRAFT_TONES.map((tone) => drafts.find((item) => item.tone === tone)).filter(
     (item): item is ProcessedEmailReplyOption => Boolean(item),
   )
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('inbox.detail.title')} size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('inbox.detail.title')} size="3xl">
       {query.isLoading ? (
         <div className="space-y-4">
           {[0, 1, 2].map((idx) => (
@@ -282,21 +344,42 @@ export const ProcessedEmailDetailModal: React.FC<{
           <p className="text-sm text-slate-600">{t('inbox.detail.empty_body')}</p>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="mx-auto w-full max-w-5xl space-y-5 overflow-x-hidden">
           <Card
             interactive={false}
             title={detail.subject || t('inbox.no_subject')}
-            subtitle={detail.sender || t('inbox.unknown_sender')}
+            subtitle={(sender.short || detail.sender) || t('inbox.unknown_sender')}
             rightSlot={
-              <Badge variant={getBadgeVariantForStatus(detail.processing_status)}>
-                {t(`inbox.status.${detail.processing_status}`)}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {detail.has_attachments ? (
+                  <Badge variant="info">
+                    {t('inbox.attachments.badge').replace('{count}', String(detail.attachment_count || 0))}
+                  </Badge>
+                ) : null}
+                <Badge variant={getBadgeVariantForStatus(detail.processing_status)}>
+                  {detail.processing_status
+                    ? safeT(t, `inbox.status.${detail.processing_status}`, detail.processing_status)
+                    : unknown}
+                </Badge>
+              </div>
             }
           >
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 ring-1 ring-black/[0.03]">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t('inbox.meta.sender')}</div>
-                <div className="mt-2 text-sm text-slate-700">{detail.sender || t('inbox.unknown_sender')}</div>
+                <button
+                  type="button"
+                  onClick={() => setSenderExpanded((v) => !v)}
+                  className="mt-2 block w-full min-w-0 text-left text-sm text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/20"
+                  title={sender.full || detail.sender}
+                  aria-label={sender.full || detail.sender || t('inbox.unknown_sender')}
+                >
+                  {senderExpanded ? (
+                    <span className="block break-words [overflow-wrap:anywhere]">{sender.full || detail.sender}</span>
+                  ) : (
+                    <span className="block truncate">{sender.short || detail.sender || t('inbox.unknown_sender')}</span>
+                  )}
+                </button>
               </div>
               <div className="rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 ring-1 ring-black/[0.03]">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t('inbox.meta.processed_at')}</div>
@@ -304,9 +387,31 @@ export const ProcessedEmailDetailModal: React.FC<{
               </div>
               <div className="rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 ring-1 ring-black/[0.03]">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{t('inbox.detail.processing_status')}</div>
-                <div className="mt-2 text-sm text-slate-700">{t(`inbox.status.${detail.processing_status}`)}</div>
+                <div className="mt-2 text-sm text-slate-700">
+                  {detail.processing_status
+                    ? safeT(t, `inbox.status.${detail.processing_status}`, detail.processing_status)
+                    : unknown}
+                </div>
               </div>
             </div>
+
+            {detail.has_attachments ? (
+              <div className="mt-3 rounded-[22px] border border-white/70 bg-white/55 px-4 py-4 ring-1 ring-black/[0.03]">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                  {t('inbox.attachments.title')}
+                </div>
+                <div className="mt-2 text-sm leading-7 text-slate-700">{t('inbox.attachments.notice')}</div>
+                {detail.attachment_names && detail.attachment_names.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {detail.attachment_names.map((name) => (
+                      <Badge key={name} variant="neutral">
+                        <span className="max-w-[240px] truncate sm:max-w-[360px]">{name}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </Card>
 
           <AnalysisSection detail={detail} />
@@ -326,19 +431,36 @@ export const ProcessedEmailDetailModal: React.FC<{
                     className="rounded-[22px] border border-white/70 bg-white/55 p-4 ring-1 ring-black/[0.03]"
                   >
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="neutral">{formatMatchedRuleSentence(rule.rule, t)}</Badge>
+                      <Badge variant="neutral">
+                        <span className="break-words [overflow-wrap:anywhere]">{formatMatchedRuleSentence(rule.rule, t)}</span>
+                      </Badge>
                       {rule.action ? <Badge variant="info">{formatExecutedActionLabel(rule.action, t)}</Badge> : null}
                     </div>
                     <div className="mt-3">
-                      {rule.detail ? (
-                        <p className="text-sm leading-7 text-slate-700">{rule.detail}</p>
+                      {rule.detail && !isLikelyTechnical(rule.detail) ? (
+                        <p className="break-words [overflow-wrap:anywhere] text-sm leading-7 text-slate-700">{rule.detail}</p>
                       ) : (
                         <p className="text-sm leading-7 text-slate-700">{t('inbox.detail.no_rule_detail')}</p>
                       )}
                     </div>
-                    <div className="mt-3">
-                      <MetadataList metadata={rule.metadata} />
-                    </div>
+                    {isLikelyTechnical(rule.detail) || Object.keys(rule.metadata || {}).length > 0 ? (
+                      <details className="mt-3 rounded-[18px] border border-white/70 bg-white/55 px-4 py-3 ring-1 ring-black/[0.03]">
+                        <summary className="cursor-pointer select-none text-xs font-medium text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/20">
+                          {uiText(lang, 'Technical details', '技术细节')}
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          {rule.detail && isLikelyTechnical(rule.detail) ? (
+                            <div className="rounded-2xl border border-white/70 bg-white/60 px-3.5 py-3 ring-1 ring-black/[0.03]">
+                              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">detail</div>
+                              <div className="mt-1 text-sm leading-6 text-slate-700 break-words [overflow-wrap:anywhere]">
+                                {rule.detail}
+                              </div>
+                            </div>
+                          ) : null}
+                          {Object.keys(rule.metadata || {}).length > 0 ? <MetadataList metadata={rule.metadata} /> : null}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -382,8 +504,29 @@ export const ProcessedEmailDetailModal: React.FC<{
             title={t('inbox.detail.original_email_title')}
             subtitle={t('inbox.detail.original_email_subtitle')}
           >
-            <div className="whitespace-pre-wrap rounded-[22px] border border-white/70 bg-white/55 p-4 text-sm leading-7 text-slate-700 ring-1 ring-black/[0.03]">
-              {detail.original_email_content || t('inbox.detail.no_original_content')}
+            <div className="space-y-3">
+              <div
+                className={`whitespace-pre-wrap rounded-[22px] border border-white/70 bg-white/55 p-4 text-sm leading-7 text-slate-700 ring-1 ring-black/[0.03] break-words [overflow-wrap:anywhere] overflow-hidden ${originalMaxH}`}
+              >
+                {detail.original_email_content || t('inbox.detail.no_original_content')}
+              </div>
+
+              {detail.original_email_content ? (
+                <div className="flex items-center justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setOriginalStep((v) => {
+                        if (v >= 2) return 0
+                        return v + 1
+                      })
+                    }}
+                  >
+                    {originalHasMore ? showMoreLabel : showLessLabel}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </Card>
         </div>

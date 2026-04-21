@@ -1,6 +1,10 @@
 from typing import Any, Dict, List, Optional
+import logging
+import time
 
 from ..session import _cur
+
+logger = logging.getLogger("db")
 
 _SUPPORTED_ACTIONS = {"notify", "mark_read"}
 
@@ -183,8 +187,12 @@ def find_matching_email_automation_rules(
 
 def count_enabled_email_automation_rules(user_id: int) -> int:
     with _cur() as cur:
+        start = time.perf_counter()
         cur.execute(
             "SELECT COUNT(*) FROM email_automation_rules WHERE user_id = %s AND enabled = TRUE",
             (int(user_id),),
         )
-        return int(cur.fetchone()[0] or 0)
+        value = int(cur.fetchone()[0] or 0)
+        ms = (time.perf_counter() - start) * 1000
+        logger.info("[DB] email_rules_count_enabled | %.0fms", ms)
+        return value

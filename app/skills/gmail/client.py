@@ -33,10 +33,53 @@ def _decode_body(part: Dict[str, Any]) -> str:
     return ""
 
 
+def _extract_attachment_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    names: list[str] = []
+    count = 0
+
+    def walk(p: Dict[str, Any]) -> None:
+        nonlocal count
+        if not isinstance(p, dict):
+            return
+        filename = str(p.get("filename") or "").strip()
+        body = p.get("body") or {}
+        attachment_id = ""
+        if isinstance(body, dict):
+            attachment_id = str(body.get("attachmentId") or "").strip()
+
+        if filename or attachment_id:
+            mime = str(p.get("mimeType") or "")
+            if not (mime.startswith("multipart/") or mime in {"text/plain", "text/html"}):
+                count += 1
+                if filename:
+                    names.append(filename)
+
+        for sub in p.get("parts", []) or []:
+            if isinstance(sub, dict):
+                walk(sub)
+
+    walk(payload or {})
+    uniq_names = []
+    seen = set()
+    for n in names:
+        if n in seen:
+            continue
+        seen.add(n)
+        uniq_names.append(n)
+
+    return {
+        "has_attachments": bool(count > 0 or uniq_names),
+        "attachment_count": int(count if count > 0 else len(uniq_names)),
+        "attachment_names": uniq_names,
+    }
+
+
 def _parse_message(msg: Dict[str, Any]) -> Dict[str, Any]:
     """将 Gmail API 原始消息解析为标准字段"""
-    headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
-    body = _decode_body(msg.get("payload", {}))
+    payload = msg.get("payload", {}) or {}
+    headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
+    body = _decode_body(payload)
+    att = _extract_attachment_metadata(payload)
 
     return {
         "id":      msg.get("id", ""),
@@ -45,6 +88,7 @@ def _parse_message(msg: Dict[str, Any]) -> Dict[str, Any]:
         "date":    headers.get("date", ""),
         "snippet": msg.get("snippet", ""),
         "body":    body.strip(),
+        **att,
     }
 
 

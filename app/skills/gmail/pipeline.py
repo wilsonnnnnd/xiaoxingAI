@@ -3,6 +3,7 @@ Gmail AI 处理流水线 — Gmail Skill
 分析邮件 → 提取摘要 → 生成 Telegram 通知（3 步 LLM 调用）
 """
 import json
+import html
 import logging
 import re
 from typing import Any, Dict, Tuple
@@ -23,6 +24,9 @@ logger = logging.getLogger("gmail.pipeline")
 MAX_BODY_CHARS = 6000   # 超出此长度截断，避免 LLM 上下文溢出
 SUMMARY_BODY_CHARS = 1200
 MAX_SNIPPET_CHARS = 400
+MAX_EMAIL_BODY_CHARS = 2000
+MAX_TOTAL_CHARS = 3000
+ANALYZE_MAX_TOKENS = 300
 
 
 def _truncate(text: str, max_chars: int, suffix: str = "") -> Tuple[str, bool]:
@@ -32,6 +36,120 @@ def _truncate(text: str, max_chars: int, suffix: str = "") -> Tuple[str, bool]:
     if len(t) <= max_chars:
         return t, False
     return t[:max_chars] + suffix, True
+
+
+def _strip_html(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = re.sub(r"(?is)<(script|style)[^>]*>.*?</\\1>", " ", t)
+    t = re.sub(r"(?i)<br\\s*/?>", "\n", t)
+    t = re.sub(r"(?i)</p\\s*>", "\n", t)
+    t = re.sub(r"(?is)<[^>]+>", " ", t)
+    t = html.unescape(t)
+    return t
+
+
+def _remove_quoted_history(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    lines = t.splitlines()
+    out: list[str] = []
+    for line in lines:
+        s = line.rstrip()
+        low = s.strip().lower()
+        if low.startswith(">"):
+            break
+        if re.match(r"(?i)^on .+wrote:", s.strip()):
+            break
+        if re.match(r"(?i)^-{2,}\\s*original message\\s*-{2,}$", s.strip()):
+            break
+        if re.match(r"(?i)^-{2,}\\s*forwarded message\\s*-{2,}$", s.strip()):
+            break
+        if re.match(r"(?i)^(from|sent|to|cc|subject):\\s", s.strip()):
+            break
+        if re.match(r"(?i)^_{2,}$", s.strip()):
+            break
+        out.append(s)
+    return "\n".join(out).strip()
+
+
+def _remove_footer_sections(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    low = t.lower()
+    markers = [
+        "\nunsubscribe",
+        "\nmanage preferences",
+        "\nview in browser",
+        "\nprivacy policy",
+        "\nterms of service",
+        "\nthis email was sent",
+        "\nif you no longer wish",
+    ]
+    cut = None
+    for m in markers:
+        idx = low.find(m)
+        if idx != -1:
+            cut = idx if cut is None else min(cut, idx)
+    if cut is not None and cut > 0:
+        t = t[:cut].strip()
+    return t
+
+
+def _remove_tracking_noise(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    kept: list[str] = []
+    for line in t.splitlines():
+        s = line.strip()
+        low = s.lower()
+        if not s:
+            kept.append("")
+            continue
+        if "utm_" in low or "tracking" in low:
+            continue
+        if low.startswith("[image") or low.startswith("image:") or low.startswith("cid:"):
+            continue
+        kept.append(s)
+    t2 = "\n".join(kept)
+    t2 = re.sub(r"\n{3,}", "\n\n", t2).strip()
+    return t2
+
+
+def clean_email_body(text: str) -> str:
+    t = _strip_html(text)
+    t = _remove_quoted_history(t)
+    t = _remove_footer_sections(t)
+    t = _remove_tracking_noise(t)
+    return t.strip()
+
+
+def truncate_email_body(text: str) -> str:
+    t = (text or "").strip()
+    if len(t) <= MAX_EMAIL_BODY_CHARS:
+        return t
+    return t[:MAX_EMAIL_BODY_CHARS] + "\n\n[truncated]"
+
+
+def _apply_total_guard(*, system_prompt: str, user_prefix: str, body: str) -> str:
+    base = user_prefix
+    full = base + (body or "")
+    budget = MAX_TOTAL_CHARS - len(system_prompt)
+    if budget <= 0:
+        return ""
+    if len(full) <= budget:
+        return full
+    available = max(0, budget - len(base))
+    if available <= 0:
+        return base.strip()
+    clipped = (body or "")[:available].rstrip()
+    if len(body or "") > available:
+        clipped = clipped + "\n\n[truncated]"
+    return base + clipped
 
 
 def _get_notify_lang(user_id: int | None) -> str:
@@ -112,18 +230,33 @@ def _parse_email_analysis(raw_result: str) -> tuple[Dict[str, Any], bool]:
         return _serialize_analysis(_fallback_email_analysis()), True
 
 
-def analyze_email(subject: str, body_excerpt: str, snippet: str = "", user_id: int | None = None) -> Dict[str, Any]:
+def analyze_email(
+    subject: str,
+    body_excerpt: str,
+    snippet: str = "",
+    sender: str = "",
+    attachment_count: int = 0,
+    user_id: int | None = None,
+) -> Dict[str, Any]:
     """步骤 1：分析邮件分类、优先级、关键词等"""
-    body_excerpt, _ = _truncate(body_excerpt, MAX_BODY_CHARS, suffix="\n...[内容过长，已截断]")
     snippet, _ = _truncate(snippet, MAX_SNIPPET_CHARS)
-    template = load_prompt(config.PROMPT_ANALYZE, user_id=user_id)
-    prompt = (
-        template.format(subject=subject, body_excerpt=body_excerpt, snippet=snippet).strip()
-        + "\n\nReturn ONLY one valid JSON object with exactly these keys: "
-        + '"category", "priority", "summary", "action", "reason", "deadline".'
-    )
+    system_prompt = (load_prompt(config.PROMPT_ANALYZE, user_id=user_id) or "").strip()
 
-    raw_result, tokens = call_llm(prompt, max_tokens=256, use_cache=False)
+    cleaned = clean_email_body(body_excerpt or "")
+    if not cleaned and snippet:
+        cleaned = clean_email_body(snippet)
+    cleaned = truncate_email_body(cleaned)
+
+    attachment_line = f"\n\nAttachments: {int(attachment_count)} file(s) attached" if int(attachment_count or 0) > 0 else ""
+    user_prefix = f"Subject: {subject}\n\nSender: {sender}{attachment_line}\n\nEmail:\n"
+    user_content = _apply_total_guard(system_prompt=system_prompt, user_prefix=user_prefix, body=cleaned)
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+
+    raw_result, tokens = call_llm("", max_tokens=ANALYZE_MAX_TOKENS, use_cache=False, messages=messages)
     parsed, used_fallback = _parse_email_analysis(raw_result)
 
     return {
@@ -261,6 +394,7 @@ def process_email(
     sender: str = "",
     date: str = "",
     email_id: str = "",
+    attachment_count: int = 0,
     user_id: int | None = None,
 ) -> Dict[str, Any]:
     """
@@ -272,7 +406,14 @@ def process_email(
     summary_excerpt, _ = _truncate(body_excerpt, SUMMARY_BODY_CHARS, suffix="\n...[已截断]")
 
     try:
-        analysis = analyze_email(subject, body_excerpt, snippet=snippet_short, user_id=user_id)
+        analysis = analyze_email(
+            subject,
+            body_excerpt,
+            snippet=snippet_short,
+            sender=sender,
+            attachment_count=int(attachment_count or 0),
+            user_id=user_id,
+        )
     except Exception as e:
         raise RuntimeError(f"[步骤1-分析] {str(e)}")
 

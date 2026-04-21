@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Surface } from '../../../components/common/Surface'
@@ -35,12 +35,44 @@ const CATEGORY_OPTIONS: Array<{ labelKey: string; value: EmailCategory }> = [
   { labelKey: 'inbox.category.other', value: 'other' },
 ]
 
+const safeT = (t: (key: string) => string, key: string, fallback: string) => {
+  const value = t(key)
+  if (!value || value === key) return fallback
+  return value
+}
+
+const shortSender = (sender: string) => {
+  const s = String(sender || '').trim()
+  if (!s) return { short: '', full: '' }
+  const m = s.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/)
+  if (m) {
+    const name = (m[1] || '').trim()
+    const email = (m[2] || '').trim()
+    return {
+      short: name || email,
+      full: `${name ? `${name} ` : ''}<${email}>`,
+    }
+  }
+  return { short: s, full: s }
+}
+
 const EmailRow: React.FC<{
   item: ProcessedEmailListItem
   locale: string
   t: (key: string) => string
+  lang: string
   onOpen: (id: number) => void
-}> = ({ item, locale, t, onOpen }) => {
+}> = ({ item, locale, t, lang, onOpen }) => {
+  const [senderExpanded, setSenderExpanded] = useState(false)
+  const sender = useMemo(() => shortSender(item.sender), [item.sender])
+  const unknown = lang === 'zh' ? '未知' : 'Unknown'
+  const statusLabel = item.processing_status
+    ? safeT(t, `inbox.status.${item.processing_status}`, item.processing_status)
+    : unknown
+  const categoryLabel = safeT(t, `inbox.category.${item.category}`, item.category)
+  const priorityLabel = safeT(t, `inbox.priority.${item.priority}`, item.priority)
+  const actionLabel = safeT(t, `inbox.action.${item.suggested_action}`, item.suggested_action)
+
   return (
     <div
       role="button"
@@ -58,7 +90,7 @@ const EmailRow: React.FC<{
       <Card
         interactive
         title={item.subject || t('inbox.no_subject')}
-        subtitle={item.sender || t('inbox.unknown_sender')}
+        subtitle={(sender.short || item.sender) || t('inbox.unknown_sender')}
         rightSlot={
           item.has_reply_drafts ? (
             <Badge variant="info">{t('inbox.reply_drafts_ready')}</Badge>
@@ -66,27 +98,44 @@ const EmailRow: React.FC<{
         }
       >
         <div className="space-y-4">
-          <p className="text-sm leading-7 text-slate-600">{item.summary || t('inbox.no_summary')}</p>
+          <p className="text-sm leading-7 text-slate-600 break-words [overflow-wrap:anywhere] line-clamp-2">
+            {item.summary || t('inbox.no_summary')}
+          </p>
 
           <div className="flex flex-wrap gap-2">
             <Badge variant={getBadgeVariantForCategory(item.category)}>
-              {t(`inbox.category.${item.category}`)}
+              {categoryLabel}
             </Badge>
             <Badge variant={getBadgeVariantForPriority(item.priority)}>
-              {t(`inbox.priority.${item.priority}`)}
+              {priorityLabel}
             </Badge>
             <Badge variant={getBadgeVariantForAction(item.suggested_action)}>
-              {t(`inbox.action.${item.suggested_action}`)}
+              {actionLabel}
             </Badge>
             <Badge variant={getBadgeVariantForStatus(item.processing_status)}>
-              {t(`inbox.status.${item.processing_status}`)}
+              {statusLabel}
             </Badge>
           </div>
 
           <div className="grid gap-3 text-xs text-slate-500 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-3 ring-1 ring-black/[0.03]">
               <div className="uppercase tracking-[0.16em] text-[10px]">{t('inbox.meta.sender')}</div>
-              <div className="mt-1 truncate text-sm text-slate-700">{item.sender || t('inbox.unknown_sender')}</div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSenderExpanded((v) => !v)
+                }}
+                className="mt-1 block w-full min-w-0 text-left text-sm text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/20"
+                title={sender.full || item.sender}
+                aria-label={sender.full || item.sender || t('inbox.unknown_sender')}
+              >
+                {senderExpanded ? (
+                  <span className="block break-words [overflow-wrap:anywhere]">{sender.full || item.sender}</span>
+                ) : (
+                  <span className="block truncate">{sender.short || item.sender || t('inbox.unknown_sender')}</span>
+                )}
+              </button>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-3 ring-1 ring-black/[0.03]">
               <div className="uppercase tracking-[0.16em] text-[10px]">{t('inbox.meta.processed_at')}</div>
@@ -207,40 +256,40 @@ export const ProcessedEmailsPage: React.FC = () => {
               onChange={(value) => handleFilterChange({ q: value.trim() ? value.trim() : undefined })}
             />
             <div className="grid gap-3 md:grid-cols-4">
-            <Select
-              label={t('inbox.filters.priority')}
-              value={priority}
-              onChange={(e) => handleFilterChange({ priority: e.target.value || undefined })}
-              options={[
-                { label: t('inbox.filters.all'), value: '' },
-                ...PRIORITY_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
-              ]}
-            />
-            <Select
-              label={t('inbox.filters.category')}
-              value={category}
-              onChange={(e) => handleFilterChange({ category: e.target.value || undefined })}
-              options={[
-                { label: t('inbox.filters.all'), value: '' },
-                ...CATEGORY_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
-              ]}
-            />
-            <Select
-              label={t('inbox.filters.reply_drafts')}
-              value={hasReplyDrafts === true ? 'true' : hasReplyDrafts === false ? 'false' : ''}
-              onChange={(e) => handleFilterChange({ has_reply_drafts: e.target.value || undefined })}
-              options={[
-                { label: t('inbox.filters.all'), value: '' },
-                { label: t('inbox.has_reply_drafts.yes'), value: 'true' },
-                { label: t('inbox.has_reply_drafts.no'), value: 'false' },
-              ]}
-            />
-            <Select
-              label={t('inbox.filters.page_size')}
-              value={String(pageSize)}
-              onChange={(e) => handleFilterChange({ page_size: e.target.value || '20' })}
-              options={PAGE_SIZE_OPTIONS.map((size) => ({ label: String(size), value: String(size) }))}
-            />
+              <Select
+                label={t('inbox.filters.priority')}
+                value={priority}
+                onChange={(e) => handleFilterChange({ priority: e.target.value || undefined })}
+                options={[
+                  { label: t('inbox.filters.all'), value: '' },
+                  ...PRIORITY_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
+                ]}
+              />
+              <Select
+                label={t('inbox.filters.category')}
+                value={category}
+                onChange={(e) => handleFilterChange({ category: e.target.value || undefined })}
+                options={[
+                  { label: t('inbox.filters.all'), value: '' },
+                  ...CATEGORY_OPTIONS.map((opt) => ({ label: t(opt.labelKey), value: opt.value })),
+                ]}
+              />
+              <Select
+                label={t('inbox.filters.reply_drafts')}
+                value={hasReplyDrafts === true ? 'true' : hasReplyDrafts === false ? 'false' : ''}
+                onChange={(e) => handleFilterChange({ has_reply_drafts: e.target.value || undefined })}
+                options={[
+                  { label: t('inbox.filters.all'), value: '' },
+                  { label: t('inbox.has_reply_drafts.yes'), value: 'true' },
+                  { label: t('inbox.has_reply_drafts.no'), value: 'false' },
+                ]}
+              />
+              <Select
+                label={t('inbox.filters.page_size')}
+                value={String(pageSize)}
+                onChange={(e) => handleFilterChange({ page_size: e.target.value || '20' })}
+                options={PAGE_SIZE_OPTIONS.map((size) => ({ label: String(size), value: String(size) }))}
+              />
             </div>
           </div>
         </Surface>
@@ -278,6 +327,7 @@ export const ProcessedEmailsPage: React.FC = () => {
                   item={item}
                   locale={locale}
                   t={t}
+                  lang={lang}
                   onOpen={openEmail}
                 />
               ))}
