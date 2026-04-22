@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useSearchParams } from 'react-router-dom'
 import { useI18n } from '../../../i18n/useI18n'
 import {
     listUsers, updateUser, listBots, createBot, updateBot, deleteBot, setDefaultBot, createUser, getMe, getTelegramChatId,
@@ -319,13 +320,17 @@ const AddBotForm: React.FC<{ userId: number; onDone: () => void }> = ({ userId, 
 
 // ── Single user panel ────────────────────────────────────────────
 
-const UserPanel: React.FC<{ user: User }> = ({ user }) => {
+const UserPanel: React.FC<{ user: User; forceOpen?: boolean }> = ({ user, forceOpen = false }) => {
     const { t } = useI18n()
     const qc = useQueryClient()
-    const [open, setOpen] = useState(false)
+    const [open, setOpen] = useState(forceOpen)
     const [addingBot, setAddingBot] = useState(false)
     const [workerEnabled, setWorkerEnabled] = useState(user.worker_enabled)
     const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+        if (forceOpen) setOpen(true)
+    }, [forceOpen])
 
     const { data: bots, isLoading: botsLoading } = useQuery({
         queryKey: ['bots', user.id],
@@ -695,6 +700,8 @@ const InvitePanel: React.FC = () => {
 export const UsersPage: React.FC = () => {
     const { t } = useI18n()
     const [addingUser, setAddingUser] = useState(false)
+    const [searchParams] = useSearchParams()
+    const selectedUserId = Number(searchParams.get('userId') || 0)
 
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 120_000 })
     const { data: users, isLoading } = useQuery({
@@ -751,7 +758,11 @@ export const UsersPage: React.FC = () => {
                 ) : (
                     <div className="flex flex-col gap-4">
                         {users?.map(user => (
-                            <UserPanel key={user.id} user={user} />
+                            <UserPanel
+                                key={user.id}
+                                user={user}
+                                forceOpen={selectedUserId === user.id}
+                            />
                         ))}
                     </div>
                 )}

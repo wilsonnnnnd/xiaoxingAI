@@ -3,8 +3,6 @@
 Xiaoxing AI is a production-style AI SaaS application for Gmail-driven workflows.
 It combines a public marketing homepage, an authenticated user dashboard, an admin dashboard, Gmail and Telegram integrations, and a tracked AI usage and pricing system.
 
-[中文说明](README.zh.md)
-
 ## Overview
 
 The application has three distinct product surfaces:

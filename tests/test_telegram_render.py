@@ -1,4 +1,4 @@
-from app.skills.gmail.telegram_format import render_telegram_message
+from app.domains.gmail.telegram_format import render_telegram_message
 
 
 def test_write_telegram_message_english():

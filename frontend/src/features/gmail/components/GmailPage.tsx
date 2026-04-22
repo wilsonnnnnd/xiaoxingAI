@@ -4,11 +4,12 @@ import { useI18n } from '../../../i18n/useI18n'
 import { formatLogMessage } from '../../../utils/formatLog'
 import {
     getGmailWorkStatus, getLogsWindow, clearLogs,
-    startWorker, stopWorker, pollNow, getGmailAuthUrl
+    startWorker, stopWorker, pollNow, getGmailAuthUrl, getEmailRecords
 } from '../api'
 import { getDbStats } from '../../system/api'
-import { getMe, listUsers, listBots, testTelegram } from '../../users'
-import type { LogEntry, WorkerStatus, User, Bot } from '../../../types'
+import { Link } from 'react-router-dom'
+import { getMe, getUser, listBots, testTelegram } from '../../users'
+import type { LogEntry, WorkerStatusEnvelope, WorkerUserStatus, WorkerSystemStatus, User, Bot, EmailRecord } from '../../../types'
 import { Card } from '../../../components/common/Card'
 import { Button } from '../../../components/common/Button'
 import { InputField } from '../../../components/common/InputField'
@@ -30,22 +31,15 @@ const LEVEL_CLS: Record<string, string> = {
 
 const getTime = (ts: string) => ts.length <= 8 ? ts : ts.slice(11, 19)
 
-const LogRow: React.FC<{ entry: LogEntry; usersMap: Map<number, string> }> = ({ entry, usersMap }) => {
+const LogRow: React.FC<{ entry: LogEntry }> = ({ entry }) => {
     const { t } = useI18n()
     const stripped = entry.msg.replace(/\[user#\d+\]\s*/g, '')
     const display = formatLogMessage(stripped, t)
-    const cls = LEVEL_CLS[entry.level] ?? (entry.msg.includes('✅') ? 'text-emerald-800' : 'text-slate-900')
-    const userName = entry.user_id != null ? (usersMap.get(entry.user_id) ?? `#${entry.user_id}`) : null
+    const cls = LEVEL_CLS[entry.level] ?? 'text-slate-900'
     
     return (
         <div className={`flex gap-2 py-0.5 font-mono text-xs leading-5 ${cls}`}>
             <span className="text-slate-400 shrink-0 tabular-nums">[{getTime(entry.ts)}]</span>
-            {userName && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] self-center bg-sky-50 text-sky-800 border border-sky-200">{userName}</span>
-            )}
-            {entry.tokens > 0 && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] self-center bg-emerald-50 text-emerald-800 border border-emerald-200 tabular-nums">{entry.tokens}t</span>
-            )}
             <span className="flex-1 break-all">{display}</span>
         </div>
     )
@@ -61,9 +55,15 @@ export const GmailPage: React.FC = () => {
     const [logFrom, setLogFrom] = useState<string | undefined>(undefined)
     const [logTo, setLogTo] = useState<string | undefined>(undefined)
 
-    const { data: worker } = useQuery({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus, refetchOnWindowFocus: false })
+    const { data: worker } = useQuery<WorkerStatusEnvelope>({ queryKey: ['gmailworkstatus'], queryFn: getGmailWorkStatus, refetchOnWindowFocus: false })
     const { data: stats } = useQuery({ queryKey: ['dbStats'], queryFn: getDbStats, refetchInterval: 10_000 })
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: Infinity })
+    const { data: myUser } = useQuery<User>({
+        queryKey: ['user', me?.id],
+        queryFn: () => getUser(me!.id),
+        enabled: me != null,
+        staleTime: 30_000,
+    })
 
     const autoRefreshLogs = !logFrom && !logTo
     const { data: logWindow } = useQuery<{ logs: LogEntry[]; from_ts: string | null; to_ts: string | null }>({
@@ -72,15 +72,7 @@ export const GmailPage: React.FC = () => {
         refetchInterval: autoRefreshLogs ? 8000 : false,
         refetchOnWindowFocus: false,
     })
-    const displayLogs = logWindow?.logs ?? []
-
-    const { data: allUsers = [] } = useQuery<User[]>({
-        queryKey: ['users'],
-        queryFn: async () => { try { return await listUsers() } catch { return [] } },
-        staleTime: 60_000,
-        enabled: me?.role === 'admin',
-    })
-    const usersMap = new Map<number, string>(allUsers.map((u: User) => [u.id, (u.email ?? '').split('@')[0]]))
+    const rawLogs = logWindow?.logs ?? []
 
     const { data: myBots = [] } = useQuery<Bot[]>({
         queryKey: ['bots', me?.id],
@@ -89,33 +81,24 @@ export const GmailPage: React.FC = () => {
         staleTime: 30_000,
     })
 
+    const { data: recentRecords } = useQuery<{ count: number; records: EmailRecord[] }>({
+        queryKey: ['emailRecords', 'recent'],
+        queryFn: () => getEmailRecords(5),
+        enabled: me != null,
+        staleTime: 15_000,
+        refetchOnWindowFocus: false,
+    })
+
     useEffect(() => {
         const el = logBoxRef.current
         if (!el) return
         if (!logAtBottomRef.current) return
         el.scrollTop = el.scrollHeight
-    }, [displayLogs.length])
+    }, [rawLogs.length])
 
     const startMut = useMutation({
         mutationFn: startWorker,
-        onSuccess: (data) => {
-            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => {
-                const merged = { ...(old ?? {}), ...(data?.status ?? {}) }
-                return {
-                    running: merged.running ?? false,
-                    interval: merged.interval ?? 60,
-                    query: merged.query ?? '',
-                    priorities: merged.priorities ?? [],
-                    started_at: merged.started_at ?? null,
-                    last_poll: merged.last_poll ?? null,
-                    total_fetched: merged.total_fetched ?? 0,
-                    total_sent: merged.total_sent ?? 0,
-                    total_errors: merged.total_errors ?? 0,
-                    total_tokens: merged.total_tokens ?? 0,
-                    total_runtime_hours: merged.total_runtime_hours ?? 0,
-                    last_error: merged.last_error ?? null,
-                }
-            })
+        onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
             toast.success(t('home.worker.running'))
         }
@@ -123,24 +106,7 @@ export const GmailPage: React.FC = () => {
 
     const stopMut = useMutation({
         mutationFn: stopWorker,
-        onSuccess: (data) => {
-            qc.setQueryData<WorkerStatus>(['gmailworkstatus'], (old) => {
-                const merged = { ...(old ?? {}), ...(data?.status ?? {}) }
-                return {
-                    running: merged.running ?? false,
-                    interval: merged.interval ?? 60,
-                    query: merged.query ?? '',
-                    priorities: merged.priorities ?? [],
-                    started_at: merged.started_at ?? null,
-                    last_poll: merged.last_poll ?? null,
-                    total_fetched: merged.total_fetched ?? 0,
-                    total_sent: merged.total_sent ?? 0,
-                    total_errors: merged.total_errors ?? 0,
-                    total_tokens: merged.total_tokens ?? 0,
-                    total_runtime_hours: merged.total_runtime_hours ?? 0,
-                    last_error: merged.last_error ?? null,
-                }
-            })
+        onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['gmailworkstatus'] })
             toast.success(t('home.worker.stopped'))
         }
@@ -167,12 +133,22 @@ export const GmailPage: React.FC = () => {
         onSuccess: () => toast.success(t('home.tg.test_ok'))
     })
 
-    const workerRunning = worker?.running ?? false
+    const view: WorkerUserStatus | WorkerSystemStatus | undefined =
+        worker?.scope === 'user'
+            ? worker.user
+            : worker?.scope === 'global'
+                ? (worker.user ?? worker.system)
+                : undefined
+
+    const telegramMode = worker?.system?.telegram_updates?.mode
+
+    const workerRunning = view?.running ?? false
     const authorized = stats?.has_token ?? false
     const notifyBots = myBots.filter(b => b.bot_mode === 'all' || b.bot_mode === 'notify')
     const hasNotifyBot = notifyBots.length > 0
     const isAdmin = me?.role === 'admin'
     const canStart = isAdmin && authorized && hasNotifyBot
+    const displayLogs = isAdmin && me?.id != null ? rawLogs.filter((l) => l.user_id == null || l.user_id === me.id) : rawLogs
 
     const fmt = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : '—'
     const fmtTs = (s?: string | null) => s ? s.replace('T', ' ').slice(0, 19) : ''
@@ -203,31 +179,23 @@ export const GmailPage: React.FC = () => {
             eyebrow={t('nav.skill')}
             badge={authorized ? t('home.auth.ok') : t('home.auth.unauthorized')}
         >
-            <div className="flex items-center gap-3 flex-wrap">
-                <Badge variant={authorized ? 'success' : 'warning'}>
-                    {authorized ? '🔑 ' + t('home.auth.ok') : '⚠️ ' + t('home.auth.unauthorized')}
-                    <button
-                        onClick={handleGoogleAuth}
-                        className="ml-2 underline underline-offset-4 text-[#0b3c5d] hover:text-slate-900 transition-colors"
-                    >
-                        {t('home.btn.google_auth')}
-                    </button>
-                </Badge>
-
-                {stats && (
-                    <div className="ml-auto flex items-center gap-3 text-xs text-slate-500">
-                        <span className="rounded-full bg-white/70 px-3 py-1.5 border border-white/70 ring-1 ring-black/[0.03] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                            📧 {stats.email_records_count} records
-                        </span>
-                        <span className="rounded-full bg-white/70 px-3 py-1.5 border border-white/70 ring-1 ring-black/[0.03] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                            📋 {stats.log_count} logs
-                        </span>
-                    </div>
-                )}
+            <div className="text-sm text-slate-600">
+                {t('settings.gmail.config')}
             </div>
         </Surface>
 
         <div className="grid grid-cols-1 gap-6 min-w-0">
+            <Card title={t('home.card.gmail_auth')} subtitle={t('home.card.gmail_auth_desc')}>
+                <div className="flex items-center gap-3 flex-wrap">
+                    <Badge variant={authorized ? 'success' : 'warning'}>
+                        {authorized ? t('home.auth.ok') : t('home.auth.unauthorized')}
+                    </Badge>
+                    <Button variant="secondary" onClick={handleGoogleAuth}>
+                        {t('home.btn.google_auth')}
+                    </Button>
+                </div>
+            </Card>
+
             <Card
                 title={t('home.card.worker')}
                 subtitle={t('home.card.worker_desc')}
@@ -285,13 +253,12 @@ export const GmailPage: React.FC = () => {
 
                 <div className="flex items-center gap-2 flex-wrap mt-2">
                     {!workerRunning ? (
-                        <Button onClick={() => startMut.mutate()} disabled={startMut.isPending || !canStart}>
+                        <Button variant="success" onClick={() => startMut.mutate()} disabled={startMut.isPending || !canStart}>
                             {t('home.btn.start')}
                         </Button>
                     ) : (
                         <Button
-                            variant="ghost"
-                            className="text-rose-700 hover:text-rose-900 hover:bg-white/80 hover:border-rose-200"
+                            variant="danger"
                             onClick={() => stopMut.mutate()}
                             loading={stopMut.isPending}
                             disabled={!isAdmin}
@@ -301,44 +268,95 @@ export const GmailPage: React.FC = () => {
                     )}
                     <Button
                         variant="secondary"
-                        className="border border-[#0b3c5d] text-[#0b3c5d] hover:bg-white/80 hover:text-rose-900"
                         onClick={() => pollMut.mutate()}
                         loading={pollMut.isPending}
                         disabled={!isAdmin}
                     >
                         {t('home.btn.poll_now')}
                     </Button>
-                    <Button variant="secondary" className="border border-[#0b3c5d] text-[#0b3c5d] hover:bg-white/80 hover:text-rose-900" onClick={() => tgMut.mutate()} loading={tgMut.isPending}>
+                    <Button variant="ghost" onClick={() => tgMut.mutate()} loading={tgMut.isPending}>
                         {t('home.btn.test_tg')}
                     </Button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                    <StatItem label={t('home.stat.sent')} value={worker?.total_sent ?? '—'} />
-                    <StatItem label={t('home.stat.fetched')} value={worker?.total_fetched ?? '—'} />
-                    <StatItem label={t('home.stat.errors')} value={worker?.total_errors ?? '—'} />
-                    <StatItem label={t('home.stat.interval')} value={worker?.interval ? worker.interval + 's' : '—'} small />
-                    <StatItem label={t('home.stat.last_poll')} value={fmt(worker?.last_poll)?.slice(5)} small />
-                    <StatItem label={t('home.stat.started')} value={fmt(worker?.started_at)?.slice(5)} small />
+                    <StatItem label={t('home.stat.sent')} value={view?.total_sent ?? '—'} />
+                    <StatItem label={t('home.stat.fetched')} value={view?.total_fetched ?? '—'} />
+                    <StatItem label={t('home.stat.errors')} value={view?.total_errors ?? '—'} />
                     <StatItem
-                        label={t('home.stat.tokens')}
-                        value={worker?.total_tokens != null ? worker.total_tokens.toLocaleString() : '—'}
+                        label={telegramMode?.includes('webhook') ? t('home.stat.mode') : t('home.stat.interval')}
+                        value={telegramMode?.includes('webhook') ? t('home.value.webhook') : (view?.interval ? view.interval + 's' : '—')}
                         small
                     />
-                    <StatItem
-                        label={t('home.stat.runtime')}
-                        value={worker?.total_runtime_hours != null ? `${worker.total_runtime_hours}h` : '—'}
-                        small
-                        className="col-span-full sm:col-span-1"
-                    />
+                    <StatItem label={t('home.stat.last_poll')} value={fmt(view?.last_poll)?.slice(5)} small />
+                    <StatItem label={t('home.stat.started')} value={fmt(view?.started_at)?.slice(5)} small />
                 </div>
 
-                {worker?.last_error && (
+                {view?.last_error && (
                     <div className="rounded-[22px] border border-rose-200/70 bg-[rgba(255,255,255,0.82)] backdrop-blur-xl px-4 py-3 mt-2 text-xs text-rose-900 ring-1 ring-black/[0.03] shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
                         <span className="font-semibold mr-1">{t('home.worker.last_error')}</span>
-                        {worker.last_error}
+                        {view?.last_error}
                     </div>
                 )}
+            </Card>
+
+            <Card
+                title={t('card.gmail')}
+                subtitle={t('settings.gmail.config')}
+                rightSlot={
+                    <Link to="/settings">
+                        <Button variant="ghost" size="sm">
+                            {t('worker.prereq.bot_goto')}
+                        </Button>
+                    </Link>
+                }
+            >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <StatItem label={t('users.enabled')} value={myUser ? (myUser.worker_enabled ? t('home.worker.running') : t('home.worker.stopped')) : '—'} small />
+                    <StatItem label={t('users.min_priority')} value={myUser?.min_priority ?? '—'} small />
+                    <StatItem label={t('users.max_emails')} value={myUser?.max_emails_per_run ?? '—'} small />
+                    <StatItem label={t('gmail.settings.query')} value={myUser?.gmail_poll_query ?? '—'} small />
+                    {!telegramMode?.includes('webhook') && (
+                        <StatItem label={t('home.stat.interval')} value={myUser?.poll_interval != null ? `${myUser.poll_interval}s` : '—'} small />
+                    )}
+                    <StatItem label={t('label.notify_lang')} value={myUser?.notify_lang ?? '—'} small />
+                </div>
+            </Card>
+
+            <Card
+                title={t('gmail.records.title')}
+                subtitle={t('gmail.records.subtitle')}
+                rightSlot={
+                    <Link to="/inbox">
+                        <Button variant="secondary" size="sm">
+                            {t('gmail.records.open_inbox')}
+                        </Button>
+                    </Link>
+                }
+            >
+                <div className="space-y-2">
+                    {(recentRecords?.records ?? []).length === 0 ? (
+                        <div className="text-slate-400 text-sm py-6 text-center">{t('gmail.records.empty')}</div>
+                    ) : (
+                        (recentRecords?.records ?? []).slice(0, 5).map((r) => (
+                            <div
+                                key={r.id}
+                                className="rounded-[18px] bg-white/55 border border-white/70 ring-1 ring-black/[0.03] px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] flex items-start gap-3"
+                            >
+                                <div className="shrink-0 mt-0.5">
+                                    <Badge variant={r.priority === 'high' ? 'warning' : r.priority === 'medium' ? 'neutral' : 'neutral'}>
+                                        {r.priority}
+                                    </Badge>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-semibold text-slate-900 truncate">{r.subject || t('inbox.no_subject')}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5 truncate">{r.sender || t('inbox.unknown_sender')}</div>
+                                </div>
+                                <div className="shrink-0 text-xs text-slate-500 tabular-nums">{fmt(r.processed_at ?? r.created_at).slice(5)}</div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </Card>
 
             <Card
@@ -349,7 +367,7 @@ export const GmailPage: React.FC = () => {
                         variant="secondary"
                         size="sm"
                         onClick={() => clearMut.mutate()}
-                        disabled={clearMut.isPending || displayLogs.length === 0}
+                        disabled={clearMut.isPending || displayLogs.length === 0 || isAdmin}
                     >
                         {t('home.worker.log_clear')}
                     </Button>
@@ -395,7 +413,7 @@ export const GmailPage: React.FC = () => {
                     {displayLogs.length === 0 ? (
                         <div className="text-slate-400 text-center pt-12">— No logs —</div>
                     ) : (
-                        displayLogs.map((e) => <LogRow key={e.id} entry={e} usersMap={usersMap} />)
+                        displayLogs.map((e) => <LogRow key={e.id} entry={e} />)
                     )}
                 </div>
             </Card>
