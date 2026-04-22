@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Layout from './components/Layout'
 import Home from './pages/Home'
@@ -16,6 +16,7 @@ import { UsersPage } from './features/users'
 import { DebugPage } from './features/debug'
 import { ProcessedEmailsPage } from './features/inbox'
 import { AutomationRulesPage } from './features/automationRules'
+import { DashboardPage } from './features/dashboard'
 
 export default function App() {
   return (
@@ -46,8 +47,9 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to="/home" replace />} />
+        <Route index element={<Home />} />
         <Route path="home" element={<Home />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="inbox" element={<ProcessedEmailsPage />} />
         <Route path="help" element={<Help />} />
         <Route path="privacy" element={<PrivacyPolicy />} />

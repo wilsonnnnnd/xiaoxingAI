@@ -40,6 +40,13 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    id: 'setting',
+    labelKey: 'nav.settings',
+    path: '/settings',
+    section: 'settings',
+    roles: ['admin', 'user'],
+  },
+  {
     id: 'reply_format',
     labelKey: 'nav.reply_format',
     path: '/settings/reply-format',
@@ -57,6 +64,13 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'users',
     labelKey: 'nav.users',
     path: '/users',
+    section: 'admin',
+    roles: ['admin'],
+  },
+  {
+    id: 'dashboard',
+    labelKey: 'nav.dashboard',
+    path: '/dashboard',
     section: 'admin',
     roles: ['admin'],
   },
@@ -101,13 +115,25 @@ export function filterNavByRole(items: NavItem[], role: AppRole): NavItem[] {
   const out: NavItem[] = []
 
   for (const item of items) {
+    if (role === 'admin' && item.id === 'dashboard') continue
+
     const childItems = item.children ? filterNavByRole(item.children, role) : undefined
     const allowed = item.roles.includes(role)
 
     if (!allowed && (!childItems || childItems.length === 0)) continue
 
+    const resolvedItem =
+      role === 'admin' && item.id === 'home'
+        ? {
+            ...item,
+            id: 'dashboard',
+            labelKey: 'nav.dashboard',
+            path: '/dashboard',
+          }
+        : item
+
     out.push({
-      ...item,
+      ...resolvedItem,
       children: childItems && childItems.length > 0 ? childItems : undefined,
     })
   }

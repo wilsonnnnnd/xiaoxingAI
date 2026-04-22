@@ -29,7 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token')
-    window.location.href = '/home'
+    window.location.href = '/'
   }
 
   const sectionLabelKey = (s: NavSection) => {
@@ -54,6 +54,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navBySection = useMemo(() => {
     const items = filterNavByRole(NAV_ITEMS, role)
+      .map((x) => {
+        if (!isAuthed || x.id !== 'home') return x
+        return {
+          ...x,
+          id: 'dashboard',
+          labelKey: 'nav.dashboard',
+          path: '/dashboard',
+        }
+      })
       .filter((x) => {
         if (isAuthed) return true
         if (x.path) return isPublicPath(x.path)

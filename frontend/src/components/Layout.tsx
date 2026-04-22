@@ -5,11 +5,13 @@ import { getMe } from '../features/users/api'
 import { Sidebar } from './layout/Sidebar'
 import { useI18n } from '../i18n/useI18n'
 import { legalPolicyVersion } from '../pages/legalContent'
+import { useWorkerStatus } from '../hooks/useWorkerStatus'
 
 export default function Layout() {
   const location = useLocation()
   const { t, lang, setLang } = useI18n()
   const token = localStorage.getItem('auth_token')
+  useWorkerStatus()
   const isPublic =
     location.pathname === '/' ||
     location.pathname === '/home' ||
