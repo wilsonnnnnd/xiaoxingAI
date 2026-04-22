@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 from app import db
-from app.core.telegram.client import send_message
+from app.domains.telegram.client import send_message
 from app.utils.callback_signer import build_callback_data
 
 
@@ -39,9 +39,7 @@ def send_outgoing_preview(
         bot_id=int(bot_id),
     )
     reply_markup = {
-        "inline_keyboard": [
-            [{"text": "✅ Confirm", "callback_data": cb_confirm}, {"text": "❌ Cancel", "callback_data": cb_cancel}]
-        ]
+        "inline_keyboard": [[{"text": "Confirm", "callback_data": cb_confirm}, {"text": "Cancel", "callback_data": cb_cancel}]]
     }
 
     resp = send_message(

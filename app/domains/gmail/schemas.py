@@ -1,4 +1,5 @@
 from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -17,3 +18,4 @@ class GmailProcessRequest(BaseModel):
     max_results: Optional[int] = 5
     mark_read: Optional[bool] = False
     send_telegram: Optional[bool] = False
+

@@ -8,7 +8,8 @@ from app.core import config
 
 from .repositories import (
     user_repo, bot_repo, prompt_repo, log_repo,
-    email_repo, stats_repo, oauth_repo, outgoing_email_repo, reply_format_repo, email_automation_rule_repo
+    email_repo, stats_repo, oauth_repo, outgoing_email_repo, reply_format_repo, email_automation_rule_repo,
+    ai_usage_repo,
 )
 
 # User
@@ -43,6 +44,15 @@ from .repositories.email_repo import (
 # Stats
 from .repositories.stats_repo import (
     get_worker_stats, save_worker_stats
+)
+
+from .repositories.ai_usage_repo import (
+    insert_ai_usage,
+    get_ai_usage_summary,
+    get_ai_usage_daily_totals,
+    get_ai_usage_model_series,
+    get_ai_usage_top_users,
+    get_ai_usage_cost_breakdown,
 )
 
 # OAuth

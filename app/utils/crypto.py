@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from app.core import config as app_config
+
 
 @dataclass(frozen=True)
 class EncryptedBlob:
@@ -15,7 +17,7 @@ class EncryptedBlob:
 
 
 def _load_key() -> tuple[bytes, str]:
-    key_b64 = os.environ.get("OUTGOING_EMAIL_ENCRYPTION_KEY", "").strip()
+    key_b64 = app_config.OUTGOING_EMAIL_ENCRYPTION_KEY_RAW
     if not key_b64:
         raise ValueError("OUTGOING_EMAIL_ENCRYPTION_KEY is not configured")
     key = base64.b64decode(key_b64)

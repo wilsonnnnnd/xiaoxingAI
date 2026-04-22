@@ -41,7 +41,7 @@ def send_message(
     chat_id = chat_id or config.TELEGRAM_CHAT_ID
 
     if not token or not chat_id:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未配置，请检查 .env 文件")
+        raise RuntimeError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured in the .env file")
 
     url = TELEGRAM_API.format(token=token, method="sendMessage")
     payload = {"chat_id": chat_id, "text": text}
@@ -54,7 +54,7 @@ def send_message(
     data = resp.json()
 
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
 
     return data
 
@@ -69,7 +69,7 @@ def edit_message_text(
     reply_markup: dict | None = None,
 ) -> dict:
     if not token or not chat_id:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未配置，请检查 .env 文件")
+        raise RuntimeError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured in the .env file")
     url = TELEGRAM_API.format(token=token, method="editMessageText")
     payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
     if parse_mode:
@@ -80,14 +80,14 @@ def edit_message_text(
     resp = requests.post(url, json=payload, timeout=15)
     data = resp.json()
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
     return data
 
 
 def test_connection() -> dict:
     """发送纯文本测试消息，验证 Token 和 Chat ID 是否有效"""
     return send_message(
-        "✅ Gmail AI Manager 连接测试成功！",
+        "Gmail AI Manager connection test successful!",
         parse_mode=None
     )
 
@@ -103,7 +103,7 @@ def get_latest_chat_id(token: str) -> str | None:
     data = resp.json()
 
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
 
     results = data.get("result", [])
     if not results:
@@ -126,7 +126,7 @@ def set_webhook(
 ) -> dict:
     """Register a Telegram webhook for one bot token."""
     if not token or not url:
-        raise RuntimeError("Telegram webhook token or url is missing")
+        raise RuntimeError("TELEGRAM_BOT_TOKEN or TELEGRAM_WEBHOOK_URL not configured in the .env file")
 
     api_url = TELEGRAM_API.format(token=token, method="setWebhook")
     payload = {
@@ -140,14 +140,14 @@ def set_webhook(
     resp = requests.post(api_url, json=payload, timeout=15)
     data = resp.json()
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
     return data
 
 
 def delete_webhook(*, token: str, drop_pending_updates: bool = False) -> dict:
     """Remove a Telegram webhook so getUpdates polling can be used."""
     if not token:
-        raise RuntimeError("Telegram webhook token is missing")
+        raise RuntimeError("TELEGRAM_BOT_TOKEN not configured in the .env file")
 
     api_url = TELEGRAM_API.format(token=token, method="deleteWebhook")
     resp = requests.post(
@@ -157,5 +157,6 @@ def delete_webhook(*, token: str, drop_pending_updates: bool = False) -> dict:
     )
     data = resp.json()
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram API 错误: {data.get('description', data)}")
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
     return data
+

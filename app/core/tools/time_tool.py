@@ -22,6 +22,6 @@ def get_time() -> str:
     now = datetime.now()
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     wd = weekdays[now.weekday()]
-    result = f"当前服务器时间：{now.strftime('%Y年%m月%d日')} {wd} {now.strftime('%H:%M:%S')}"
+    result = f"Server time: {now.strftime('%Y-%m-%d %a %H:%M:%S')}"
     logger.info(f"[tools] get_time → {result}")
     return result

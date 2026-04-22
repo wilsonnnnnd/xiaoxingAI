@@ -18,10 +18,10 @@ from typing import Any, Dict, List, Optional
 
 from app import db
 from app.core import config
-from app.core import ws as ws_pub
+from app.core.realtime import ws as ws_pub
 from app.core.step_log import write_step_log
-from app.skills.gmail import telegram_updates
-from app.skills.gmail.client import fetch_emails
+from . import telegram_updates
+from .client import fetch_emails
 from app.workflows.email_processing_flow import run_email_processing_flow
 
 logger = logging.getLogger("worker")
@@ -112,34 +112,42 @@ async def _poll_once(state: _UserWorkerState) -> None:
         state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
 
         _wlog(
-            f"📥 开始拉取邮件（查询：{poll_query}，最多 {max_emails} 封）",
+            f"Start polling (query: {poll_query}, max: {max_emails})",
             user_id=user_id,
         )
         try:
             emails = await _run_io(fetch_emails, poll_query, max_emails, user_id)
         except Exception as exc:
-            _wlog(f"❌ 拉取 Gmail 失败: {exc}", level="error", user_id=user_id)
+            _wlog(
+                f"Fetch Gmail failed ({exc.__class__.__name__})",
+                level="error",
+                user_id=user_id,
+            )
             state.stats["last_error"] = str(exc)
             return
 
         email_ids = [str(e.get("id") or "") for e in emails if str(e.get("id") or "")]
         done_ids = await _run_io(db.get_processed_email_ids, email_ids, user_id)
-        new_emails = [e for e in emails if str(e.get("id") or "") and str(e.get("id") or "") not in done_ids]
+        new_emails = [
+            e
+            for e in emails
+            if str(e.get("id") or "") and str(e.get("id") or "") not in done_ids
+        ]
         skipped_dup = len(emails) - len(new_emails)
         state.stats["total_fetched"] += len(new_emails)
 
         _wlog(
-            f"📬 拉取完成：共 {len(emails)} 封，新邮件 {len(new_emails)} 封，已处理(跳过) {skipped_dup} 封",
+            f"Fetch completed: {len(emails)} emails, new: {len(new_emails)}, processed(skipped): {skipped_dup}",
             user_id=user_id,
         )
 
         if not new_emails:
-            _wlog("✅ 无新邮件，本轮结束", user_id=user_id)
+            _wlog("No new emails, polling ends", user_id=user_id)
 
         for email in new_emails:
-            subj = email.get("subject", "(无主题)")
+            subj = email.get("subject", "(No Subject)")
             try:
-                _wlog(f"📧 处理邮件：{subj}", user_id=user_id)
+                _wlog(f"Processing email: {subj}", user_id=user_id)
                 result = await _run_io(
                     run_email_processing_flow,
                     email,
@@ -156,7 +164,11 @@ async def _poll_once(state: _UserWorkerState) -> None:
             except Exception as exc:
                 state.stats["total_errors"] += 1
                 state.stats["last_error"] = str(exc)
-                _wlog(f"❌ 处理失败 [{subj}]: {exc}", level="error", user_id=user_id)
+                _wlog(
+                    f"Processing failed [{subj}] ({exc.__class__.__name__})",
+                    level="error",
+                    user_id=user_id,
+                )
                 continue
 
             state.stats["total_tokens"] += int(result.get("tokens", 0) or 0)
@@ -164,25 +176,29 @@ async def _poll_once(state: _UserWorkerState) -> None:
             matched_rules = {str(rule.get("rule") or "") for rule in result.get("matched_rules", [])}
 
             if "min_priority_filter" in matched_rules or "notify_priority_filter" in matched_rules:
-                _wlog(f"⏭️ 跳过低优先级 [{priority}]：{subj}", level="warn", user_id=user_id)
+                _wlog(f"Skip low priority [{priority}]: {subj}", level="warn", user_id=user_id)
             if "missing_notify_bots" in matched_rules:
                 _wlog(
-                    f"⚠️ 无通知 Bot（mode='all'/'notify'），跳过 Telegram 发送：{subj}",
+                    f"No notify bots (mode='all'/'notify'); skip Telegram send: {subj}",
                     level="warn",
                     user_id=user_id,
                 )
 
             if result.get("sent_telegram"):
                 state.stats["total_sent"] += 1
-                _wlog(f"✅ 已发送：{subj}", tokens=int(result.get("tokens", 0) or 0), user_id=user_id)
+                _wlog(
+                    f"Sent to Telegram: {subj}",
+                    tokens=int(result.get("tokens", 0) or 0),
+                    user_id=user_id,
+                )
 
             final_status = str(result.get("final_status") or "processed")
             if final_status == "partially_failed":
-                _wlog(f"⚠️ 部分动作失败 [{subj}]", level="warn", user_id=user_id)
+                _wlog(f"Some actions failed [{subj}]", level="warn", user_id=user_id)
             elif final_status == "failed":
                 state.stats["total_errors"] += 1
                 state.stats["last_error"] = f"actions failed for {subj}"
-                _wlog(f"❌ 处理动作失败 [{subj}]", level="error", user_id=user_id)
+                _wlog(f"Processing failed [{subj}]", level="error", user_id=user_id)
 
         await _run_io(db.cleanup_old_logs)
         try:
@@ -209,13 +225,17 @@ async def _user_loop(state: _UserWorkerState) -> None:
         if delay > 0:
             await asyncio.sleep(delay)
 
-    _wlog(f"🚀 Worker 已启动，轮询间隔 {poll_interval}s", user_id=user_id)
+    _wlog(f"Worker started, poll interval {poll_interval}s", user_id=user_id)
     while state.running:
         try:
             await _poll_once(state)
         except Exception as exc:
             state.stats["last_error"] = str(exc)
-            _wlog(f"❌ 轮询异常: {exc}", level="error", user_id=user_id)
+            _wlog(
+                f"Poll exception ({exc.__class__.__name__})",
+                level="error",
+                user_id=user_id,
+            )
             logger.error("[worker] user#%s poll exception: %s", user_id, exc, exc_info=True)
 
         user_row = await _run_io(db.get_user_by_id, user_id)
@@ -224,7 +244,7 @@ async def _user_loop(state: _UserWorkerState) -> None:
             if not state.running:
                 break
             await asyncio.sleep(1)
-    _wlog("⏹️ Worker 已停止", user_id=user_id)
+    _wlog("Worker stopped", user_id=user_id)
 
 
 def _start_user_worker(user_id: int) -> bool:
@@ -313,7 +333,7 @@ async def start(allow_empty: bool = False) -> bool:
     if not users:
         if allow_empty:
             return False
-        raise RuntimeError("当前无 worker_enabled=True 的用户，请先在用户设置中开启")
+        raise RuntimeError("No worker_enabled users found")
 
     started_any = False
     for user in users:
@@ -504,10 +524,56 @@ def get_status() -> Dict[str, Any]:
     }
 
 
+def get_user_status(*, user_id: int) -> Dict[str, Any]:
+    state = _workers.setdefault(int(user_id), _UserWorkerState(user_id=int(user_id)))
+    if state.running and state.task is not None and state.task.done():
+        state.running = False
+        if not state.task.cancelled():
+            exc = state.task.exception()
+            if exc:
+                state.stats["last_error"] = f"[task crashed] {exc}"
+
+    user_row = db.get_user_by_id(int(user_id)) or {}
+    poll_interval = int(user_row.get("poll_interval") or 0) or int(config.GMAIL_POLL_INTERVAL)
+    poll_query = str(user_row.get("gmail_poll_query") or "") or str(config.GMAIL_POLL_QUERY)
+
+    db_s = db.get_worker_stats(user_id=int(user_id))
+    session_secs = 0
+    if state.running and state.session_start:
+        session_secs = int((datetime.now() - state.session_start).total_seconds())
+    total_runtime_secs = int(db_s.get("total_runtime_secs", 0) or 0) + session_secs
+
+    total_sent = int(db_s.get("total_sent", 0) or 0) + int(state.stats.get("total_sent", 0) or 0)
+    total_fetched = int(db_s.get("total_fetched", 0) or 0) + int(state.stats.get("total_fetched", 0) or 0)
+    total_errors = int(db_s.get("total_errors", 0) or 0) + int(state.stats.get("total_errors", 0) or 0)
+    total_tokens = int(db_s.get("total_tokens", 0) or 0) + int(state.stats.get("total_tokens", 0) or 0)
+
+    last_poll = state.stats.get("last_poll") or db_s.get("last_poll")
+    started_at = state.stats.get("started_at")
+    last_error = state.stats.get("last_error")
+
+    return {
+        "user_id": int(user_id),
+        "worker_enabled": bool(user_row.get("worker_enabled")),
+        "running": bool(state.running),
+        "interval": poll_interval,
+        "query": poll_query,
+        "priorities": config.NOTIFY_PRIORITIES or ["all"],
+        "started_at": started_at,
+        "last_poll": last_poll,
+        "last_error": last_error,
+        "total_sent": total_sent,
+        "total_fetched": total_fetched,
+        "total_errors": total_errors,
+        "total_tokens": total_tokens,
+        "total_runtime_hours": round(total_runtime_secs / 3600, 1),
+    }
+
+
 async def poll_now() -> Dict[str, Any]:
     users = await _run_io(db.list_worker_enabled_users)
     if not users:
-        raise RuntimeError("当前无 worker_enabled=True 的用户")
+        raise RuntimeError("No users with worker_enabled=True found")
 
     before_sent = sum(s.stats["total_sent"] for s in _workers.values())
     before_err = sum(s.stats["total_errors"] for s in _workers.values())

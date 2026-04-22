@@ -1,7 +1,7 @@
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import HTTPException
 
@@ -9,37 +9,37 @@ from app import db
 from app.core import config
 from app.core.llm import call_llm
 from app.schemas import OutgoingComposeRequest
+from app.domains.outgoing.preview_service import send_outgoing_preview
 from app.utils.crypto import decrypt_draft_body, encrypt_draft_body
 from app.utils.outgoing_json import extract_json_from_llm
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
 from app.utils.prompt_loader import load_prompt
-from app.services.outgoing_preview_service import send_outgoing_preview
 
 
 class OutgoingEmailService:
     def _validate_email(self, email: str) -> None:
         s = (email or "").strip()
         if not s or "@" not in s:
-            raise HTTPException(status_code=422, detail="to_email 无效")
+            raise HTTPException(status_code=422, detail="Invalid to_email")
         local, _, domain = s.partition("@")
         if not local or not domain or "." not in domain:
-            raise HTTPException(status_code=422, detail="to_email 无效")
+            raise HTTPException(status_code=422, detail="Invalid to_email")
 
     def compose(self, *, payload: OutgoingComposeRequest, user: Dict[str, Any]) -> dict:
         self._validate_email(payload.to_email)
         topic = (payload.topic or "").strip()
         key_points = (payload.key_points or "").strip()
         if not topic:
-            raise HTTPException(status_code=422, detail="topic 不能为空")
+            raise HTTPException(status_code=422, detail="topic is required")
         if not key_points:
-            raise HTTPException(status_code=422, detail="key_points 不能为空")
+            raise HTTPException(status_code=422, detail="key_points is required")
 
         body_format = (payload.body_format or "plain").strip().lower()
         if body_format not in ("plain", "html"):
-            raise HTTPException(status_code=422, detail="body_format 必须为 plain 或 html")
+            raise HTTPException(status_code=422, detail="body_format must be either 'plain' or 'html'")
 
         if not config.OUTGOING_EMAIL_ENCRYPTION_KEY:
-            raise HTTPException(status_code=500, detail="OUTGOING_EMAIL_ENCRYPTION_KEY 未配置")
+            raise HTTPException(status_code=500, detail="OUTGOING_EMAIL_ENCRYPTION_KEY is not configured")
 
         now = datetime.now(tz=timezone.utc)
         ttl_minutes = int(getattr(config, "OUTGOING_DRAFT_TTL_MINUTES", 30) or 30)
@@ -79,7 +79,7 @@ class OutgoingEmailService:
                     draft_id=draft_id,
                 )
             except Exception:
-                raise HTTPException(status_code=500, detail="草稿解密失败")
+                raise HTTPException(status_code=500, detail="Failed to decrypt draft")
             return {
                 "draft_id": draft_id,
                 "to_email": existing["to_email"],
@@ -93,10 +93,10 @@ class OutgoingEmailService:
         try:
             tpl = load_prompt("outgoing/email_compose.txt", user_id=int(user["id"]))
         except FileNotFoundError as e:
-            raise HTTPException(status_code=500, detail=f"提示词模板缺失: {e}")
+            raise HTTPException(status_code=500, detail=f"Prompt template missing: {e}")
 
-        prompt = (tpl
-            .replace("{{to_email}}", payload.to_email.strip())
+        prompt = (
+            tpl.replace("{{to_email}}", payload.to_email.strip())
             .replace("{{topic}}", topic)
             .replace("{{key_points}}", key_points)
             .replace("{{tone}}", (payload.tone or "").strip() or "专业、礼貌")
@@ -106,7 +106,14 @@ class OutgoingEmailService:
 
         total_tokens = 0
         try:
-            content, t = call_llm(prompt, max_tokens=800, use_cache=False)
+            content, t = call_llm(
+                prompt,
+                max_tokens=800,
+                use_cache=False,
+                user_id=int(user["id"]),
+                purpose="outgoing_compose",
+                source="outgoing",
+            )
             total_tokens += int(t or 0)
             data = extract_json_from_llm(content)
         except Exception as e:
@@ -121,18 +128,18 @@ class OutgoingEmailService:
                 error_message=str(e)[:400],
                 meta={"draft_id": draft_id},
             )
-            raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
         subject = (data.get("subject") or "").strip() or topic
         body_plain = (data.get("body_plain") or "").strip()
         body_html = (data.get("body_html") or "").strip()
 
         if not body_plain and body_format == "plain":
-            raise HTTPException(status_code=500, detail="AI 输出格式错误")
+            raise HTTPException(status_code=500, detail="Invalid AI output format")
         if not body_plain and body_html:
             body_plain = re.sub(r"<[^>]+>", "", body_html).strip()
         if not body_plain:
-            raise HTTPException(status_code=500, detail="AI 输出格式错误")
+            raise HTTPException(status_code=500, detail="Invalid AI output format")
 
         sender_name = resolve_sender_name(user_id=int(user["id"]))
         body_plain = fill_sender_name(body_plain, sender_name=sender_name)
@@ -162,12 +169,12 @@ class OutgoingEmailService:
             bot = db.get_default_bot(int(user["id"]))
             if bot and bot.get("chat_id") and bot.get("token") and bot.get("bot_mode") in ("all", "chat"):
                 text = (
-                    "📧 <b>邮件预览</b>\n"
+                    "<b>Email Draft Preview</b>\n"
                     f"To: <code>{payload.to_email.strip()}</code>\n"
                     f"Subject: <b>{subject}</b>\n\n"
                     f"<pre>{(body_plain[:1400] + ('…' if len(body_plain) > 1400 else ''))}</pre>\n\n"
-                    "请确认是否发送。\n"
-                    "（可回复此消息输入新的收件人邮箱以修改 To）"
+                    "Please confirm whether to send.\n"
+                    "(Reply to this message with a new recipient email to update To.)"
                 )
                 send_outgoing_preview(
                     draft_id=int(draft_id),

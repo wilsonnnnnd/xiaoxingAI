@@ -82,14 +82,14 @@ def _load_router_prompt() -> str:
     try:
         from app.utils.prompt_loader import load_prompt
         text = load_prompt("tools/router.txt")
-        logger.debug("[tools] router.txt 加载成功（%d 字符）", len(text))
+        logger.debug("[tools] router.txt loaded (%d chars)", len(text))
         return text
     except Exception as e:
-        logger.warning("[tools] router.txt 加载失败，使用内联备用: %s", e)
+        logger.warning("[tools] router.txt load failed, using inline fallback: %s", e)
         return (
-            "你是工具调度器。根据用户消息，从可用工具中选出需要调用的工具。\n"
-            "工具：{tools}\n用户消息：{message}\n"
-            "只输出 JSON 数组，不要任何其他文字。不需要工具时输出 []。"
+            "You are the tool scheduler. Based on the user message, select the tool to be invoked from the available tools.\n"
+            "Tools: {tools}\nUser Message: {message}\n"
+            "Output only a JSON array, no other text. Output [] when the tool is not needed."
         )
 
 
@@ -102,19 +102,24 @@ def _keyword_match(message: str) -> list[str]:
     ]
 
 
-def _llm_route(message: str) -> tuple[list[str], int]:
+def _llm_route(message: str, user_id: int | None = None) -> tuple[list[str], int]:
     prompt_template = _load_router_prompt()
     tools_desc = "\n".join(
         f"- {t.name}: {t.description}" for t in _registry.values()
     )
     prompt = prompt_template.format(tools=tools_desc, message=message)
     try:
-        raw, tokens = call_router(prompt)
+        raw, tokens = call_router(
+            prompt,
+            user_id=user_id,
+            purpose="tool_router",
+            source="tools",
+        )
         m = re.search(r"\[.*?\]", raw, re.DOTALL)
         names: list[str] = json.loads(m.group()) if m else []
         return [n for n in names if n in _registry], tokens
     except Exception as e:
-        logger.debug(f"[tools] Router 调用失败: {e}")
+        logger.debug("[tools] router call failed: %s", e)
         return [], 0
 
 
@@ -129,12 +134,12 @@ def route_and_execute(message: str, user_id: int | None = None) -> tuple[str, in
     if not _registry:
         return "", 0
 
-    tool_names, tokens = _llm_route(message)
-    logger.info(f"[tools] LLM路由: msg={message!r} → {tool_names}")
+    tool_names, tokens = _llm_route(message, user_id=user_id)
+    logger.info(f"[tools] llm route: msg={message!r} -> {tool_names}")
 
     if not tool_names:
         tool_names = _keyword_match(message)
-        logger.info(f"[tools] 关键词降级: msg={message!r} → {tool_names}")
+        logger.info(f"[tools] keyword fallback: msg={message!r} -> {tool_names}")
 
     results: list[str] = []
     for name in tool_names:
@@ -147,8 +152,8 @@ def route_and_execute(message: str, user_id: int | None = None) -> tuple[str, in
             logger.info(f"[tools] {name} → {result[:80]}")
             results.append(result)
         except Exception as e:
-            logger.warning(f"[tools] {name} 执行失败: {e}")
-            results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
+            logger.warning(f"[tools] {name} failed: {e}")
+            results.append(f"[tools] {name} faild to call. Please inform the user accordingly.")
 
     return "\n\n".join(results), tokens
 
@@ -157,7 +162,7 @@ def route_and_execute_debug(message: str, user_id: int | None = None) -> tuple[s
     if not _registry:
         return "", 0, {"tool_names": [], "router_tokens": 0, "used_fallback": False, "tool_results": []}
 
-    tool_names, router_tokens = _llm_route(message)
+    tool_names, router_tokens = _llm_route(message, user_id=user_id)
     used_fallback = False
     if not tool_names:
         tool_names = _keyword_match(message)
@@ -176,7 +181,7 @@ def route_and_execute_debug(message: str, user_id: int | None = None) -> tuple[s
             results.append(result)
             tool_results.append({"name": name, "ok": True, "preview": str(result)[:160]})
         except Exception as e:
-            results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
+            results.append(f"[tools] {name} faild to call. Please inform the user accordingly.")
             tool_results.append({"name": name, "ok": False, "error": str(e)[:200]})
 
     return "\n\n".join(results), router_tokens, {
@@ -205,7 +210,12 @@ def route_and_execute_debug_allowlist(
     used_fallback = False
     tool_names: list[str] = []
     try:
-        raw, router_tokens = call_router(prompt)
+        raw, router_tokens = call_router(
+            prompt,
+            user_id=user_id,
+            purpose="tool_router_allowlist",
+            source="tools",
+        )
         m = re.search(r"\[.*?\]", raw, re.DOTALL)
         names: list[str] = json.loads(m.group()) if m else []
         tool_names = [n for n in names if n in allowed]
@@ -229,7 +239,7 @@ def route_and_execute_debug_allowlist(
             results.append(result)
             tool_results.append({"name": name, "ok": True, "preview": str(result)[:160]})
         except Exception as e:
-            results.append(f"【工具 {name} 调用失败，无法获取实时数据，请如实告知用户】")
+            results.append(f"[tools] {name} faild to call. Please inform the user accordingly." )
             tool_results.append({"name": name, "ok": False, "error": str(e)[:200]})
 
     return "\n\n".join(results), router_tokens, {

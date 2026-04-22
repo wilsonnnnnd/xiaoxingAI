@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 
 from app import db
-from app.core.telegram.client import send_message
-from app.utils.callback_signer import parse_callback_data, verify_callback_data
+from app.domains.telegram.client import send_message
+from app.domains.outgoing.draft_sender import send_outgoing_draft
 from app.utils.callback_signer import build_callback_data
-from app.services.outgoing_draft_sender import send_outgoing_draft
+from app.utils.callback_signer import parse_callback_data, verify_callback_data
 
 
 class TelegramOutgoingCallbackService:
@@ -19,23 +19,23 @@ class TelegramOutgoingCallbackService:
         try:
             parsed = parse_callback_data(data)
         except Exception:
-            return "⚠️ 无效操作。"
+            return "Invalid action."
 
         draft = db.get_draft_any(draft_id=int(parsed.draft_id))
         if not draft:
-            return "⚠️ 草稿不存在或已被删除。"
+            return "Draft does not exist or has been deleted."
 
         if str(draft.get("telegram_chat_id") or "") != str(chat_id):
-            return "⚠️ 未授权的会话。"
+            return "Unauthorized session."
         if int(draft.get("telegram_bot_id") or 0) != int(bot_id):
-            return "⚠️ 未授权的 Bot。"
+            return "Unauthorized bot."
 
         if str(draft.get("callback_nonce") or "") != str(parsed.nonce):
-            return "⚠️ 操作已失效。"
+            return "Action expired."
 
         expires_at = draft.get("expires_at")
         if not expires_at:
-            return "⚠️ 操作已失效。"
+            return "Action expired."
 
         ok = False
         try:
@@ -51,7 +51,7 @@ class TelegramOutgoingCallbackService:
             ok = False
 
         if not ok:
-            return "⚠️ 操作校验失败。"
+            return "Action verification failed."
 
         inserted = db.insert_action(
             draft_id=int(draft["id"]),
@@ -64,16 +64,16 @@ class TelegramOutgoingCallbackService:
             meta={"bot_id": int(bot_id)},
         )
         if not inserted:
-            return "✅ 已处理。"
+            return "Processed."
 
         if parsed.action == "c":
             changed = db.confirm_draft(draft_id=int(draft["id"]), user_id=int(draft["user_id"]))
             if not changed and str(draft.get("status")) in ("sent", "sending"):
-                return "✅ 已发送或正在发送。"
+                return "Already sent or currently sending."
 
             sending = db.start_sending(draft_id=int(draft["id"]), user_id=int(draft["user_id"]))
             if not sending:
-                return "✅ 已确认（重复点击无效）。"
+                return "Confirmed (duplicate click ignored)."
 
             db.insert_action(
                 draft_id=int(draft["id"]),
@@ -85,7 +85,7 @@ class TelegramOutgoingCallbackService:
             )
             ok, _, _ = send_outgoing_draft(draft=draft, source="telegram_callback")
             if ok:
-                return "✅ 已发送邮件。"
+                return "Email sent."
 
             try:
                 bot = db.get_bot(int(bot_id))
@@ -99,11 +99,9 @@ class TelegramOutgoingCallbackService:
                         chat_id=str(chat_id),
                         bot_id=int(bot_id),
                     )
-                    reply_markup = {
-                        "inline_keyboard": [[{"text": "🔁 Resend", "callback_data": cb_resend}]]
-                    }
+                    reply_markup = {"inline_keyboard": [[{"text": "Resend", "callback_data": cb_resend}]]}
                     send_message(
-                        "⚠️ 邮件发送失败。你可以点击下方按钮重新发送。",
+                        "Email send failed. You can click the button below to resend.",
                         chat_id=str(chat_id),
                         token=str(bot["token"]),
                         parse_mode=None,
@@ -111,18 +109,18 @@ class TelegramOutgoingCallbackService:
                     )
             except Exception:
                 pass
-            return "⚠️ 发送失败，稍后可点击 Resend 重试。"
+            return "Send failed. You can click Resend later to retry."
 
         if parsed.action == "x":
             changed = db.cancel_draft(draft_id=int(draft["id"]), user_id=int(draft["user_id"]))
-            return "❌ 已取消，本次不会发送邮件。" if changed else "❌ 已取消（重复点击无效）。"
+            return "Cancelled. This email will not be sent." if changed else "Cancelled (duplicate click ignored)."
 
         if parsed.action == "r":
             if str(draft.get("status")) != "failed":
-                return "ℹ️ 当前无需重试。"
+                return "Retry not needed."
             sending = db.start_sending(draft_id=int(draft["id"]), user_id=int(draft["user_id"]))
             if not sending:
-                return "ℹ️ 正在发送或状态已变化。"
+                return "Sending in progress or status has changed."
             try:
                 db.insert_action(
                     draft_id=int(draft["id"]),
@@ -136,9 +134,8 @@ class TelegramOutgoingCallbackService:
                 ok, _, _ = send_outgoing_draft(draft=draft, source="telegram_callback", resend=True)
                 if not ok:
                     raise RuntimeError("send failed")
-                return "✅ 已重新发送邮件。"
+                return "Email resent."
             except Exception:
-                return "⚠️ 重新发送失败，请稍后再试。"
+                return "Resend failed, please try again later."
 
-        return "ℹ️ 当前暂不支持此操作。"
-
+        return "This action is not supported."

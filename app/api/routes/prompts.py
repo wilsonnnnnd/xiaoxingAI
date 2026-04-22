@@ -28,15 +28,15 @@ def _is_internal_prompt(rel_path: str) -> bool:
 def _check_prompt_filename(filename: str) -> None:
     """拒绝路径穿越或非 .txt 文件名，允许一级子目录（如 gmail/xxx.txt）"""
     if not filename or filename.strip() != filename:
-        raise HTTPException(status_code=400, detail="文件名不合法")
+        raise HTTPException(status_code=400, detail="Invalid filename")
     if ".." in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="文件名不合法")
+        raise HTTPException(status_code=400, detail="Invalid filename")
     if not filename.endswith(".txt"):
-        raise HTTPException(status_code=400, detail="仅支持 .txt 文件")
+        raise HTTPException(status_code=400, detail="Only .txt files are supported")
     # 防止路径穿越：解析后必须仍在 prompts 目录内
     resolved = (app_config.PROMPTS_DIR / filename).resolve()
     if not str(resolved).startswith(str(app_config.PROMPTS_DIR.resolve())):
-        raise HTTPException(status_code=400, detail="文件名不合法")
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
 
 @router.get("/prompts")
@@ -71,14 +71,14 @@ def prompts_list(user: dict = Depends(auth_mod.current_user)):
 def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
     """读取 Prompt：优先返回用户专属（DB），无则回退到磁盘默认文件。"""
     if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
-        raise HTTPException(status_code=403, detail="无权访问该 Prompt")
+        raise HTTPException(status_code=403, detail="Not authorized to access this prompt")
     _check_prompt_filename(filename)
     override = db.get_user_prompt(user["id"], filename)
     if override is not None:
         return {"filename": filename, "content": override, "is_custom": True}
     path = app_config.PROMPTS_DIR / filename
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"{filename} 不存在")
+        raise HTTPException(status_code=404, detail=f"Prompt not found: {filename}")
     return {"filename": filename, "content": path.read_text(encoding="utf-8"), "is_custom": False}
 
 
@@ -86,11 +86,11 @@ def prompt_get(filename: str, user: dict = Depends(auth_mod.current_user)):
 def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(auth_mod.current_user)):
     """保存用户专属 Prompt 到 DB（不修改磁盘文件）。"""
     if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
-        raise HTTPException(status_code=403, detail="无权编辑该 Prompt")
+        raise HTTPException(status_code=403, detail="Not authorized to edit this prompt")
     _check_prompt_filename(filename)
     content = payload.get("content")
     if content is None:
-        raise HTTPException(status_code=422, detail="缺少 content 字段")
+        raise HTTPException(status_code=422, detail="Missing field: content")
     db.save_user_prompt(user["id"], filename, content)
     return {"ok": True, "filename": filename}
 
@@ -99,11 +99,11 @@ def prompt_save(filename: str, payload: Dict[str, str], user: dict = Depends(aut
 def prompt_delete(filename: str, user: dict = Depends(auth_mod.current_user)):
     """删除用户专属 Prompt：默认文件则清除覆盖（恢复默认），自定义文件则彻底删除。"""
     if user.get("role") != "admin" and filename not in USER_EDITABLE_PROMPTS:
-        raise HTTPException(status_code=403, detail="无权编辑该 Prompt")
+        raise HTTPException(status_code=403, detail="Not authorized to edit this prompt")
     _check_prompt_filename(filename)
     deleted = db.delete_user_prompt(user["id"], filename)
     if not deleted:
-        detail = "该文件没有个人修改记录" if filename in DEFAULT_PROMPTS else f"{filename} 不存在"
+        detail = "No user override exists for this file" if filename in DEFAULT_PROMPTS else f"Prompt not found: {filename}"
         raise HTTPException(status_code=404, detail=detail)
     return {"ok": True, "filename": filename}
 

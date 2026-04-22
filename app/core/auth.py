@@ -62,12 +62,12 @@ def decode_token(token: str) -> Dict[str, Any]:
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token 已过期，请重新登录",
+            detail="Token expired, please log in again",
         )
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效 Token",
+            detail="Invalid token",
         )
 
     # 版本校验（Redis 可用时）
@@ -76,7 +76,7 @@ def decode_token(token: str) -> Dict[str, Any]:
     if current_version != payload.get("version", 0):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token 已失效，请重新登录",
+            detail="Token is no longer valid, please log in again",
         )
 
     return payload
@@ -99,7 +99,7 @@ async def current_user(token: Optional[str] = Depends(oauth2_scheme)) -> Dict[st
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未提供认证 Token",
+            detail="Missing authentication token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     payload = decode_token(token)
@@ -107,7 +107,7 @@ async def current_user(token: Optional[str] = Depends(oauth2_scheme)) -> Dict[st
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户不存在",
+            detail="User not found",
         )
     return user
 
@@ -117,7 +117,7 @@ async def require_admin(user: Dict[str, Any] = Depends(current_user)) -> Dict[st
     if user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要管理员权限",
+            detail="Admin privileges required",
         )
     return user
 
@@ -143,7 +143,7 @@ def assert_self_or_admin(current: Dict[str, Any], target_user_id: int) -> None:
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="无权操作其他用户的数据",
+        detail="Not authorized to access other users' data",
     )
 
 
@@ -164,8 +164,8 @@ def ensure_admin_exists() -> None:
 
     if not email or not password:
         logger.warning(
-            "[auth] 未发现 admin 账号，也未配置 ADMIN_USER / ADMIN_PASSWORD，"
-            "请手动创建 admin 或设置环境变量后重启。"
+            "[auth] no admin user found and ADMIN_USER / ADMIN_PASSWORD are not configured; "
+            "create an admin manually or set env vars and restart."
         )
         return
 
@@ -175,4 +175,4 @@ def ensure_admin_exists() -> None:
         role="admin",
         password_hash=hash_password(password),
     )
-    logger.info(f"[auth] 已自动创建 admin 账号：{email}")
+    logger.info("[auth] auto-created admin user: %s", email)

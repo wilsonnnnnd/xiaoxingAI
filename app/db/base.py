@@ -35,7 +35,7 @@ def init_db() -> None:
             # 旧表清理（顺序：先子表后父表）
             for tbl in [
                 "worker_stats", "email_records",
-                "worker_logs", "sender", "oauth_tokens",
+                "worker_logs", "sender", "oauth_tokens", "ai_usage_analytics",
             ]:
                 cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
 
@@ -236,6 +236,25 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_drafts_expires ON outgoing_email_drafts(expires_at)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_actions_draft_time ON outgoing_email_actions(draft_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_outgoing_actions_user_time ON outgoing_email_actions(user_id, created_at DESC)")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_usage_analytics (
+                id                   BIGSERIAL PRIMARY KEY,
+                user_id              BIGINT REFERENCES "user"(id) ON DELETE SET NULL,
+                recorded_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                provider             VARCHAR(64) NOT NULL DEFAULT '',
+                source               VARCHAR(64) NOT NULL DEFAULT '',
+                purpose              VARCHAR(128) NOT NULL DEFAULT '',
+                model_name           VARCHAR(160) NOT NULL DEFAULT '',
+                prompt_tokens        INTEGER NOT NULL DEFAULT 0,
+                completion_tokens    INTEGER NOT NULL DEFAULT 0,
+                total_tokens         INTEGER NOT NULL DEFAULT 0,
+                estimated_cost_usd   NUMERIC(18, 8) NOT NULL DEFAULT 0
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_recorded_at ON ai_usage_analytics(recorded_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_user_recorded_at ON ai_usage_analytics(user_id, recorded_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_model_recorded_at ON ai_usage_analytics(model_name, recorded_at DESC)")
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reply_templates (

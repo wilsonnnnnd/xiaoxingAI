@@ -8,14 +8,14 @@ import requests
 from app import db
 from app.core import config
 from app.core import redis_client as rc
-from app.core.telegram.client import delete_webhook, send_message, set_webhook
+from app.domains.telegram.client import delete_webhook, send_message, set_webhook
 from app.core.tools.outgoing_email_tools import (
     outgoing_draft_cancel,
     outgoing_draft_confirm,
     outgoing_draft_modify,
     reply_email,
 )
-from app.services.telegram_outgoing_callback_service import TelegramOutgoingCallbackService
+from app.domains.outgoing.telegram_callback_service import TelegramOutgoingCallbackService
 
 
 logger = logging.getLogger("tg_updates")
@@ -49,7 +49,8 @@ def _get_updates(token: str, offset: int, timeout: int = 25) -> list:
 
 def _active_bots() -> list[Dict[str, Any]]:
     return [
-        b for b in db.get_all_bots()
+        b
+        for b in db.get_all_bots()
         if str(b.get("bot_mode") or "all") in ("all", "notify", "chat")
     ]
 
@@ -59,7 +60,6 @@ def _webhook_url(bot_id: int) -> str:
 
 
 def _try_register_webhooks(bots: list[Dict[str, Any]]) -> set[int]:
-    """Return bot ids that could not use webhook and should fall back to polling."""
     global _webhook_bot_ids
 
     _webhook_bot_ids = set()
@@ -85,7 +85,11 @@ def _try_register_webhooks(bots: list[Dict[str, Any]]) -> set[int]:
             logger.info("[tg] webhook registered for bot#%s", bot_id)
         except Exception as e:
             fallback_ids.add(bot_id)
-            logger.warning("[tg] setWebhook failed for bot#%s, falling back to polling: %s", bot_id, e)
+            logger.warning(
+                "[tg] setWebhook failed for bot#%s, falling back to polling: %s",
+                bot_id,
+                e,
+            )
     return fallback_ids
 
 
@@ -100,7 +104,9 @@ def _prepare_polling(bots: list[Dict[str, Any]], bot_ids: set[int]) -> None:
         try:
             delete_webhook(token=token, drop_pending_updates=False)
         except Exception as e:
-            logger.warning("[tg] deleteWebhook before polling failed for bot#%s: %s", bot_id, e)
+            logger.warning(
+                "[tg] deleteWebhook before polling failed for bot#%s: %s", bot_id, e
+            )
 
 
 def _delete_registered_webhooks() -> None:
@@ -128,7 +134,15 @@ def _is_cancel(text: str) -> bool:
     return t in {"取消", "不发", "cancel"} or "取消" in t
 
 
-def _handle_reply_message(*, bot_id: int, user_id: int, chat_id: str, token: str, update_id: int, message: dict) -> None:
+def _handle_reply_message(
+    *,
+    bot_id: int,
+    user_id: int,
+    chat_id: str,
+    token: str,
+    update_id: int,
+    message: dict,
+) -> None:
     reply_to = message.get("reply_to_message") or {}
     reply_mid = int(reply_to.get("message_id") or 0)
     text = str(message.get("text") or "").strip()
@@ -145,20 +159,34 @@ def _handle_reply_message(*, bot_id: int, user_id: int, chat_id: str, token: str
         if not draft_id:
             return
         if _is_confirm(text):
-            result = outgoing_draft_confirm(f"__draft_id__={draft_id} __tg_update_id__={update_id} 确认", user_id=int(user_id))
+            result = outgoing_draft_confirm(
+                f"__draft_id__={draft_id} __tg_update_id__={update_id} confirm",
+                user_id=int(user_id),
+            )
         elif _is_cancel(text):
-            result = outgoing_draft_cancel(f"__draft_id__={draft_id} __tg_update_id__={update_id} 取消", user_id=int(user_id))
+            result = outgoing_draft_cancel(
+                f"__draft_id__={draft_id} __tg_update_id__={update_id} cancel",
+                user_id=int(user_id),
+            )
         else:
             result = outgoing_draft_modify(
                 f"__draft_id__={draft_id} __tg_update_id__={update_id} __instruction__={text}",
                 user_id=int(user_id),
             )
         if result:
-            send_message(result, chat_id=str(chat_id), token=str(token), parse_mode=None, reply_markup=None)
+            send_message(
+                result,
+                chat_id=str(chat_id),
+                token=str(token),
+                parse_mode=None,
+                reply_markup=None,
+            )
         return
 
     email_id = None
-    cached = rc.get_tg_message_cache(bot_id=int(bot_id), chat_id=str(chat_id), message_id=int(reply_mid))
+    cached = rc.get_tg_message_cache(
+        bot_id=int(bot_id), chat_id=str(chat_id), message_id=int(reply_mid)
+    )
     if isinstance(cached, dict):
         v = cached.get("email_id") or cached.get("emailId")
         if v:
@@ -173,7 +201,13 @@ def _handle_reply_message(*, bot_id: int, user_id: int, chat_id: str, token: str
     msg = f"__bot_id__={int(bot_id)} __chat_id__={str(chat_id)} __email_id__={str(email_id)} __tg_update_id__={int(update_id)} 用户回复意图: {text}"
     result = reply_email(msg, user_id=int(user_id))
     if result:
-        send_message(result, chat_id=str(chat_id), token=str(token), parse_mode=None, reply_markup=None)
+        send_message(
+            result,
+            chat_id=str(chat_id),
+            token=str(token),
+            parse_mode=None,
+            reply_markup=None,
+        )
 
 
 def _handle_update(*, bot_row: Dict[str, Any], update: dict) -> None:
@@ -195,9 +229,17 @@ def _handle_update(*, bot_row: Dict[str, Any], update: dict) -> None:
         if not cq_id or not data or not chat_id:
             return
         svc = TelegramOutgoingCallbackService()
-        text = svc.handle(bot_id=bot_id, chat_id=chat_id, callback_query_id=cq_id, data=data)
+        text = svc.handle(
+            bot_id=bot_id, chat_id=chat_id, callback_query_id=cq_id, data=data
+        )
         if text:
-            send_message(text, chat_id=str(chat_id), token=str(token), parse_mode=None, reply_markup=None)
+            send_message(
+                text,
+                chat_id=str(chat_id),
+                token=str(token),
+                parse_mode=None,
+                reply_markup=None,
+            )
         return
 
     msg = update.get("message") or update.get("edited_message") or None
@@ -222,7 +264,11 @@ async def _loop() -> None:
     logger.info("[tg] polling loop started")
     while _running:
         bots_all = await asyncio.to_thread(_active_bots)
-        bots = [b for b in bots_all if _polling_bot_ids is None or int(b["id"]) in _polling_bot_ids]
+        bots = [
+            b
+            for b in bots_all
+            if _polling_bot_ids is None or int(b["id"]) in _polling_bot_ids
+        ]
         if not bots:
             await asyncio.sleep(2)
             continue
@@ -235,11 +281,18 @@ async def _loop() -> None:
             t0 = time.perf_counter()
             updates = await asyncio.to_thread(_get_updates, token, offset, 25)
             ms = int((time.perf_counter() - t0) * 1000)
-            logger.info("[tg] polling request duration | bot#%s | %sms | updates=%s", bot_id, ms, len(updates))
+            logger.info(
+                "[tg] polling request duration | bot#%s | %sms | updates=%s",
+                bot_id,
+                ms,
+                len(updates),
+            )
             for u in updates:
                 uid = int(u.get("update_id") or 0)
                 if uid:
-                    _offsets[int(b["id"])] = max(int(_offsets.get(int(b["id"]), 0) or 0), uid + 1)
+                    _offsets[int(b["id"])] = max(
+                        int(_offsets.get(int(b["id"]), 0) or 0), uid + 1
+                    )
                 try:
                     await asyncio.to_thread(_handle_update, bot_row=b, update=u)
                 except Exception as e:

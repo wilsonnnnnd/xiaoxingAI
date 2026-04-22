@@ -3,8 +3,8 @@ from app.api.http import run_http
 
 from app.core import config as app_config
 from app.core.llm import call_llm
-from app.skills.gmail.pipeline import analyze_email, process_email, summarize_email
-from app.skills.gmail.schemas import EmailRequest
+from app.domains.gmail.pipeline import analyze_email, process_email, summarize_email
+from app.domains.gmail.schemas import EmailRequest
 
 router = APIRouter()
 

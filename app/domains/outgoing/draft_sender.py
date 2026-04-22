@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, Tuple
 
 from app import db
-from app.skills.gmail.client import send_email_raw
+from app.domains.gmail.client import send_email_raw
 from app.utils.crypto import decrypt_draft_body
 from app.utils.email_mime import build_gmail_raw_message
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
@@ -77,3 +77,4 @@ def send_outgoing_draft(
             meta=action_meta or None,
         )
         return False, None, str(e)
+

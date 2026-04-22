@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-import os
+from app.core import config as app_config
 
 
 _B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -32,7 +32,7 @@ def _b36_decode(s: str) -> int:
 
 
 def _secret() -> bytes:
-    raw = os.environ.get("TELEGRAM_CALLBACK_SECRET", "").strip()
+    raw = app_config.TELEGRAM_CALLBACK_SECRET_RAW
     if not raw:
         raise ValueError("TELEGRAM_CALLBACK_SECRET is not configured")
     return raw.encode("utf-8")

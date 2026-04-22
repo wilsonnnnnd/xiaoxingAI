@@ -22,9 +22,9 @@ def bot_create(user_id: int, payload: BotCreate, user: dict = Depends(auth_mod.c
     """为某用户创建 Bot"""
     auth_mod.assert_self_or_admin(user, user_id)
     if not db.get_user_by_id(user_id):
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=404, detail="User not found")
     if payload.bot_mode not in _VALID_BOT_MODES:
-        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all' 或 'notify'")
+        raise HTTPException(status_code=422, detail="bot_mode must be either 'all' or 'notify'")
     bot = db.create_bot(
         user_id=user_id,
         name=payload.name,
@@ -42,10 +42,10 @@ def bot_update(user_id: int, bot_id: int, payload: BotUpdate, user: dict = Depen
     auth_mod.assert_self_or_admin(user, user_id)
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
+        raise HTTPException(status_code=404, detail="Bot not found")
     updates = payload.model_dump(exclude_unset=True)
     if "bot_mode" in updates and updates["bot_mode"] not in _VALID_BOT_MODES:
-        raise HTTPException(status_code=422, detail="bot_mode 必须为 'all' 或 'notify'")
+        raise HTTPException(status_code=422, detail="bot_mode must be either 'all' or 'notify'")
     if updates:
         db.update_bot(bot_id, user_id, **updates)
     return db.get_bot(bot_id)
@@ -57,7 +57,7 @@ def bot_delete(user_id: int, bot_id: int, user: dict = Depends(auth_mod.current_
     auth_mod.assert_self_or_admin(user, user_id)
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
+        raise HTTPException(status_code=404, detail="Bot not found")
     db.delete_bot(bot_id, user_id)
     return {"ok": True}
 
@@ -68,6 +68,6 @@ def bot_set_default(user_id: int, bot_id: int, user: dict = Depends(auth_mod.cur
     auth_mod.assert_self_or_admin(user, user_id)
     existing = db.get_bot(bot_id)
     if not existing or existing["user_id"] != user_id:
-        raise HTTPException(status_code=404, detail="Bot 不存在")
+        raise HTTPException(status_code=404, detail="Bot not found")
     db.set_default_bot(bot_id, user_id)
     return {"ok": True}

@@ -39,7 +39,7 @@ def _sync() -> Optional[redis.Redis]:
         r.ping()
         return r
     except Exception as e:
-        logger.debug(f"[redis] 同步连接不可用（降级）: {e}")
+        logger.debug("[redis] sync connection unavailable (degraded): %s", e)
         _sync_pool = None
         return None
 
@@ -92,7 +92,7 @@ def get_llm_cache(prompt: str, max_tokens: int) -> Optional[tuple]:
             data = json.loads(raw)
             return data["reply"], data["tokens"]
     except Exception as e:
-        logger.debug(f"[redis] llm cache get 失败: {e}")
+        logger.debug("[redis] llm cache get failed: %s", e)
     return None
 
 
@@ -107,7 +107,7 @@ def set_llm_cache(prompt: str, max_tokens: int, reply: str, tokens: int) -> None
             json.dumps({"reply": reply, "tokens": tokens}, ensure_ascii=False),
         )
     except Exception as e:
-        logger.debug(f"[redis] llm cache set 失败: {e}")
+        logger.debug("[redis] llm cache set failed: %s", e)
 
 
 # ── 2. JWT 版本号（主动吊销） ─────────────────────────────────────

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.core import auth as auth_mod
 from app.schemas import OutgoingComposeRequest, OutgoingComposeResponse
-from app.services.outgoing_email_service import OutgoingEmailService
+from app.domains.outgoing.service import OutgoingEmailService
 
 
 router = APIRouter(tags=["Gmail"])

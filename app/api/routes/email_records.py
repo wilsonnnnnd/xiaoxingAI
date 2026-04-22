@@ -154,5 +154,5 @@ def email_record_detail(email_id: str):
     """返回单条邮件处理记录详情"""
     record = db.get_email_record(email_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="邮件记录不存在")
+        raise HTTPException(status_code=404, detail="Email record not found")
     return record

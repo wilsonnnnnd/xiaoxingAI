@@ -18,10 +18,10 @@ def _extract_email_id(message: str) -> str:
 def classify_reply_to(message: str) -> str:
     text = (message or "").strip()
 
-    if "draft_id" in text or "草稿预览" in text or "邮件预览" in text:
+    if "draft_id" in text or "Email Draft Preview" in text or "草稿预览" in text or "邮件预览" in text:
         return json.dumps({"target_type": "draft_preview", "reason": "matched draft markers"}, ensure_ascii=False)
 
-    if "新邮件通知" in text or "📬" in text or "📨" in text:
+    if "New Email" in text or "View in Gmail" in text or "新邮件通知" in text or "📬" in text or "📨" in text:
         email_id = _extract_email_id(text)
         return json.dumps({"target_type": "email_notify", "email_id": email_id or None, "reason": "matched notify markers"}, ensure_ascii=False)
 
@@ -30,4 +30,3 @@ def classify_reply_to(message: str) -> str:
         return json.dumps({"target_type": "email_notify", "email_id": email_id, "reason": "email_id detected"}, ensure_ascii=False)
 
     return json.dumps({"target_type": "unknown", "reason": "no markers"}, ensure_ascii=False)
-
