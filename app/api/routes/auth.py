@@ -25,17 +25,17 @@ def admin_login(payload: AdminLoginRequest, request: Request):
     key = f"{ip}:{(payload.email or '').strip().lower()}"
     n = _login_limiter.hit(key)
     if n > 10:
-        raise HTTPException(status_code=429, detail="登录过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="Too many login attempts, please try again later")
     user = db.get_user_by_email(payload.email)
     if not user or not user.get("password_hash"):
-        logger.warning("[auth] 登录失败 (user not found): %s", payload.email)
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
+        logger.warning("[auth] login failed (user not found): %s", payload.email)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     if not auth_mod.verify_password(payload.password, user["password_hash"]):
-        logger.warning("[auth] 登录失败 (wrong password): %s", payload.email)
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
+        logger.warning("[auth] login failed (wrong password): %s", payload.email)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     token = auth_mod.create_access_token(user)
     _login_limiter.reset(key)
-    logger.info("[auth] 登录成功: %s (role=%s)", payload.email, user["role"])
+    logger.info("[auth] login success: %s (role=%s)", payload.email, user["role"])
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -45,42 +45,42 @@ def auth_register(payload: RegisterRequest, request: Request):
     email = (payload.email or "").strip().lower()
     _register_global_limiter.hit("all")
     if _register_ip_limiter.hit(ip) > 12:
-        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="Too many registration attempts, please try again later")
     if email and _register_email_limiter.hit(email) > 5:
-        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="Too many registration attempts, please try again later")
 
     if not email or "@" not in email or "." not in email.split("@")[-1]:
-        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+        raise HTTPException(status_code=400, detail="Invalid email address")
     if payload.website and str(payload.website).strip():
-        raise HTTPException(status_code=400, detail="注册信息不合法")
+        raise HTTPException(status_code=400, detail="Invalid registration request")
 
     invite_code = (payload.invite_code or "").strip()
     invite_consumed = False
     if not app_config.ALLOW_PUBLIC_REGISTER:
         if not invite_code:
-            raise HTTPException(status_code=403, detail="注册需要邀请码")
+            raise HTTPException(status_code=403, detail="Invite code required")
         if app_config.REGISTER_INVITE_CODE and invite_code == app_config.REGISTER_INVITE_CODE:
             invite_consumed = False
         else:
             invite_consumed = bool(db.consume_register_invite(invite_code, email, ip))
             if not invite_consumed:
-                raise HTTPException(status_code=403, detail="邀请码无效或已过期")
+                raise HTTPException(status_code=403, detail="Invite code is invalid or expired")
 
     allowlist = {x.strip().lower() for x in (app_config.REGISTER_EMAIL_ALLOWLIST or "").split(",") if x.strip()}
     if allowlist:
         domain = email.split("@")[-1].lower()
         if domain not in allowlist:
-            raise HTTPException(status_code=403, detail="该邮箱域名不允许注册")
+            raise HTTPException(status_code=403, detail="Email domain is not allowed")
 
     pw = payload.password or ""
     if len(pw) < 8:
-        raise HTTPException(status_code=400, detail="密码至少 8 个字符")
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     has_letter = any(ch.isalpha() for ch in pw)
     has_digit = any(ch.isdigit() for ch in pw)
     if not (has_letter and has_digit):
-        raise HTTPException(status_code=400, detail="密码需要同时包含字母和数字")
+        raise HTTPException(status_code=400, detail="Password must contain both letters and numbers")
     if db.get_user_by_email(email):
-        raise HTTPException(status_code=409, detail="该邮箱已被注册")
+        raise HTTPException(status_code=409, detail="Email is already registered")
 
     try:
         new_user = db.create_user(
@@ -112,7 +112,7 @@ def auth_register(payload: RegisterRequest, request: Request):
     token = auth_mod.create_access_token(db.get_user_by_email(email) or {})
     _register_ip_limiter.reset(ip)
     _register_email_limiter.reset(email)
-    logger.info("[auth] 注册成功: %s", email)
+    logger.info("[auth] registration success: %s", email)
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -127,13 +127,13 @@ def auth_me(user: dict = Depends(auth_mod.current_user)):
 def change_password(payload: ChangePasswordRequest, user: dict = Depends(auth_mod.current_user)):
     password_hash = user.get("password_hash")
     if not password_hash:
-        raise HTTPException(status_code=400, detail="该账号未设置密码")
+        raise HTTPException(status_code=400, detail="This account does not have a password set")
     if not auth_mod.verify_password(payload.old_password, password_hash):
-        raise HTTPException(status_code=401, detail="旧密码错误")
+        raise HTTPException(status_code=401, detail="Old password is incorrect")
     if not payload.new_password or len(payload.new_password) < 4:
-        raise HTTPException(status_code=400, detail="新密码至少 4 个字符")
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
     if payload.new_password == payload.old_password:
-        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+        raise HTTPException(status_code=400, detail="New password must be different from the old password")
     db.update_user(user["id"], password_hash=auth_mod.hash_password(payload.new_password))
     auth_mod.invalidate_user_tokens(user["id"])
     token = auth_mod.create_access_token(db.get_user_by_id(user["id"]) or user)

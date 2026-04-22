@@ -18,6 +18,13 @@ def _get(key: str, default: str = "") -> str:
     return s
 
 
+def _get_raw(key: str, default: str = "") -> str:
+    v = os.environ.get(key, default)
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
 # Telegram
 TELEGRAM_BOT_TOKEN: str = _get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID:   str = _get("TELEGRAM_CHAT_ID")
@@ -57,6 +64,7 @@ OPENAI_API_KEY:   str = _get("OPENAI_API_KEY", "")
 ROUTER_API_URL:   str = _get("ROUTER_API_URL", "")
 ROUTER_MODEL:     str = _get("ROUTER_MODEL", "")
 ROUTER_API_KEY:   str = _get("ROUTER_API_KEY", "")
+AI_PRICING_JSON:  str = _get_raw("AI_PRICING_JSON", "")
 
 # Prompt 文件分配（各处理阶段使用哪个 prompt 文件）
 # Gmail skill prompts 默认放在 prompts/gmail/ 子目录
@@ -115,6 +123,9 @@ FRONTEND_URL:     str = _get("FRONTEND_URL", "http://localhost:5173").rstrip("/"
 OUTGOING_EMAIL_ENCRYPTION_KEY: str = _get("OUTGOING_EMAIL_ENCRYPTION_KEY", "")
 TELEGRAM_CALLBACK_SECRET:      str = _get("TELEGRAM_CALLBACK_SECRET", "")
 OUTGOING_DRAFT_TTL_MINUTES:    int = int(_get("OUTGOING_DRAFT_TTL_MINUTES", "30"))
+
+OUTGOING_EMAIL_ENCRYPTION_KEY_RAW: str = _get_raw("OUTGOING_EMAIL_ENCRYPTION_KEY", "")
+TELEGRAM_CALLBACK_SECRET_RAW:      str = _get_raw("TELEGRAM_CALLBACK_SECRET", "")
 
 # Prompts directory
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"

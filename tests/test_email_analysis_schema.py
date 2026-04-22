@@ -1,4 +1,4 @@
-from app.skills.gmail.pipeline import _parse_email_analysis
+from app.domains.gmail.pipeline import _parse_email_analysis
 
 
 def test_parse_email_analysis_valid_json():

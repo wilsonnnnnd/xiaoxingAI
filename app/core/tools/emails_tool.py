@@ -22,17 +22,17 @@ def get_emails(user_id=None) -> str:
         records = db.get_email_records(limit=5, user_id=user_id)
         stats = db.get_stats()
         if not records:
-            return f"邮件记录总数：{stats.get('email_records_count', 0)} 封，暂无详细记录。"
-        lines = [f"邮件记录总数：{stats.get('email_records_count', 0)} 封，最近 {len(records)} 封如下：\n"]
+            return f"Email records count: {stats.get('email_records_count', 0)}. No records available."
+        lines = [f"Email records count: {stats.get('email_records_count', 0)}. Last {len(records)} records:\n"]
         for i, r in enumerate(records, 1):
             summary = r.get("summary", {})
             brief = summary.get("brief", "") or r.get("telegram_msg", "")[:100]
             lines.append(
-                f"{i}. [{r.get('priority', '')}] {r.get('subject', '（无主题）')}\n"
-                f"   发件人：{r.get('sender', '未知')}  时间：{r.get('date', '')}\n"
-                f"   摘要：{brief}"
+                f"{i}. [{r.get('priority', '')}] {r.get('subject', 'No subject')}\n"
+                f"   Sender:{r.get('sender', 'Unknown')}  Time:{r.get('date', '')}\n"
+                f"   Brief:{brief}"
             )
         return "\n".join(lines)
     except Exception as e:
-        logger.warning(f"[tools] get_emails 失败: {e}")
+        logger.warning(f"[tools] get_emails failed: {e}")
         raise

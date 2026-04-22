@@ -1,4 +1,13 @@
-export interface WorkerStatus {
+export interface TelegramUpdatesStatus {
+  running: boolean
+  mode: 'stopped' | 'polling' | 'webhook' | 'webhook+polling' | string
+  webhook_bot_ids?: number[]
+  polling_bot_ids?: number[] | 'all'
+}
+
+export interface WorkerUserStatus {
+  user_id: number
+  worker_enabled: boolean
   running: boolean
   interval: number
   query: string
@@ -13,6 +22,31 @@ export interface WorkerStatus {
   last_error: string | null
 }
 
+export interface WorkerSystemStatus {
+  running: boolean
+  starting?: boolean
+  state?: string
+  interval?: number
+  query?: string
+  priorities?: string[]
+  started_at?: string | null
+  last_poll?: string | null
+  last_error?: string | null
+  startup_requested_at?: string | null
+  startup_completed_at?: string | null
+  startup_error?: string | null
+  total_fetched?: number
+  total_sent?: number
+  total_errors?: number
+  total_tokens?: number
+  total_runtime_hours?: number
+  telegram_updates?: TelegramUpdatesStatus
+}
+
+export type WorkerStatusEnvelope =
+  | { scope: 'user'; user: WorkerUserStatus; system?: { telegram_updates?: TelegramUpdatesStatus } }
+  | { scope: 'global'; system: WorkerSystemStatus; user?: WorkerUserStatus }
+
 export interface LogEntry {
   id: number
   user_id: number | null
@@ -21,6 +55,105 @@ export interface LogEntry {
   log_type: string
   tokens: number
   msg: string
+}
+
+export type AdminDashboardPoint = { date: string; value: number }
+export type AdminDashboardModelSeries = {
+  name: string
+  data: AdminDashboardPoint[]
+}
+export type AdminDashboardTopUser = {
+  user_id: number
+  display_name: string
+  email: string
+  total_tokens: number
+  estimated_cost_usd: number
+  request_count: number
+}
+export type AdminDashboardBreakdownItem = {
+  label: string
+  total_tokens: number
+  estimated_cost_usd: number
+  request_count: number
+}
+
+export interface AdminDashboardPayload {
+  generated_at: string
+  range_days: number
+  summary: {
+    total_users: number
+    active_users_7d: number
+    new_users_7d: number
+    total_emails_processed: number
+    total_tokens_used: number
+    estimated_cost_usd: number | null
+    paid_members: number | null
+  }
+  series: {
+    user_growth: AdminDashboardPoint[]
+    token_usage: AdminDashboardPoint[]
+    emails_processed: AdminDashboardPoint[]
+    error_count: AdminDashboardPoint[]
+    estimated_cost: AdminDashboardPoint[]
+    model_usage: AdminDashboardModelSeries[]
+  }
+  operational: {
+    worker_enabled_users: number
+    worker_system_status: WorkerSystemStatus
+    error_count_24h: number
+    error_rate_24h: number
+    last_activity_ts: string | null
+  }
+  membership: {
+    paid_members: number | null
+    free_members: number | null
+    note?: string
+  }
+  analytics: {
+    top_users: {
+      by_cost: AdminDashboardTopUser[]
+      by_tokens: AdminDashboardTopUser[]
+    }
+    cost_breakdown: {
+      by_model: AdminDashboardBreakdownItem[]
+      by_purpose: AdminDashboardBreakdownItem[]
+    }
+  }
+  recent_logs: LogEntry[]
+  notes?: {
+    estimated_cost?: string
+    model_usage?: string
+  }
+}
+
+export interface UserDashboardPayload {
+  generated_at: string
+  range_days: number
+  summary: {
+    total_emails_processed: number
+    processed_today: number
+    with_reply_drafts: number
+    active_rules: number
+    total_tokens_used: number
+    estimated_cost_usd: number | null
+  }
+  series: {
+    token_usage: AdminDashboardPoint[]
+    emails_processed: AdminDashboardPoint[]
+    estimated_cost: AdminDashboardPoint[]
+  }
+  operational: {
+    worker_status: WorkerUserStatus
+    last_activity_ts: string | null
+  }
+  membership: {
+    plan_name: string | null
+    note?: string
+  }
+  recent_logs: LogEntry[]
+  notes?: {
+    estimated_cost?: string
+  }
 }
 
 export interface DbStats {
@@ -160,6 +293,7 @@ export interface Config {
   LLM_API_URL: string
   LLM_MODEL: string
   LLM_API_KEY?: string
+  AI_PRICING_JSON?: string
   ROUTER_API_KEY?: string
   HAS_LLM_API_KEY?: boolean
   HAS_ROUTER_API_KEY?: boolean
@@ -188,6 +322,21 @@ export interface AuthUser {
   role: string
   ui_lang?: 'en' | 'zh'
   notify_lang?: 'en' | 'zh'
+}
+
+export interface PricingConfig {
+  fallback: {
+    prompt_per_million: string
+    completion_per_million: string
+  }
+  models: Array<{
+    model: string
+    provider: string
+    prompt_per_million: string
+    completion_per_million: string
+  }>
+  source: string
+  uses_fallback_defaults: boolean
 }
 
 export interface User {

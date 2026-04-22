@@ -83,6 +83,8 @@ def extract_json_with_repair(
     schema_hint: str = "",
     max_repair_tokens: int = 256,
     max_repair_input_chars: int = 4000,
+    user_id: int | None = None,
+    purpose: str = "json_repair",
 ) -> Dict[str, Any]:
     schema_defaults = _parse_schema_hint(schema_hint)
     try:
@@ -111,7 +113,14 @@ def extract_json_with_repair(
         except Exception:
             raise ValueError(f"无法解析JSON: {raw}") from original_err
 
-        repaired, _ = call_llm(prompt, max_tokens=max_repair_tokens, use_cache=False)
+        repaired, _ = call_llm(
+            prompt,
+            max_tokens=max_repair_tokens,
+            use_cache=False,
+            user_id=user_id,
+            purpose=purpose,
+            source="repair",
+        )
         try:
             parsed = extract_json_from_text(repaired)
             return _apply_schema(parsed, schema_defaults) if schema_defaults else parsed

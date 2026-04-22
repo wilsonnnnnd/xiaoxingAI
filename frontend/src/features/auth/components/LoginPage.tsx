@@ -18,7 +18,7 @@ export const LoginPage: React.FC = () => {
     try {
       const data = await login(email, password)
       localStorage.setItem('auth_token', data.access_token)
-      navigate('/home', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch {
       // Error handled by global interceptor
     } finally {

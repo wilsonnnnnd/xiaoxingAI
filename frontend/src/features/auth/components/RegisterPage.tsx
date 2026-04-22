@@ -26,7 +26,7 @@ export const RegisterPage: React.FC = () => {
     try {
       const data = await register(email, password, displayName || undefined, lang, notifyLang, inviteCode)
       localStorage.setItem('auth_token', data.access_token)
-      navigate('/home', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch {
       /* TODO: show error message */
     } finally {

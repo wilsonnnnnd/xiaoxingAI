@@ -79,7 +79,14 @@ class EmailReplyGenerationService:
             )
         )
 
-        raw_response, tokens = call_llm(prompt, max_tokens=900, use_cache=False)
+        raw_response, tokens = call_llm(
+            prompt,
+            max_tokens=900,
+            use_cache=False,
+            user_id=user_id,
+            purpose="email_reply_drafts",
+            source="outgoing",
+        )
         try:
             parsed = json.loads((raw_response or "").strip())
             if not isinstance(parsed, dict):

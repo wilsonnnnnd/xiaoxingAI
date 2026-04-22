@@ -32,12 +32,12 @@ def db_prompt_update(prompt_id: int, payload: PromptUpdate, user: dict = Depends
     """更新 Prompt（本人创建的 or 管理员）"""
     existing = db.get_prompt(prompt_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Prompt 不存在")
+        raise HTTPException(status_code=404, detail="Prompt not found")
     owner_id = existing.get("user_id")
     if owner_id is None and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可修改")
+        raise HTTPException(status_code=403, detail="System Prompt can only be updated by admin")
     if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="无权修改")
+        raise HTTPException(status_code=403, detail="No permission to update")
     updates = payload.model_dump(exclude_unset=True)
     if updates:
         db.update_prompt(prompt_id, **updates)
@@ -49,12 +49,12 @@ def db_prompt_delete(prompt_id: int, user: dict = Depends(auth_mod.current_user)
     """删除 Prompt（本人创建的 or 管理员）"""
     existing = db.get_prompt(prompt_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Prompt 不存在")
+        raise HTTPException(status_code=404, detail="Prompt not found")
     owner_id = existing.get("user_id")
     if owner_id is None and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="系统 Prompt 仅管理员可删除")
+        raise HTTPException(status_code=403, detail="System Prompt can only be deleted by admin")
     if owner_id is not None and owner_id != user["id"] and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="无权删除")
+        raise HTTPException(status_code=403, detail="No permission to delete")
     db.delete_prompt(prompt_id)
     return {"ok": True}
 

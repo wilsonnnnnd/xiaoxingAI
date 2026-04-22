@@ -17,6 +17,7 @@ import { LLMSettings } from './LLMSettings'
 import { GmailSettings } from './GmailSettings'
 import { BotSettings } from './BotSettings'
 import { ChangePasswordCard } from './ChangePasswordCard'
+import { PricingSettings } from './PricingSettings'
 import toast from 'react-hot-toast'
 
 export const SettingsPage: React.FC = () => {
@@ -180,6 +181,8 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
           </form>
+
+          {isAdmin && <PricingSettings />}
 
           {myId && <BotSettings userId={myId} />}
         </div>

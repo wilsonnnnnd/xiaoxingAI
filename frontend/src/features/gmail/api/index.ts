@@ -1,11 +1,11 @@
 import { api } from '../../../api/client'
-import type { WorkerStatus, LogEntry, EmailRecord } from '../../../types'
+import type { WorkerStatusEnvelope, WorkerSystemStatus, LogEntry, EmailRecord } from '../../../types'
 
-export const getGmailWorkStatus = () => api.get<WorkerStatus>('/gmail/workstatus').then(r => r.data)
+export const getGmailWorkStatus = () => api.get<WorkerStatusEnvelope>('/gmail/workstatus').then(r => r.data)
 
-export const startWorker = () => api.post<{ ok: boolean; status: WorkerStatus }>('/worker/start').then(r => r.data)
+export const startWorker = () => api.post<{ ok: boolean; status: WorkerSystemStatus }>('/worker/start').then(r => r.data)
 
-export const stopWorker = () => api.post<{ ok: boolean; status: WorkerStatus }>('/worker/stop').then(r => r.data)
+export const stopWorker = () => api.post<{ ok: boolean; status: WorkerSystemStatus }>('/worker/stop').then(r => r.data)
 
 export const pollNow = () => api.post('/worker/poll').then(r => r.data)
 

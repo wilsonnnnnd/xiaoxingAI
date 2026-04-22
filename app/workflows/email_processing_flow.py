@@ -8,11 +8,11 @@ from pydantic import BaseModel, Field
 
 from app import db
 from app.core import redis_client as rc
-from app.core.telegram.client import send_message
+from app.domains.telegram.client import send_message
 from app.services.email_automation_rule_service import EmailAutomationRuleService
 from app.services.email_reply_generation_service import EmailReplyGenerationService
-from app.skills.gmail.client import mark_as_read
-from app.skills.gmail.pipeline import process_email
+from app.domains.gmail.client import mark_as_read
+from app.domains.gmail.pipeline import process_email
 
 logger = logging.getLogger("email.workflow")
 automation_rule_service = EmailAutomationRuleService()

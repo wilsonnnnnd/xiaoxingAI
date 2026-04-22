@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core import auth as auth_mod
 from app.core import config as app_config
+from app.core.ai_usage import normalize_pricing_json, pricing_table_for_api
 from app.core.constants import ALLOWED_CONFIG_KEYS
 
 router = APIRouter()
@@ -21,6 +22,10 @@ def _fp(s: str) -> str:
 @router.get("/config")
 def config_get(user: dict = Depends(auth_mod.require_admin)):
     """返回当前运行时配置（从内存读取，与 .env 一致）"""
+    try:
+        pricing_json = normalize_pricing_json(app_config.AI_PRICING_JSON)
+    except Exception:
+        pricing_json = normalize_pricing_json("")
     llm_key = app_config.LLM_API_KEY or app_config.OPENAI_API_KEY
     llm_key_src = "LLM_API_KEY" if app_config.LLM_API_KEY else ("OPENAI_API_KEY" if app_config.OPENAI_API_KEY else "none")
     router_key = app_config.ROUTER_API_KEY
@@ -37,6 +42,7 @@ def config_get(user: dict = Depends(auth_mod.require_admin)):
         "ROUTER_API_KEY_FINGERPRINT": _fp(router_key),
         "ROUTER_API_URL":     app_config.ROUTER_API_URL,
         "ROUTER_MODEL":       app_config.ROUTER_MODEL,
+        "AI_PRICING_JSON":    pricing_json,
         "GMAIL_POLL_INTERVAL": str(app_config.GMAIL_POLL_INTERVAL),
         "GMAIL_POLL_QUERY":   app_config.GMAIL_POLL_QUERY,
         "GMAIL_POLL_MAX":     str(app_config.GMAIL_POLL_MAX),
@@ -55,11 +61,17 @@ def config_get(user: dict = Depends(auth_mod.require_admin)):
 def config_update(payload: Dict[str, str], user: dict = Depends(auth_mod.require_admin)):
     """更新 .env 文件并热重载配置，无需重启服务"""
     if not app_config._ENV_PATH.exists():
-        raise HTTPException(status_code=500, detail=".env 文件不存在，请先创建")
+        raise HTTPException(status_code=500, detail=".env file does not exist, please create it first")
 
     unknown = set(payload.keys()) - ALLOWED_CONFIG_KEYS
     if unknown:
-        raise HTTPException(status_code=422, detail=f"不允许修改的配置项: {unknown}")
+        raise HTTPException(status_code=422, detail=f"Config keys not allowed to be modified: {unknown}")
+
+    if "AI_PRICING_JSON" in payload:
+        try:
+            payload["AI_PRICING_JSON"] = normalize_pricing_json(payload.get("AI_PRICING_JSON"))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid AI_PRICING_JSON: {exc}") from exc
 
     for key, value in payload.items():
         if key in {"OPENAI_API_KEY", "LLM_API_KEY", "ROUTER_API_KEY"} and (value or "").strip() == "":
@@ -69,3 +81,21 @@ def config_update(payload: Dict[str, str], user: dict = Depends(auth_mod.require
 
     importlib.reload(app_config)
     return {"ok": True, "config": config_get(user)}
+
+
+@router.get("/config/pricing")
+def pricing_config_get(user: dict = Depends(auth_mod.require_admin)):
+    return pricing_table_for_api()
+
+
+@router.post("/config/pricing")
+def pricing_config_update(payload: Dict[str, str], user: dict = Depends(auth_mod.require_admin)):
+    raw = str(payload.get("AI_PRICING_JSON") or "").strip()
+    if not app_config._ENV_PATH.exists():
+        raise HTTPException(status_code=500, detail=".env file does not exist, please create it first")
+
+    normalized = normalize_pricing_json(raw)
+    set_key(str(app_config._ENV_PATH), "AI_PRICING_JSON", normalized)
+    os.environ["AI_PRICING_JSON"] = normalized
+    importlib.reload(app_config)
+    return {"ok": True, "pricing": pricing_table_for_api(), "raw": normalize_pricing_json(app_config.AI_PRICING_JSON)}

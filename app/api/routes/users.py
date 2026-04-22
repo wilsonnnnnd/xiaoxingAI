@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import db
 from app.core import auth as auth_mod
 from app.schemas import UserCreate, UserUpdate, InviteCreateRequest
-from app.skills.gmail import worker as gmail_worker
+from app.domains import worker as gmail_worker
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ def users_list(user: dict = Depends(auth_mod.require_admin)):
 def user_create(payload: UserCreate, user: dict = Depends(auth_mod.require_admin)):
     """创建普通用户（仅限管理员）"""
     if db.get_user_by_email(payload.email):
-        raise HTTPException(status_code=409, detail="该邮箱已被注册")
+        raise HTTPException(status_code=409, detail="Email already registered")
     new_user = db.create_user(
         email=payload.email,
         display_name=payload.display_name,
@@ -35,7 +35,7 @@ def user_get(user_id: int, user: dict = Depends(auth_mod.current_user)):
     auth_mod.assert_self_or_admin(user, user_id)
     row = db.get_user_by_id(user_id)
     if not row:
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=404, detail="User not found")
     return {k: v for k, v in row.items() if k != "password_hash"}
 
 
@@ -44,11 +44,11 @@ async def user_update(user_id: int, payload: UserUpdate, user: dict = Depends(au
     """更新用户设置（本人或管理员）"""
     auth_mod.assert_self_or_admin(user, user_id)
     if not db.get_user_by_id(user_id):
-        raise HTTPException(status_code=404, detail="用户不存在")
+        raise HTTPException(status_code=404, detail="User not found")
     updates = payload.model_dump(exclude_unset=True)
     if updates:
         if "worker_enabled" in updates and updates["worker_enabled"] is True and user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="邮箱助手需要管理员授权开启")
+            raise HTTPException(status_code=403, detail="Email worker is not enabled for this user")
         db.update_user(user_id, **updates)
         if "worker_enabled" in updates:
             if updates["worker_enabled"]:
@@ -77,5 +77,5 @@ def invites_create(payload: InviteCreateRequest, user: dict = Depends(auth_mod.r
 def invites_revoke(code: str, user: dict = Depends(auth_mod.require_admin)):
     ok = db.revoke_register_invite(code)
     if not ok:
-        raise HTTPException(status_code=400, detail="邀请码不可撤销（可能已使用/已撤销/不存在）")
+        raise HTTPException(status_code=400, detail="Invite code is not valid or already revoked")
     return {"ok": True}

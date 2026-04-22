@@ -1,7 +1,7 @@
 import React from 'react'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
 }
@@ -34,7 +34,6 @@ export const Button: React.FC<ButtonProps> = ({
   ].join(' ')
 
   const variantCls = {
-    // ✅ 主按钮：浅蓝底 + 深色字 + 稍微突出
     primary: [
       'border border-sky-200/60',
       'bg-[linear-gradient(180deg,rgba(210,230,255,0.98)_0%,rgba(195,222,255,0.98)_100%)]',
@@ -54,7 +53,40 @@ export const Button: React.FC<ButtonProps> = ({
       'active:translate-y-0 active:scale-[0.985]',
     ].join(' '),
 
-    // ✅ 次按钮：和 Card 完全一致语言
+    success: [
+      'border border-emerald-200/60',
+      'bg-[linear-gradient(180deg,rgba(214,249,232,0.92)_0%,rgba(198,244,224,0.92)_100%)]',
+      'text-emerald-950',
+
+      'shadow-[0_12px_34px_rgba(16,185,129,0.14),inset_0_1px_0_rgba(255,255,255,0.85)]',
+
+      'hover:-translate-y-[1px]',
+      'hover:brightness-[1.02]',
+
+      'group-hover:bg-emerald-50/30',
+
+      'hover:shadow-[0_18px_44px_rgba(16,185,129,0.18),inset_0_1px_0_rgba(255,255,255,0.92)]',
+
+      'active:translate-y-0 active:scale-[0.985]',
+    ].join(' '),
+
+    danger: [
+      'border border-rose-200/65',
+      'bg-[linear-gradient(180deg,rgba(255,230,236,0.92)_0%,rgba(255,214,226,0.92)_100%)]',
+      'text-rose-950',
+
+      'shadow-[0_12px_34px_rgba(244,63,94,0.12),inset_0_1px_0_rgba(255,255,255,0.85)]',
+
+      'hover:-translate-y-[1px]',
+      'hover:brightness-[1.02]',
+
+      'group-hover:bg-rose-50/25',
+
+      'hover:shadow-[0_18px_44px_rgba(244,63,94,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]',
+
+      'active:translate-y-0 active:scale-[0.985]',
+    ].join(' '),
+
     secondary: [
       'border border-black/[0.06]',
       'bg-white/72 backdrop-blur-xl',
@@ -70,7 +102,6 @@ export const Button: React.FC<ButtonProps> = ({
       'hover:shadow-[0_14px_34px_rgba(15,23,42,0.07),inset_0_1px_0_rgba(255,255,255,0.94)]',
     ].join(' '),
 
-    // ✅ ghost：最轻层级
     ghost: [
       'border border-transparent',
       'bg-transparent',
@@ -84,6 +115,15 @@ export const Button: React.FC<ButtonProps> = ({
       'hover:shadow-[0_8px_22px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.75)]',
     ].join(' '),
   }[variant]
+
+  const spinnerCls =
+    variant === 'primary'
+      ? 'border-sky-300/40 border-t-[#0b3c5d]'
+      : variant === 'success'
+        ? 'border-emerald-300/40 border-t-emerald-950'
+        : variant === 'danger'
+          ? 'border-rose-300/40 border-t-rose-950'
+          : 'border-slate-300 border-t-slate-700'
 
   return (
     <button
@@ -107,10 +147,7 @@ export const Button: React.FC<ButtonProps> = ({
       <span className="relative inline-flex items-center gap-2">
         {loading && (
           <span
-            className={`inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 ${variant === 'primary'
-              ? 'border-sky-300/40 border-t-[#0b3c5d]'
-              : 'border-slate-300 border-t-slate-700'
-              }`}
+            className={`inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 ${spinnerCls}`}
           />
         )}
         <span>{children}</span>

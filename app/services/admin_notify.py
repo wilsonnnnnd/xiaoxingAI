@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app import db
 from app.core.step_log import write_step_log
-from app.core.telegram.client import send_message
+from app.domains.telegram.client import send_message
 
 
 def notify_admin_new_user(*, user: dict) -> None:

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app import db
 from app.core.auth import require_admin
 from app.core import redis_client as rc
-from app.core import telegram_debug, outgoing_debug
+from app.core.debug import outgoing_debug, telegram_debug
 from app.utils.crypto import decrypt_draft_body
 from app.utils.outgoing_json import extract_json_from_llm
 from app.utils.outgoing_placeholders import fill_sender_name, resolve_sender_name
@@ -113,7 +113,7 @@ def debug_simulate_reply(payload: SimulateReplyPayload):
     record = db.get_email_record(str(payload.email_id), user_id=int(payload.user_id))
     if not record:
         try:
-            from app.skills.gmail.client import fetch_email_by_id
+            from app.domains.gmail.client import fetch_email_by_id
 
             msg = fetch_email_by_id(str(payload.email_id), user_id=int(payload.user_id))
             record = {
@@ -123,7 +123,7 @@ def debug_simulate_reply(payload: SimulateReplyPayload):
                 "body": msg.get("body") or msg.get("snippet") or "",
             }
         except Exception:
-            raise HTTPException(status_code=404, detail="未找到对应邮件记录")
+            raise HTTPException(status_code=404, detail="No email record found for the given ID")
 
     tpl = load_prompt("outgoing/email_reply_compose.txt")
     prompt = (
@@ -134,14 +134,20 @@ def debug_simulate_reply(payload: SimulateReplyPayload):
         .replace("{{user_reply}}", str(payload.user_reply or "").strip())
     )
 
-    content, tokens = call_llm(prompt, max_tokens=800)
+    content, tokens = call_llm(
+        prompt,
+        max_tokens=800,
+        user_id=int(payload.user_id),
+        purpose="debug_outgoing_reply_simulation",
+        source="debug",
+    )
     data = extract_json_from_llm(content)
     base_subject = str(record.get("subject") or "").strip()
     default_subject = base_subject if base_subject.lower().startswith("re:") else f"Re: {base_subject}" if base_subject else "Re:"
     new_subject = (data.get("subject") or "").strip() or default_subject
     body_plain = (data.get("body_plain") or "").strip()
     if not body_plain:
-        raise HTTPException(status_code=500, detail="AI 输出格式错误")
+        raise HTTPException(status_code=500, detail="AI output format error")
 
     settings = db.get_reply_format_settings(int(payload.user_id))
     signature = str(settings.get("signature") or "")
@@ -178,7 +184,7 @@ def debug_send_draft(draft_id: int, user_id: int):
 
     update_id = int(time.time() * 1000)
     result = outgoing_draft_confirm(
-        f"__draft_id__={int(draft_id)} __tg_update_id__={update_id} 确认",
+        f"__draft_id__={int(draft_id)} __tg_update_id__={update_id} Confirm",
         user_id=int(user_id),
     )
     return {"result": result}

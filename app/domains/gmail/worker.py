@@ -1,0 +1,598 @@
+"""
+Gmail polling worker for multiple users.
+
+Each worker-enabled user runs an independent async polling task:
+fetch unread Gmail -> shared email processing workflow -> optional Telegram notify.
+Processed email IDs are stored per user to avoid duplicate pushes.
+"""
+
+import asyncio
+import dataclasses
+import logging
+import random
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from functools import partial
+from typing import Any, Dict, List, Optional
+
+from app import db
+from app.core import config
+from app.core.realtime import ws as ws_pub
+from app.core.step_log import write_step_log
+from . import telegram_updates
+from .client import fetch_emails
+from app.workflows.email_processing_flow import run_email_processing_flow
+
+logger = logging.getLogger("worker")
+
+_io_executor = ThreadPoolExecutor(
+    max_workers=max(4, int(getattr(config, "GMAIL_WORKER_IO_MAX_WORKERS", 12)))
+)
+_io_semaphore = asyncio.Semaphore(max(1, int(getattr(config, "GMAIL_WORKER_IO_CONCURRENCY", 8))))
+
+
+async def _run_io(fn, /, *args, **kwargs):
+    async with _io_semaphore:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_io_executor, partial(fn, *args, **kwargs))
+
+
+@dataclasses.dataclass
+class _UserWorkerState:
+    user_id: int
+    task: Optional[asyncio.Task] = None
+    running: bool = False
+    session_start: Optional[datetime] = None
+    lock: Optional[asyncio.Lock] = None
+    stats: Dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {
+            "started_at": None,
+            "last_poll": None,
+            "total_fetched": 0,
+            "total_sent": 0,
+            "total_errors": 0,
+            "total_tokens": 0,
+            "last_error": None,
+        }
+    )
+
+    def get_lock(self) -> asyncio.Lock:
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        return self.lock
+
+
+_workers: Dict[int, _UserWorkerState] = {}
+
+_startup_lock = threading.Lock()
+_startup_task: Optional[asyncio.Task] = None
+_starting: bool = False
+_startup_requested_at: Optional[str] = None
+_startup_completed_at: Optional[str] = None
+_startup_error: Optional[str] = None
+
+
+def _wlog(msg: str, level: str = "info", tokens: int = 0, user_id: Optional[int] = None) -> None:
+    write_step_log(
+        msg=msg,
+        level=level,
+        tokens=tokens,
+        user_id=user_id,
+        log_type=db.LogType.EMAIL,
+    )
+
+    if level == "error":
+        logger.error(msg)
+    elif level == "warn":
+        logger.warning(msg)
+    else:
+        logger.info(msg)
+
+
+def get_logs(limit: int = 100, log_type: Optional[str] = None) -> List[dict]:
+    lt = db.LogType(log_type) if log_type else None
+    return db.get_recent_logs(limit, lt)
+
+
+async def _poll_once(state: _UserWorkerState) -> None:
+    user_id = state.user_id
+
+    user_row = await _run_io(db.get_user_by_id, user_id)
+    if not user_row:
+        return
+
+    poll_query = (str(user_row.get("gmail_poll_query") or "")).strip() or config.GMAIL_POLL_QUERY
+    max_emails = user_row.get("max_emails_per_run") or config.GMAIL_POLL_MAX
+    min_priority = user_row.get("min_priority") or None
+    mark_read = config.GMAIL_MARK_READ
+    notify_bots = await _run_io(db.get_notify_bots, user_id)
+
+    async with state.get_lock():
+        state.stats["last_poll"] = datetime.now().isoformat(timespec="seconds")
+
+        _wlog(
+            f"Start polling (query: {poll_query}, max: {max_emails})",
+            user_id=user_id,
+        )
+        try:
+            emails = await _run_io(fetch_emails, poll_query, max_emails, user_id)
+        except Exception as exc:
+            _wlog(
+                f"Fetch Gmail failed ({exc.__class__.__name__})",
+                level="error",
+                user_id=user_id,
+            )
+            state.stats["last_error"] = str(exc)
+            return
+
+        email_ids = [str(e.get("id") or "") for e in emails if str(e.get("id") or "")]
+        done_ids = await _run_io(db.get_processed_email_ids, email_ids, user_id)
+        new_emails = [
+            e
+            for e in emails
+            if str(e.get("id") or "") and str(e.get("id") or "") not in done_ids
+        ]
+        skipped_dup = len(emails) - len(new_emails)
+        state.stats["total_fetched"] += len(new_emails)
+
+        _wlog(
+            f"Fetch completed: {len(emails)} emails, new: {len(new_emails)}, processed(skipped): {skipped_dup}",
+            user_id=user_id,
+        )
+
+        if not new_emails:
+            _wlog("No new emails, polling ends", user_id=user_id)
+
+        for email in new_emails:
+            subj = email.get("subject", "(No Subject)")
+            try:
+                _wlog(f"Processing email: {subj}", user_id=user_id)
+                result = await _run_io(
+                    run_email_processing_flow,
+                    email,
+                    user_id=int(user_id),
+                    notify_bots=list(notify_bots or []),
+                    send_telegram_enabled=True,
+                    mark_read_enabled=bool(mark_read),
+                    persist_result=True,
+                    min_priority=min_priority,
+                    notify_priorities=list(config.NOTIFY_PRIORITIES or []),
+                    bind_notify_refs=True,
+                    max_ai_retries=3,
+                )
+            except Exception as exc:
+                state.stats["total_errors"] += 1
+                state.stats["last_error"] = str(exc)
+                _wlog(
+                    f"Processing failed [{subj}] ({exc.__class__.__name__})",
+                    level="error",
+                    user_id=user_id,
+                )
+                continue
+
+            state.stats["total_tokens"] += int(result.get("tokens", 0) or 0)
+            priority = str(result.get("analysis", {}).get("priority", "low") or "low")
+            matched_rules = {str(rule.get("rule") or "") for rule in result.get("matched_rules", [])}
+
+            if "min_priority_filter" in matched_rules or "notify_priority_filter" in matched_rules:
+                _wlog(f"Skip low priority [{priority}]: {subj}", level="warn", user_id=user_id)
+            if "missing_notify_bots" in matched_rules:
+                _wlog(
+                    f"No notify bots (mode='all'/'notify'); skip Telegram send: {subj}",
+                    level="warn",
+                    user_id=user_id,
+                )
+
+            if result.get("sent_telegram"):
+                state.stats["total_sent"] += 1
+                _wlog(
+                    f"Sent to Telegram: {subj}",
+                    tokens=int(result.get("tokens", 0) or 0),
+                    user_id=user_id,
+                )
+
+            final_status = str(result.get("final_status") or "processed")
+            if final_status == "partially_failed":
+                _wlog(f"Some actions failed [{subj}]", level="warn", user_id=user_id)
+            elif final_status == "failed":
+                state.stats["total_errors"] += 1
+                state.stats["last_error"] = f"actions failed for {subj}"
+                _wlog(f"Processing failed [{subj}]", level="error", user_id=user_id)
+
+        await _run_io(db.cleanup_old_logs)
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
+
+
+async def _user_loop(state: _UserWorkerState) -> None:
+    user_id = state.user_id
+    user_row = await _run_io(db.get_user_by_id, user_id)
+    poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
+
+    jitter_max = int(getattr(config, "GMAIL_WORKER_START_JITTER_MAX", 0) or 0)
+    buckets = int(getattr(config, "GMAIL_WORKER_START_BUCKETS", 0) or 0)
+    delay_window = max(0, min(int(poll_interval or 0), jitter_max)) if jitter_max > 0 else 0
+    if delay_window > 0:
+        bucket_count = max(1, min(delay_window, buckets if buckets > 0 else 12))
+        bucket_span = delay_window / bucket_count
+        bucket_idx = int(user_id) % bucket_count
+        ordinal = datetime.now().date().toordinal()
+        rng = random.Random((int(user_id) << 16) ^ ordinal)
+        delay = min(delay_window, (bucket_idx * bucket_span) + (rng.random() * bucket_span))
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+    _wlog(f"Worker started, poll interval {poll_interval}s", user_id=user_id)
+    while state.running:
+        try:
+            await _poll_once(state)
+        except Exception as exc:
+            state.stats["last_error"] = str(exc)
+            _wlog(
+                f"Poll exception ({exc.__class__.__name__})",
+                level="error",
+                user_id=user_id,
+            )
+            logger.error("[worker] user#%s poll exception: %s", user_id, exc, exc_info=True)
+
+        user_row = await _run_io(db.get_user_by_id, user_id)
+        poll_interval = (user_row.get("poll_interval") if user_row else None) or config.GMAIL_POLL_INTERVAL
+        for _ in range(poll_interval):
+            if not state.running:
+                break
+            await asyncio.sleep(1)
+    _wlog("Worker stopped", user_id=user_id)
+
+
+def _start_user_worker(user_id: int) -> bool:
+    if user_id in _workers and _workers[user_id].running:
+        return False
+
+    state = _workers.setdefault(user_id, _UserWorkerState(user_id=user_id))
+    now = datetime.now()
+    state.running = True
+    state.session_start = now
+    state.stats.update(
+        {
+            "started_at": now.isoformat(timespec="seconds"),
+            "last_poll": None,
+            "total_fetched": 0,
+            "total_sent": 0,
+            "total_errors": 0,
+            "total_tokens": 0,
+            "last_error": None,
+        }
+    )
+    state.task = asyncio.create_task(_user_loop(state))
+    return True
+
+
+def _any_user_running() -> bool:
+    for state in _workers.values():
+        if not state.running:
+            continue
+        if state.task is None:
+            return True
+        if not state.task.done():
+            return True
+    return False
+
+
+def _state_label(*, any_running: bool) -> str:
+    if any_running:
+        return "running"
+    if _starting:
+        return "starting"
+    return "stopped"
+
+
+async def _background_start() -> None:
+    global _starting, _startup_completed_at, _startup_error
+    logger.info("[worker] background start triggered")
+    try:
+        started_any = await start()
+        logger.info("[worker] startup completed | started_any=%s", started_any)
+    except Exception as exc:
+        _startup_error = str(exc)
+        logger.error("[worker] startup failed: %s", exc, exc_info=True)
+    finally:
+        _startup_completed_at = datetime.now().isoformat(timespec="seconds")
+        _starting = False
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
+
+
+def request_start() -> bool:
+    global _startup_task, _starting, _startup_requested_at, _startup_completed_at, _startup_error
+    logger.info("[worker] start requested")
+    with _startup_lock:
+        if _any_user_running():
+            return False
+        if _startup_task is not None and not _startup_task.done():
+            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _startup_error = "no running event loop"
+            return False
+        _starting = True
+        _startup_requested_at = datetime.now().isoformat(timespec="seconds")
+        _startup_completed_at = None
+        _startup_error = None
+        _startup_task = loop.create_task(_background_start())
+        return True
+
+
+async def start(allow_empty: bool = False) -> bool:
+    users = await _run_io(db.list_worker_enabled_users)
+    if not users:
+        if allow_empty:
+            return False
+        raise RuntimeError("No worker_enabled users found")
+
+    started_any = False
+    for user in users:
+        user_id = user["id"]
+        started_any = _start_user_worker(int(user_id)) or started_any
+
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    try:
+        await telegram_updates.start()
+    except Exception:
+        pass
+    return started_any
+
+
+async def ensure_user_running(user_id: int) -> bool:
+    user_row = await _run_io(db.get_user_by_id, user_id)
+    if not user_row:
+        return False
+    if not user_row.get("worker_enabled"):
+        return False
+    started = _start_user_worker(user_id)
+    try:
+        await telegram_updates.start()
+    except Exception:
+        pass
+    if started:
+        try:
+            ws_pub.publish_worker_status(get_status())
+        except Exception:
+            pass
+    return started
+
+
+def stop_user(user_id: int) -> bool:
+    state = _workers.get(user_id)
+    if not state or not state.running:
+        try:
+            if not db.list_worker_enabled_users():
+                telegram_updates.stop_now()
+        except Exception:
+            pass
+        return False
+
+    state.running = False
+    runtime_secs = 0
+    if state.session_start is not None:
+        runtime_secs = int((datetime.now() - state.session_start).total_seconds())
+        state.session_start = None
+    db.save_worker_stats(
+        started_at=state.stats.get("started_at", ""),
+        total_sent=state.stats["total_sent"],
+        total_fetched=state.stats["total_fetched"],
+        total_errors=state.stats["total_errors"],
+        total_tokens=state.stats.get("total_tokens", 0),
+        runtime_secs=runtime_secs,
+        last_poll=state.stats.get("last_poll"),
+        user_id=user_id,
+    )
+    if state.task and not state.task.done():
+        state.task.cancel()
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    try:
+        if not db.list_worker_enabled_users():
+            telegram_updates.stop_now()
+    except Exception:
+        pass
+    return True
+
+
+def stop() -> bool:
+    stopped_any = False
+    try:
+        telegram_updates.stop_now()
+    except Exception:
+        pass
+    for user_id, state in list(_workers.items()):
+        if not state.running:
+            continue
+        state.running = False
+        runtime_secs = 0
+        if state.session_start is not None:
+            runtime_secs = int((datetime.now() - state.session_start).total_seconds())
+            state.session_start = None
+        db.save_worker_stats(
+            started_at=state.stats.get("started_at", ""),
+            total_sent=state.stats["total_sent"],
+            total_fetched=state.stats["total_fetched"],
+            total_errors=state.stats["total_errors"],
+            total_tokens=state.stats.get("total_tokens", 0),
+            runtime_secs=runtime_secs,
+            last_poll=state.stats.get("last_poll"),
+            user_id=user_id,
+        )
+        if state.task and not state.task.done():
+            state.task.cancel()
+        stopped_any = True
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    return stopped_any
+
+
+async def shutdown() -> None:
+    tasks = [s.task for s in _workers.values() if s.task and not s.task.done()]
+    stop()
+    try:
+        await telegram_updates.stop()
+    except Exception:
+        pass
+    if tasks:
+        try:
+            await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+    try:
+        _io_executor.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        try:
+            _io_executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+
+def get_status() -> Dict[str, Any]:
+    any_running = False
+    total_sent = total_fetched = total_errors = total_tokens = 0
+    last_poll = None
+    last_error = None
+    started_at = None
+    total_runtime_secs = 0
+
+    for user_id, state in _workers.items():
+        if state.running and state.task is not None and state.task.done():
+            state.running = False
+            if not state.task.cancelled():
+                exc = state.task.exception()
+                if exc:
+                    state.stats["last_error"] = f"[task crashed] {exc}"
+
+        if state.running:
+            any_running = True
+
+        db_s = db.get_worker_stats(user_id=user_id)
+        session_secs = 0
+        if state.running and state.session_start:
+            session_secs = int((datetime.now() - state.session_start).total_seconds())
+        total_runtime_secs += db_s.get("total_runtime_secs", 0) + session_secs
+
+        total_sent += db_s.get("total_sent", 0) + state.stats["total_sent"]
+        total_fetched += db_s.get("total_fetched", 0) + state.stats["total_fetched"]
+        total_errors += db_s.get("total_errors", 0) + state.stats["total_errors"]
+        total_tokens += db_s.get("total_tokens", 0) + state.stats.get("total_tokens", 0)
+
+        poll = state.stats.get("last_poll") or db_s.get("last_poll")
+        if poll and (last_poll is None or poll > last_poll):
+            last_poll = poll
+        if state.stats.get("last_error"):
+            last_error = state.stats["last_error"]
+        if state.stats.get("started_at"):
+            started_at = state.stats["started_at"]
+
+    return {
+        "running": any_running,
+        "starting": _starting,
+        "state": _state_label(any_running=any_running),
+        "interval": config.GMAIL_POLL_INTERVAL,
+        "query": config.GMAIL_POLL_QUERY,
+        "priorities": config.NOTIFY_PRIORITIES or ["all"],
+        "started_at": started_at,
+        "last_poll": last_poll,
+        "last_error": last_error,
+        "startup_requested_at": _startup_requested_at,
+        "startup_completed_at": _startup_completed_at,
+        "startup_error": _startup_error,
+        "total_sent": total_sent,
+        "total_fetched": total_fetched,
+        "total_errors": total_errors,
+        "total_tokens": total_tokens,
+        "total_runtime_hours": round(total_runtime_secs / 3600, 1),
+        "telegram_updates": telegram_updates.status(),
+    }
+
+
+def get_user_status(*, user_id: int) -> Dict[str, Any]:
+    state = _workers.setdefault(int(user_id), _UserWorkerState(user_id=int(user_id)))
+    if state.running and state.task is not None and state.task.done():
+        state.running = False
+        if not state.task.cancelled():
+            exc = state.task.exception()
+            if exc:
+                state.stats["last_error"] = f"[task crashed] {exc}"
+
+    user_row = db.get_user_by_id(int(user_id)) or {}
+    poll_interval = int(user_row.get("poll_interval") or 0) or int(config.GMAIL_POLL_INTERVAL)
+    poll_query = str(user_row.get("gmail_poll_query") or "") or str(config.GMAIL_POLL_QUERY)
+
+    db_s = db.get_worker_stats(user_id=int(user_id))
+    session_secs = 0
+    if state.running and state.session_start:
+        session_secs = int((datetime.now() - state.session_start).total_seconds())
+    total_runtime_secs = int(db_s.get("total_runtime_secs", 0) or 0) + session_secs
+
+    total_sent = int(db_s.get("total_sent", 0) or 0) + int(state.stats.get("total_sent", 0) or 0)
+    total_fetched = int(db_s.get("total_fetched", 0) or 0) + int(state.stats.get("total_fetched", 0) or 0)
+    total_errors = int(db_s.get("total_errors", 0) or 0) + int(state.stats.get("total_errors", 0) or 0)
+    total_tokens = int(db_s.get("total_tokens", 0) or 0) + int(state.stats.get("total_tokens", 0) or 0)
+
+    last_poll = state.stats.get("last_poll") or db_s.get("last_poll")
+    started_at = state.stats.get("started_at")
+    last_error = state.stats.get("last_error")
+
+    return {
+        "user_id": int(user_id),
+        "worker_enabled": bool(user_row.get("worker_enabled")),
+        "running": bool(state.running),
+        "interval": poll_interval,
+        "query": poll_query,
+        "priorities": config.NOTIFY_PRIORITIES or ["all"],
+        "started_at": started_at,
+        "last_poll": last_poll,
+        "last_error": last_error,
+        "total_sent": total_sent,
+        "total_fetched": total_fetched,
+        "total_errors": total_errors,
+        "total_tokens": total_tokens,
+        "total_runtime_hours": round(total_runtime_secs / 3600, 1),
+    }
+
+
+async def poll_now() -> Dict[str, Any]:
+    users = await _run_io(db.list_worker_enabled_users)
+    if not users:
+        raise RuntimeError("No users with worker_enabled=True found")
+
+    before_sent = sum(s.stats["total_sent"] for s in _workers.values())
+    before_err = sum(s.stats["total_errors"] for s in _workers.values())
+
+    tasks = []
+    for user in users:
+        user_id = user["id"]
+        state = _workers.setdefault(user_id, _UserWorkerState(user_id=user_id))
+        tasks.append(_poll_once(state))
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    after_sent = sum(s.stats["total_sent"] for s in _workers.values())
+    after_err = sum(s.stats["total_errors"] for s in _workers.values())
+    try:
+        ws_pub.publish_worker_status(get_status())
+    except Exception:
+        pass
+    return {
+        "sent_this_run": after_sent - before_sent,
+        "errors_this_run": after_err - before_err,
+        "last_poll": datetime.now().isoformat(timespec="seconds"),
+    }
