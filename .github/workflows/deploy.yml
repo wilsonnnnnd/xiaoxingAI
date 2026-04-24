@@ -17,7 +17,115 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy via SSH
+      - name: Sync latest code on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            cd /home/weimeng/xiaoxingAI
+            git fetch origin main
+            git reset --hard origin/main
+
+      - name: Install backend dependencies
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            cd /home/weimeng/xiaoxingAI
+            source /home/weimeng/xiaoxingAI/.venv/bin/activate
+            pip install -r requirements.txt
+
+      - name: Build frontend
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            nvm use 22
+            cd /home/weimeng/xiaoxingAI/frontend
+            npm install
+            npm run build
+
+      - name: Publish frontend to nginx
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            sudo mkdir -p /var/www/xiaoxing
+            sudo rm -rf /var/www/xiaoxing/*
+            sudo cp -r /home/weimeng/xiaoxingAI/frontend/dist/* /var/www/xiaoxing/
+            sudo chown -R www-data:www-data /var/www/xiaoxing
+            sudo chmod -R 755 /var/www/xiaoxing
+
+      - name: Restart backend
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            sudo systemctl restart xiaoxing
+
+      - name: Reload nginx
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+      - name: Check backend health
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            for i in {1..15}; do
+              if curl -fsS http://127.0.0.1:8000/health; then
+                echo "Backend is ready"
+                exit 0
+              fi
+              echo "Waiting for backend... ($i)"
+              sleep 2
+            done
+            echo "Backend health check failed"
+            exit 1
+
+      - name: Show backend service status
+        if: always()
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -25,54 +133,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT }}
           script: |
-            set -e
-
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            nvm use 22
-
-            echo "📂 Go to project"
-            cd /home/weimeng/xiaoxingAI
-
-            echo "📥 Pull latest code"
-            git fetch origin main
-            git reset --hard origin/main
-
-            echo "🐍 Install backend dependencies"
-            source /home/weimeng/xiaoxingAI/.venv/bin/activate
-            pip install -r requirements.txt
-
-            echo "🧱 Build frontend"
-            cd /home/weimeng/xiaoxingAI/frontend
-            npm install
-            npm run build
-
-            echo "📁 Sync dist to nginx web root"
-            sudo mkdir -p /var/www/xiaoxing
-            sudo rm -rf /var/www/xiaoxing/*
-            sudo cp -r /home/weimeng/xiaoxingAI/frontend/dist/* /var/www/xiaoxing/
-            sudo chown -R www-data:www-data /var/www/xiaoxing
-            sudo chmod -R 755 /var/www/xiaoxing
-
-            echo "🔁 Restart backend"
-            sudo systemctl restart xiaoxing
-
-            echo "🔁 Reload nginx"
-            sudo nginx -t
-            sudo systemctl reload nginx
-
-            echo "⏳ Wait for backend to become ready"
-            for i in {1..15}; do
-              if curl -fsS http://127.0.0.1:8000/health; then
-                echo "✅ Backend is ready"
-                break
-              fi
-              echo "Waiting... ($i)"
-              sleep 2
-            done
-
-            echo "🔍 Final service status"
             sudo systemctl status xiaoxing --no-pager
 
-            echo "✅ HTTPS check"
-            curl -I https://xiaoxingai.online || true
+      - name: Check public HTTPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          script: |
+            set -e
+            curl -I https://xiaoxingai.online
